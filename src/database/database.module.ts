@@ -18,7 +18,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
           ? { rejectUnauthorized: false }
           : false,
         autoLoadEntities: true,
-        synchronize: false,
+        synchronize: !!configService.get('DB_SYNCHRONIZE'),
+        migrationsRun: !!configService.get('DB_MIGRATIONS_RUN'),
       }),
     }),
   ],

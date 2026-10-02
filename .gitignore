@@ -66,6 +66,16 @@ pids
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
+# Agent / SpecKit scaffolding - not needed for team repo
+CLAUDE.md
+AGENTS.md
+BACKEND_GIT_WORKFLOW.md
+.agents/
+.specify/
+workers/ai-transcription/dist/
+workers/ai-transcription/python/_bench_tmp/
+_tmp_*.js
+
 # Sensitive files - API contracts and database schemas
 API_Contract_Agent_Reference.md
 database_v3_1_balanced_intelligent_meeting_system_v3_1_balanced_49_tables.md

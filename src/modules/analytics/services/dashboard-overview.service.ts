@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { AuthzReadRepository } from '../../auth/repositories/authz-read.repository';
 import { AuditLogsService } from '../../administration/services/audit-logs.service.js';
+import { RedisService } from '../../redis/redis.service.js';
 import { DashboardOverviewRepository } from '../repositories/dashboard-overview.repository';
 import { DashboardOverviewConfigService } from './dashboard-overview-config.service';
 import { QueryDashboardOverviewDto } from '../dto/query-dashboard-overview.dto';
@@ -24,11 +25,15 @@ interface ScopeResult {
 export class DashboardOverviewService {
   private readonly logger = new Logger(DashboardOverviewService.name);
 
+  private static readonly CACHE_TTL_SECONDS = 60;
+  private static readonly CACHE_PREFIX = 'analytics:dashboard:overview:';
+
   constructor(
     private readonly authzRepo: AuthzReadRepository,
     private readonly repo: DashboardOverviewRepository,
     private readonly configService: DashboardOverviewConfigService,
     private readonly auditLogsService: AuditLogsService,
+    private readonly redisService: RedisService,
   ) {}
 
   /**
@@ -42,6 +47,19 @@ export class DashboardOverviewService {
     const { from, to } = await this.resolveDateRange(query);
     await this.validateMaxRange(from, to);
     this.validateDepartmentOwnership(scope, query.departmentId);
+
+    // Redis cache — key theo scope + filter (from/to/dept/room)
+    const cacheKey = this.buildCacheKey(scope, from, to, query);
+    try {
+      const cached =
+        await this.redisService.getJson<DashboardOverviewResponseDto>(cacheKey);
+      if (cached) {
+        this.logger.debug(`Cache HIT ${cacheKey}`);
+        return cached;
+      }
+    } catch {
+      // Redis lỗi thì fallback DB, không throw
+    }
 
     const params = {
       from,
@@ -117,6 +135,17 @@ export class DashboardOverviewService {
     );
 
     logAction(meetingCount);
+
+    // Cache SET (fail-safe: Redis lỗi không làm hỏng response)
+    try {
+      await this.redisService.setJsonWithTtl(
+        cacheKey,
+        res,
+        DashboardOverviewService.CACHE_TTL_SECONDS,
+      );
+    } catch {
+      // ignore
+    }
 
     return res;
   }
@@ -216,6 +245,21 @@ export class DashboardOverviewService {
   /**
    * Build empty response (EX1).
    */
+  private buildCacheKey(
+    scope: ScopeResult,
+    from: string,
+    to: string,
+    query: QueryDashboardOverviewDto,
+  ): string {
+    const scopeKey = scope.isAdmin
+      ? 'admin'
+      : (scope.scopeDepartmentIds ?? []).sort().join(',') || 'empty';
+    return (
+      DashboardOverviewService.CACHE_PREFIX +
+      `${scopeKey}:${from}:${to}:${query.departmentId ?? '-'}:${query.roomId ?? '-'}`
+    );
+  }
+
   private buildEmptyResponse(
     from: string,
     to: string,
