@@ -61,4 +61,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=5 \
    || curl -f http://localhost:3000/ 2>/dev/null \
    || exit 1
 
-CMD ["node", "dist/main.js"]
+# Tự chạy migration còn thiếu trước khi start (tránh quên chạy tay khi deploy).
+# Migration đã chạy thì TypeORM bỏ qua. Migration lỗi → container KHÔNG start (fail sớm, dễ thấy).
+# `exec` để node thay thế sh → tini chuyển SIGTERM thẳng tới node.
+CMD ["sh", "-c", "npx typeorm migration:run -d dist/database/data-source.js && exec node dist/main.js"]
