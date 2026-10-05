@@ -5,6 +5,9 @@ import { VehicleWebhookController } from './vehicle-webhook.controller.js';
 describe('VehicleWebhookController (VWH-001 / UC4)', () => {
   let controller: VehicleWebhookController;
   let handler: { onVehicleEvent: jest.Mock };
+  // STT 7: mặc định queue lỗi (Redis down) → các test bên dưới chạy nhánh fallback đồng bộ
+  // (hành vi cũ). Nhánh enqueue test riêng ở describe 'STT 7'.
+  let queue: { add: jest.Mock };
 
   const dto = (over: any = {}) => ({
     plateNumber: '30A-123.45',
@@ -15,7 +18,27 @@ describe('VehicleWebhookController (VWH-001 / UC4)', () => {
 
   beforeEach(() => {
     handler = { onVehicleEvent: jest.fn().mockResolvedValue(undefined) };
-    controller = new VehicleWebhookController(handler);
+    queue = { add: jest.fn().mockRejectedValue(new Error('redis down')) };
+    controller = new VehicleWebhookController(handler, queue as any);
+  });
+
+  describe('STT 7: enqueue + ack ngay', () => {
+    it('enqueue OK → 200 accepted, KHÔNG gọi handler đồng bộ', async () => {
+      queue.add.mockResolvedValue({ id: '1' });
+      const r = await controller.receiveEvent(dto());
+      expect(queue.add).toHaveBeenCalledTimes(1);
+      const [name, event] = queue.add.mock.calls[0];
+      expect(name).toBe('vehicle-event');
+      expect(event.plateNumber).toBe('30A12345');
+      expect(handler.onVehicleEvent).not.toHaveBeenCalled();
+      expect(r.data).toEqual({ accepted: true });
+    });
+
+    it('enqueue lỗi → fallback handler đồng bộ 1 lần, vẫn 200', async () => {
+      const r = await controller.receiveEvent(dto());
+      expect(handler.onVehicleEvent).toHaveBeenCalledTimes(1);
+      expect(r.data).toEqual({ accepted: true });
+    });
   });
 
   it('payload hợp lệ → 200 accepted + handler.onVehicleEvent gọi 1 lần', async () => {

@@ -10,6 +10,8 @@ import {
   Logger,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { VEHICLE_EVENT_HANDLER } from '../../../common/ports/vehicle-event-hook.js';
 import type {
   VehicleEventHandlerPort,
@@ -18,6 +20,10 @@ import type {
 import { VehicleEventDto } from '../dto/vehicle-event.dto.js';
 import { AnprInternalTokenGuard } from '../guards/anpr-internal-token.guard.js';
 import { normalizePlate } from '../utils/normalize-plate.js';
+import {
+  VEHICLE_EVENTS_QUEUE_NAME,
+  VEHICLE_EVENT_JOB_NAME,
+} from '../processors/vehicle-event.processor.js';
 
 /**
  * VehicleWebhookController (VWH-001 / UC4) — nhận vehicle event từ IVSS bridge (system-to-system).
@@ -34,6 +40,8 @@ export class VehicleWebhookController {
   constructor(
     @Inject(VEHICLE_EVENT_HANDLER)
     private readonly handler: VehicleEventHandlerPort,
+    @InjectQueue(VEHICLE_EVENTS_QUEUE_NAME)
+    private readonly vehicleEventsQueue: Queue<VehicleEvent>,
   ) {}
 
   @Post('internal/ivss/vehicle-events')
@@ -57,6 +65,23 @@ export class VehicleWebhookController {
       vehicleType: dto.vehicleType,
       imageBase64: dto.imageBase64,
     };
+
+    // STT 7: enqueue rồi ack ngay — bridge không phải chờ xử lý DB. Redis lỗi → fallback
+    // xử lý đồng bộ như cũ (không mất event).
+    try {
+      await this.vehicleEventsQueue.add(VEHICLE_EVENT_JOB_NAME, event);
+      return {
+        success: true,
+        message: 'Vehicle event accepted',
+        data: { accepted: true },
+      };
+    } catch (e) {
+      this.logger.warn(
+        `Vehicle event enqueue failed, xử lý đồng bộ (channel=${event.channelId} plate=${event.plateNumber}): ${
+          e instanceof Error ? e.message : 'unknown'
+        }`,
+      );
+    }
 
     // ARCH-01: handoff best-effort — handler lỗi KHÔNG làm vỡ ack.
     try {

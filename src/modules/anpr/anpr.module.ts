@@ -18,6 +18,11 @@ import { VehicleControlListService } from './services/vehicle-control-list.servi
 import { VehicleControlAlertService } from './services/vehicle-control-alert.service.js';
 import { AnprInternalTokenGuard } from './guards/anpr-internal-token.guard.js';
 import { DefaultVehicleEventHandler } from './handlers/default-vehicle-event.handler.js';
+import { BullModule } from '@nestjs/bullmq';
+import {
+  VehicleEventProcessor,
+  VEHICLE_EVENTS_QUEUE_NAME,
+} from './processors/vehicle-event.processor.js';
 
 /**
  * AnprModule (ANPR mini-epic) — biển số xe.
@@ -54,6 +59,8 @@ import { DefaultVehicleEventHandler } from './handlers/default-vehicle-event.han
     // GAW-001 (UC-105): lấy GateAccessLogService (writer gate_access_logs) từ zones.
     // Cạnh anpr → zones một chiều (zones import Auth+Iot, KHÔNG import anpr) ⇒ không circular.
     ZonesModule,
+    // STT 7: hàng đợi sự kiện xe (connection/defaultJobOptions từ BullModule.forRootAsync).
+    BullModule.registerQueue({ name: VEHICLE_EVENTS_QUEUE_NAME }),
   ],
   controllers: [
     VehicleRegistrationController,
@@ -71,6 +78,7 @@ import { DefaultVehicleEventHandler } from './handlers/default-vehicle-event.han
     VehicleControlAlertService,
     // VRE-001 (UC5): handler thật thay default log-only (UC4).
     { provide: VEHICLE_EVENT_HANDLER, useExisting: VehicleResolveService },
+    VehicleEventProcessor,
   ],
   // VPT-IMPORT-001: export VehicleRegistrationService để AccountsModule tái dùng
   // register() cho cột license_plate (tùy chọn) trong import Excel nhân viên —

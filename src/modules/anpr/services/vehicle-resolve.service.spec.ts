@@ -573,6 +573,9 @@ describe('VehicleResolveService (VRE-001 / UC5)', () => {
       // enter
       pairMock.pairForLeaveLog.mockClear();
       wire(GATE); // dirMap ch5=enter
+      // STT 7: map kênh cache 30s → đổi config giữa 2 event phải xoá cache.
+      (service as any).zoneMapCache = undefined;
+      (service as any).dirMapCache = undefined;
       await service.onVehicleEvent(evt({ utc: nowIso() }));
       expect(pairMock.pairForLeaveLog).not.toHaveBeenCalled();
     });

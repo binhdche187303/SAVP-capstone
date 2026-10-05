@@ -82,6 +82,9 @@ const UUID_RE =
  * SEC-03 bind tham số. NotThrow (webhook UC4 always-ack). KHÔNG dùng VehicleRegistrationService
  * (raw query riêng, mirror face ingestion).
  */
+/** STT 7: TTL cache map kênh (zone/direction) đọc từ system_configs. */
+const CHANNEL_MAP_CACHE_MS = 30_000;
+
 @Injectable()
 export class VehicleResolveService implements VehicleEventHandlerPort {
   private readonly logger = new Logger(VehicleResolveService.name);
@@ -529,10 +532,36 @@ export class VehicleResolveService implements VehicleEventHandlerPort {
   }
 
   /**
-   * GAW-001 (QĐ-2): system_configs[ivss.channel_zone_map] {channelId: zone_uuid}; validate uuid.
-   * Không cache. Đọc lỗi → trả {} (KHÔNG throw): map-miss = zone_unmapped (AC-BACKCOMPAT).
+   * STT 7: cache map kênh 30s — trước đây mỗi event đọc system_configs 2 lần. Đổi map trong
+   * system_configs có hiệu lực sau tối đa 30s. Kết quả rỗng (có thể do đọc lỗi) KHÔNG cache.
    */
+  private zoneMapCache?: { at: number; value: Record<string, string> };
+  private dirMapCache?: { at: number; value: Record<string, Direction> };
+
   private async getChannelZoneMap(): Promise<Record<string, string>> {
+    if (this.zoneMapCache && Date.now() - this.zoneMapCache.at < CHANNEL_MAP_CACHE_MS) {
+      return this.zoneMapCache.value;
+    }
+    const value = await this.loadChannelZoneMap();
+    if (Object.keys(value).length > 0) this.zoneMapCache = { at: Date.now(), value };
+    return value;
+  }
+
+  private async getChannelDirectionMap(): Promise<Record<string, Direction>> {
+    if (this.dirMapCache && Date.now() - this.dirMapCache.at < CHANNEL_MAP_CACHE_MS) {
+      return this.dirMapCache.value;
+    }
+    const value = await this.loadChannelDirectionMap();
+    if (Object.keys(value).length > 0) this.dirMapCache = { at: Date.now(), value };
+    return value;
+  }
+
+  /**
+   * GAW-001 (QĐ-2): system_configs[ivss.channel_zone_map] {channelId: zone_uuid}; validate uuid.
+   * STT 7: cache 30s (getChannelZoneMap). Đọc lỗi → trả {} (KHÔNG throw, KHÔNG cache):
+   * map-miss = zone_unmapped (AC-BACKCOMPAT).
+   */
+  private async loadChannelZoneMap(): Promise<Record<string, string>> {
     const out: Record<string, string> = {};
     try {
       const rows: ConfigRow[] = await this.dataSource.manager.query(
@@ -564,7 +593,7 @@ export class VehicleResolveService implements VehicleEventHandlerPort {
    * ivss-presence-ingestion.service.ts:310 (getChannelDirectionMap, luồng khuôn mặt). Sửa logic
    * validate ở đây thì PHẢI sửa cả bên đó (và ngược lại), nếu không hai luồng diễn giải lệch nhau.
    */
-  private async getChannelDirectionMap(): Promise<Record<string, Direction>> {
+  private async loadChannelDirectionMap(): Promise<Record<string, Direction>> {
     const out: Record<string, Direction> = {};
     try {
       const rows: ConfigRow[] = await this.dataSource.manager.query(
