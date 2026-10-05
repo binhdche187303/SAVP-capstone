@@ -46,7 +46,7 @@ Thấp. Điểm cần cẩn trọng duy nhất: KHÔNG được vô tình import
 0 bảng mới, 0 cột mới. 1 permission mới.
 
 ## 5. API / Contract Plan
-`POST /api/v1/meetings/:meetingId/cancellation-notifications` — `202`. Request/response khớp `docs/API_CONTRACT_v1.0.md` UC-145.
+`POST /api/v1/meetings/:meetingId/cancellation-notifications` — `202`. Request/response khớp `docs/API_CONTRACT_v1.0_with_system_roles.md` UC-145.
 Error: `400`, `401`, `403 FORBIDDEN/NOT_MEETING_OWNER`, `404 MEETING_NOT_FOUND`, `409 MEETING_NOT_CANCELLED`.
 
 ## 6. Authorization Plan

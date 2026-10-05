@@ -23,8 +23,8 @@
 | T-3.12 | Tạo `spec.md` | `spec/features/auth/feat-refresh-token/spec.md` | ✅ Xong |
 | T-3.13 | Tạo `plan.md` | `spec/features/auth/feat-refresh-token/plan.md` | ✅ Xong |
 | T-3.14 | Tạo `tasks.md` (file này) | `spec/features/auth/feat-refresh-token/tasks.md` | ✅ Xong |
-| T-3.15 | Thêm UC `POST /api/v1/auth/refresh` vào `API_CONTRACT_v1.0.md` | `docs/API_CONTRACT_v1.0.md` | ⬜ Tiếp theo |
-| T-3.16 | Sửa câu sai tại `API_CONTRACT_v1.0.md:225` (refreshToken vẫn dùng) | `docs/API_CONTRACT_v1.0.md` | ⬜ Tiếp theo |
+| T-3.15 | Thêm UC `POST /api/v1/auth/refresh` vào `API_CONTRACT_v1.0_with_system_roles.md` | `docs/API_CONTRACT_v1.0_with_system_roles.md` | ⬜ Tiếp theo |
+| T-3.16 | Sửa câu sai tại `API_CONTRACT_v1.0_with_system_roles.md:229` (refreshToken vẫn dùng) | `docs/API_CONTRACT_v1.0_with_system_roles.md` | ⬜ Tiếp theo |
 | T-3.17 | Đồng bộ `API_CONTRACT_v1.0_with_system_roles.md` nếu có 2 mục trên | `docs/API_CONTRACT_v1.0_with_system_roles.md` | ⬜ Tiếp theo |
 
 **Extra (phát sinh khi code, không có trong plan gốc):**

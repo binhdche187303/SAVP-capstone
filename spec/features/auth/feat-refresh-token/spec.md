@@ -11,7 +11,7 @@
 
 `login.service.ts` đã phát hành cả `accessToken` và `refreshToken` (cùng một `jti`), FE (`FE_SmarTracking/src/utils/request.js:97-111`) đã dựng sẵn cơ chế gọi refresh khi access token hết hạn, và `CLAUDE.md` §22.1 đã liệt kê `POST /api/v1/auth/refresh` — nhưng `auth.controller.ts` **chưa có route này**. Đây là endpoint chặn nhiều màn FE nhất trong đợt P0.
 
-**Mâu thuẫn tài liệu đã xử lý:** `docs/API_CONTRACT_v1.0.md:225` (mục UC-02 Logout) từng ghi "không còn `sessionId`/`refreshToken` theo v3.2 Compact" — câu này chỉ đúng với việc bỏ bảng `user_sessions`, KHÔNG có nghĩa là refreshToken bị loại bỏ khỏi luồng auth. Đã sửa lại câu này trong `API_CONTRACT_v1.0.md` (xem T-3.16) để không còn mâu thuẫn với chính code và CLAUDE.md.
+**Mâu thuẫn tài liệu đã xử lý:** `docs/API_CONTRACT_v1.0_with_system_roles.md:229` (mục UC-02 Logout) từng ghi "không còn `sessionId`/`refreshToken` theo v3.2 Compact" — câu này chỉ đúng với việc bỏ bảng `user_sessions`, KHÔNG có nghĩa là refreshToken bị loại bỏ khỏi luồng auth. Đã sửa lại câu này trong `API_CONTRACT_v1.0_with_system_roles.md` (xem T-3.16) để không còn mâu thuẫn với chính code và CLAUDE.md.
 
 ## 2. Quyết định kiến trúc — PA-1 (stateless + rotation)
 

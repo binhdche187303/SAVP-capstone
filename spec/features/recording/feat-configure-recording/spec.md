@@ -15,7 +15,7 @@ category: recording
 - **Source Documents**:
   - `CLAUDE.md` (Sections 4.1, 5.2, 10.7, 22.11; DATA-01, SEC-03)
   - `spec/global/constitution.md` (SEC-02/03, ARCH-03, DATA-01)
-  - `docs/API_CONTRACT_v1.0.md` (UC-30/108/109/110 — recording-config)
+  - `docs/API_CONTRACT_v1.0_with_system_roles.md` (UC-30/108/109/110 — recording-config)
   - `src/modules/recording/entities/recording-config.entity.ts` (RecordingConfigEntity — bảng có sẵn)
   - `src/modules/recording/entities/recording-session.entity.ts` (RecordingSessionStatus — guard "đang ghi")
   - Spec mẫu: `spec/features/iot/feat-register-camera-device` (pattern CRUD/audit)

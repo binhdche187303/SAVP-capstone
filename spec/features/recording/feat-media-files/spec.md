@@ -13,7 +13,7 @@ category: recording
 - **Status**: Draft (RECON xong — còn [NEEDS CLARIFICATION], có LỆCH CONTRACT cần chốt)
 - **Source Documents**:
   - `CLAUDE.md` (SEC-01; §8.4 pagination; §20 SEC; DATA-01 không migration; 10.7 recording/media)
-  - `docs/API_CONTRACT_v1.0.md` (UC-120 list · UC-121 detail · UC-122 signed-url · UC-123 visibility)
+  - `docs/API_CONTRACT_v1.0_with_system_roles.md` (UC-120 list · UC-121 detail · UC-122 signed-url · UC-123 visibility)
   - `spec/features/recording/feat-sync-metadata` (REC-005 — metadata_json.probe)
   - `src/modules/recording/entities/media-file.entity.ts`
   - `src/modules/iot/services/iot-devices.service.ts` (mẫu pagination meta)
@@ -56,7 +56,7 @@ REC-002..005 đã tạo `media_files` (video mp4 local, metadata_json.probe). Hi
 
 | Hạng mục | Phát hiện |
 |---|---|
-| UC-120 list | [API_CONTRACT_v1.0.md:4006-4015](../../../../docs/API_CONTRACT_v1.0.md): `GET /api/v1/meetings/{meetingId}/media-files` · perm **`recording.files.read`** · query `?fileType=video,audio&page=1&limit=20` · trả list summary `{id, fileName, fileType, mimeType, fileSizeBytes, durationSeconds, visibilityLevel, isActive, uploadedAt}`. ⇒ khớp đề xuất. |
+| UC-120 list | [API_CONTRACT_v1.0_with_system_roles.md:4136-4145](../../../../docs/API_CONTRACT_v1.0_with_system_roles.md): `GET /api/v1/meetings/{meetingId}/media-files` · perm **`recording.files.read`** · query `?fileType=video,audio&page=1&limit=20` · trả list summary `{id, fileName, fileType, mimeType, fileSizeBytes, durationSeconds, visibilityLevel, isActive, uploadedAt}`. ⇒ khớp đề xuất. |
 | UC-121 detail | [:4039-4068]: `GET /api/v1/media-files/{fileId}` · perm **`recording.files.read`** · trả full `{id, fileCode, fileName, fileType, mimeType, storageProvider, storageBucket, fileSizeBytes, durationSeconds, checksum, versionNo, relatedEntityType, relatedEntityId, metadataJson}`. ⇒ khớp đề xuất (metadataJson chứa probe của REC-005). |
 | UC-122 playback | [:4073-4093]: **`GET /api/v1/media-files/{fileId}/signed-url`** · perm **`recording.files.play`** · query `?expiresInMinutes=60` · trả `{fileId, signedUrl, expiresAt}`. ⚠️ Contract thiết kế **signed URL kiểu S3** — v1 **local KHÔNG có S3** ⇒ LỆCH. Đề xuất stream trực tiếp (Range). Xem **[NC-1]**. Perm contract = `recording.files.play` (KHÔNG phải `read`). |
 | UC-123 delete/hide | [:4098-4127]: **`PATCH /api/v1/media-files/{fileId}/visibility`** · perm **`recording.files.manage`** · body `{action:'hide'\|'soft_delete', reason}` · `hide`→`is_active=false`, `soft_delete`→set `deleted_at`. ⚠️ KHÔNG phải `DELETE /media-files/:id`; perm `manage` (KHÔNG `delete`). Xem **[NC-2]**. |

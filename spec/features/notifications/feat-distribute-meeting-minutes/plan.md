@@ -21,7 +21,7 @@ Không thêm dependency, không thêm bảng.
 | `AuthzReadRepository` | `auth/repositories/authz-read.repository.ts` | Tính `isAdmin`, đã dùng ở UC-143..145 |
 
 ### 2.3 Patterns to Follow
-Giống UC-143..145. Riêng permission code KHÔNG theo convention `meeting.minutes.xxx` — dùng đúng `minutes.distribute` như đã chốt trong `docs/API_CONTRACT_v1.0.md` (ưu tiên contract theo CLAUDE.md mục 1).
+Giống UC-143..145. Riêng permission code KHÔNG theo convention `meeting.minutes.xxx` — dùng đúng `minutes.distribute` như đã chốt trong `docs/API_CONTRACT_v1.0_with_system_roles.md` (ưu tiên contract theo CLAUDE.md mục 1).
 
 ## 3. Scope Confirmation
 
@@ -46,7 +46,7 @@ Trung bình — cần validate 2 entity (`meeting` + `minutes`) và 2 nhánh `re
 0 bảng mới, 0 cột mới. 1 permission mới `minutes.distribute` (`module_code=minutes`).
 
 ## 5. API / Contract Plan
-`POST /api/v1/meetings/:meetingId/minutes/distributions` — `202`. Request/response khớp `docs/API_CONTRACT_v1.0.md` UC-146.
+`POST /api/v1/meetings/:meetingId/minutes/distributions` — `202`. Request/response khớp `docs/API_CONTRACT_v1.0_with_system_roles.md` UC-146.
 Error: `400`, `401`, `403 FORBIDDEN/NOT_MINUTES_OWNER`, `404 MEETING_NOT_FOUND/MINUTES_NOT_FOUND`, `409 MINUTES_NOT_PUBLISHED`.
 
 ## 6. Authorization Plan

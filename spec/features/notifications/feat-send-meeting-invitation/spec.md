@@ -5,7 +5,7 @@
 | :--- | :--- | :--- |
 | 2026-07-18 | Khởi tạo spec cho UC-143, phát sinh từ yêu cầu bổ sung `NotificationsController` (module `notifications` hiện chỉ có service, chưa có API layer) | Toàn bộ file |
 
-> Nguồn gốc: **UC-143** trong `docs/API_CONTRACT_v1.0.md` mục 15 (dòng 4684-4713). Contract đã chốt method/endpoint/permission/request/response — spec này bổ sung phần business rule, actor, error handling chưa có trong contract.
+> Nguồn gốc: **UC-143** trong `docs/API_CONTRACT_v1.0_with_system_roles.md` mục 15 (dòng 4684-4713). Contract đã chốt method/endpoint/permission/request/response — spec này bổ sung phần business rule, actor, error handling chưa có trong contract.
 
 ## 1. Context & Goal
 
@@ -46,7 +46,7 @@ Cung cấp `POST /api/v1/meetings/{meetingId}/invitations` cho phép Host/Organi
 - **Secondary Actor (hưởng lợi, không gọi API)**: Participant internal (nhận qua `meeting_participants.user_id`) và external (nhận qua `meeting_external_participants.email`).
 
 ### 2.2 Role & Permission Rules
-- 1 permission mới: `notification.invite.send` (`module_code = notifications`, `action_code = invite.send`) — đúng theo `docs/API_CONTRACT_v1.0.md` dòng 4690.
+- 1 permission mới: `notification.invite.send` (`module_code = notifications`, `action_code = invite.send`) — đúng theo `docs/API_CONTRACT_v1.0_with_system_roles.md` dòng 4690.
 - Role mặc định được cấp: `EMPLOYEE`, `MANAGER`, `BUSINESS_ADMIN`, `SYSTEM_ADMIN`.
   > **Lưu ý bắt buộc khi viết migration seed**: dùng đúng role code thật trong DB (`EMPLOYEE`, `MANAGER`, `BUSINESS_ADMIN`, `SYSTEM_ADMIN`) — **KHÔNG dùng `INTERNAL_USER`**. Nhiều migration seed cũ trong repo (`20260702020000-SeedMeetingMinutesAttachmentPermissions.ts`, `20260717100001-SeedMeetingMinutesSharePermissions.ts`, ...) đã seed nhầm role `INTERNAL_USER` — role này **không tồn tại** trong bảng `roles` thật, khiến `INSERT ... SELECT ... WHERE role_code = 'INTERNAL_USER'` âm thầm insert 0 dòng (không lỗi, không cảnh báo). Xem `20260717000001-FixMinutesAttachmentEmployeeRole.ts` là migration đã fix lại đúng 1 lần cho case tương tự — feature này áp dụng đúng role code ngay từ đầu, không lặp lại lỗi.
 - Có permission là điều kiện cần nhưng chưa đủ — service còn kiểm tra ownership (2.3).
@@ -88,7 +88,7 @@ Cung cấp `POST /api/v1/meetings/{meetingId}/invitations` cho phép Host/Organi
 ### 3.6 Traceability
 | FR ID | Nguồn gốc |
 | :--- | :--- |
-| FR-001, FR-002, FR-009 | `docs/API_CONTRACT_v1.0.md` UC-143 |
+| FR-001, FR-002, FR-009 | `docs/API_CONTRACT_v1.0_with_system_roles.md` UC-143 |
 | FR-003, FR-013 | Pattern ownership-or-admin đã dùng ở `cancelMeeting` |
 | FR-011 | Suy luận nghiệp vụ (mục 1.5) — chưa Q&A trực tiếp |
 

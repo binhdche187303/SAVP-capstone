@@ -57,7 +57,7 @@ Xem spec.md mục 8.
 
 ## 5. API / Contract Plan
 - `POST /api/v1/meetings/:meetingId/invitations` — trả `202`.
-- Request/Response: xem spec.md mục 5.2/5.3 (khớp nguyên văn `docs/API_CONTRACT_v1.0.md` UC-143).
+- Request/Response: xem spec.md mục 5.2/5.3 (khớp nguyên văn `docs/API_CONTRACT_v1.0_with_system_roles.md` UC-143).
 - Error: `400`, `401`, `403 FORBIDDEN/NOT_MEETING_OWNER`, `404 MEETING_NOT_FOUND`, `409 MEETING_CANCELLED`.
 
 ## 6. Authorization Plan

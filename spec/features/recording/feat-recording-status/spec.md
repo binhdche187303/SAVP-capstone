@@ -13,7 +13,7 @@ category: recording
 - **Status**: Draft (RECON xong — còn [NEEDS CLARIFICATION])
 - **Source Documents**:
   - `CLAUDE.md` (SEC-01 không log secret; ARCH-02 inline/queue; §12 WebSocket `recording.status.updated`; §22.11 `GET /recording-sessions/:id`; DATA-01 không migration)
-  - `docs/API_CONTRACT_v1.0.md` (UC-119/120/121 media-files; §5342 status enum; §5323 WS event recording.status.updated)
+  - `docs/API_CONTRACT_v1.0_with_system_roles.md` (UC-119/120/121 media-files; §5342 status enum; §5323 WS event recording.status.updated)
   - `spec/features/recording/feat-start-recording` (REC-002), `feat-stop-recording` (REC-003 — finalize logic)
   - `src/modules/recording/services/recording-process-manager.ts`, `recording-session.service.ts`
   - `src/modules/scheduler/scheduler.service.ts` (mẫu @Cron)
@@ -57,8 +57,8 @@ REC-002/003 đã start/stop ghi hình bằng ffmpeg, quản lý qua `RecordingPr
 
 | Hạng mục | Phát hiện |
 |---|---|
-| Contract — status endpoint | **KHÔNG có** UC `GET recording status / session` trong `API_CONTRACT_v1.0.md`. Recording UC chỉ tới UC-114..125 (pause/resume/stop/sync/list/detail/playback/delete/error/transcribe). Media đọc: **UC-119/120** [API_CONTRACT_v1.0.md:4010-4012](../../../../docs/API_CONTRACT_v1.0.md) `GET /api/v1/meetings/{meetingId}/media-files` perm `recording.files.read`; **UC-121** [:4043-4045] `GET /api/v1/media-files/{fileId}` perm `recording.files.read`. ⇒ Phần A là endpoint **backend bổ sung** (không có trong contract); CLAUDE.md §22.11 gợi ý `GET /api/v1/recording-sessions/:id`. Xem [NC-3]/[NC-4]. |
-| Contract — WS + enum | [API_CONTRACT_v1.0.md:5323] WS event `recording.status.updated` `{meetingId, sessionId, status, timestamp}`. [:5342] enum `starting → recording → paused → stopped → processing \| failed`. |
+| Contract — status endpoint | **KHÔNG có** UC `GET recording status / session` trong `API_CONTRACT_v1.0_with_system_roles.md`. Recording UC chỉ tới UC-114..125 (pause/resume/stop/sync/list/detail/playback/delete/error/transcribe). Media đọc: **UC-119/120** [API_CONTRACT_v1.0_with_system_roles.md:4140-4142](../../../../docs/API_CONTRACT_v1.0_with_system_roles.md) `GET /api/v1/meetings/{meetingId}/media-files` perm `recording.files.read`; **UC-121** [:4043-4045] `GET /api/v1/media-files/{fileId}` perm `recording.files.read`. ⇒ Phần A là endpoint **backend bổ sung** (không có trong contract); CLAUDE.md §22.11 gợi ý `GET /api/v1/recording-sessions/:id`. Xem [NC-3]/[NC-4]. |
+| Contract — WS + enum | [API_CONTRACT_v1.0_with_system_roles.md:5504] WS event `recording.status.updated` `{meetingId, sessionId, status, timestamp}`. [:5342] enum `starting → recording → paused → stopped → processing \| failed`. |
 | recording_sessions (đọc/reconcile) | [recording-session.entity.ts](../../../../src/modules/recording/entities/recording-session.entity.ts): `id`, `meeting_id`, `session_type`, `status`(enum), `started_at`(NN), `stopped_at`?, `paused_duration_seconds`(def 0), `storage_path`?, `file_size_bytes`?(bigint→string), `duration_seconds`?, `checksum`?, `error_message`?, `stopped_by`?, `metadata_json`?. Active = `status ∈ {starting,recording,paused}` & `stopped_at IS NULL`. |
 | RecordingProcessManager | [recording-process-manager.ts:82-88](../../../../src/modules/recording/services/recording-process-manager.ts): `has(sessionId): boolean` đọc Map `procs` in-memory; `get()` trả ChildProcess. ⇒ reconcile dùng `has(id)===false` để nhận diện session mồ côi (không còn tiến trình trong instance hiện tại). **Map mất khi restart** ⇒ sau boot mọi session DB active đều `has=false`. |
 | REC-003 finalize | [recording-session.service.ts](../../../../src/modules/recording/services/recording-session.service.ts) `stopVideo()` đã có logic: đọc `fs.stat` size, `sha256Stream`, duration wall-clock, INSERT `media_files` + UPDATE session `stopped` (transaction). ⇒ reconcile-as-stopped TÁI DÙNG được finalize này ([NC-1] phương án a). |

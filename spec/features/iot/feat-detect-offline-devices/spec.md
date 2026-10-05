@@ -15,7 +15,7 @@ category: iot
 - **Source Documents**:
   - `CLAUDE.md` (Sections 11.1, 11.5, 11.7; ARCH-02 inline/queue)
   - `spec/global/constitution.md` (SEC-01/02, ARCH-02/03, DATA-01)
-  - `docs/API_CONTRACT_v1.0.md` (Section 8 — IoT Device Management)
+  - `docs/API_CONTRACT_v1.0_with_system_roles.md` (Section 8 — IoT Device Management)
   - `docs/ARCHITECTURE_DECISIONS.md` (ADR-008: status-based device lifecycle)
   - `src/modules/iot/services/iot-devices.service.ts` (checkAvailability — gap RTSP probe)
   - `src/modules/scheduler/scheduler.service.ts` (cron convention), `src/config/env.validation.ts` (Joi)

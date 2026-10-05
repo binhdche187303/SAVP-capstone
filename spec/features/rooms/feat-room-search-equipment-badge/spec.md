@@ -6,7 +6,7 @@
 | 2026-08-14 | Tạo mới spec.md cho ROOM-SEARCH-FAULT-BADGE-001. Trạng thái [Missing]. | Toàn bộ file |
 
 > Phạm vi: `GET /api/v1/rooms/search` (UC-ROOM-04, endpoint duy nhất mọi user đã đăng nhập dùng để tìm phòng trước khi đặt) trả thêm badge tình trạng thiết bị theo từng phòng.
-> KHÔNG bao gồm: chặn đặt phòng (`spec/features/meetings/feat-room-equipment-fault-warning/`), notify/confirm/resolve thiết bị (`spec/features/equipment/feat-equipment-fault-lifecycle/`), `GET /rooms/:roomId` (admin-only, feature `ROOM-VIEW-DETAIL-001` riêng, KHÔNG đụng).
+> KHÔNG bao gồm: chặn đặt phòng (`spec/features/meeting/feat-room-equipment-fault-warning/`), notify/confirm/resolve thiết bị (`spec/features/equipment/feat-equipment-fault-lifecycle/`), `GET /rooms/:roomId` (admin-only, feature `ROOM-VIEW-DETAIL-001` riêng, KHÔNG đụng).
 > Tài liệu này chỉ là đặc tả (spec). KHÔNG kèm code.
 
 ---

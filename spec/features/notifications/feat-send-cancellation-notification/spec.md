@@ -5,7 +5,7 @@
 | :--- | :--- | :--- |
 | 2026-07-18 | Khởi tạo spec cho UC-145 — sau khi xác nhận bằng đọc code thật rằng luồng auto-notify **đã tồn tại**, feature này chỉ bổ sung khả năng gửi lại (resend) thủ công | Toàn bộ file |
 
-> Nguồn gốc: **UC-145** trong `docs/API_CONTRACT_v1.0.md` mục 15 (dòng 4749-4776).
+> Nguồn gốc: **UC-145** trong `docs/API_CONTRACT_v1.0_with_system_roles.md` mục 15 (dòng 4749-4776).
 
 ## 1. Context & Goal
 
@@ -18,7 +18,7 @@ Yêu cầu gốc đặt câu hỏi: *"có thể đã được trigger tự độ
   2. Gọi `notificationsService.enqueueEmailNotification()` gửi email cho internal participant (trừ actor) + external participant.
   3. Nếu bước enqueue lỗi, catch riêng, ghi `audit_logs` (`action_type=notification_failure`) — **không** rollback transaction hủy meeting, không throw lỗi ra client.
 
-Do đó, phần **"bổ sung nếu chưa có" là KHÔNG CẦN** — luồng chính đã đúng thiết kế. Điều còn thiếu, đúng với UC-145 trong `API_CONTRACT_v1.0.md`, là **API độc lập `POST /meetings/{meetingId}/cancellation-notifications`** — dùng để:
+Do đó, phần **"bổ sung nếu chưa có" là KHÔNG CẦN** — luồng chính đã đúng thiết kế. Điều còn thiếu, đúng với UC-145 trong `API_CONTRACT_v1.0_with_system_roles.md`, là **API độc lập `POST /meetings/{meetingId}/cancellation-notifications`** — dùng để:
 1. **Gửi lại (resend)** thông báo hủy cho 1 meeting đã `cancelled` — trường hợp luồng tự động thất bại (`notificationStatus='failed_to_queue'`, đã có audit log `notification_failure`), hoặc participant claim chưa nhận được thông báo.
 2. Cho phép truyền `reason` khác/bổ sung so với `cancellationReason` gốc đã lưu lúc hủy (ví dụ làm rõ thêm lý do sau khi đã hủy).
 
@@ -78,7 +78,7 @@ Ownership-or-admin giống UC-143/144.
 ### 3.6 Traceability
 | FR ID | Nguồn gốc |
 | :--- | :--- |
-| FR-001, FR-007 | `docs/API_CONTRACT_v1.0.md` UC-145 |
+| FR-001, FR-007 | `docs/API_CONTRACT_v1.0_with_system_roles.md` UC-145 |
 | FR-002, FR-003 | Đọc code thật `cancelMeeting()` (mục 1.1) — tái sử dụng đúng pattern, không tái sử dụng snapshot |
 | FR-009 | Suy luận nghiệp vụ — resend chỉ có ý nghĩa cho meeting đã hủy |
 

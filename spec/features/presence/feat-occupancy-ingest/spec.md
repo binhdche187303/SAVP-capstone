@@ -13,7 +13,7 @@ category: presence
 - **Status**: Draft (RECON xong — còn [NEEDS CLARIFICATION])
 - **Source Documents**:
   - `CLAUDE.md` (SEC-01; §11.4/11.7/11.8/11.9 device callback + camera boundary; §22.7b room-camera; DATA-01 không migration)
-  - `docs/API_CONTRACT_v1.0.md` (UC-75 occupancy-events — 2977-3005; UC-36/38 room status; WS room.occupancy.updated — 5318)
+  - `docs/API_CONTRACT_v1.0_with_system_roles.md` (UC-75 occupancy-events — 2977-3005; UC-36/38 room status; WS room.occupancy.updated — 5318)
   - `src/modules/iot/controllers/device-callbacks.controller.ts`, `short-device-callbacks.controller.ts`, `services/iot-devices.service.ts`
   - `src/modules/presence/` (module rỗng), `src/modules/rooms/entities/*`, `src/modules/iot/entities/iot-device-event.entity.ts`
   - `src/modules/websocket/events.gateway.ts`, `websocket.service.ts`
@@ -57,7 +57,7 @@ Python Camera Service (ngoài) phân tích RTSP IP Room Camera → đếm số n
 
 | Hạng mục | Phát hiện |
 |---|---|
-| UC-75 (contract) | [API_CONTRACT_v1.0.md:2977-3005](../../../../docs/API_CONTRACT_v1.0.md): `POST /api/v1/internal/camera-service/occupancy-events` · perm `internal.device.callback` · Async **202** `{accepted:true}` · body `{deviceCode, roomId, meetingId, eventType:"occupancy_detected", occupancyCount, confidence, eventTime, metadata}`. Side-effects: iot_device_events; presence_snapshots; room_events; room_booking_usages.first_presence_at. |
+| UC-75 (contract) | [API_CONTRACT_v1.0_with_system_roles.md:3062-3090](../../../../docs/API_CONTRACT_v1.0_with_system_roles.md): `POST /api/v1/internal/camera-service/occupancy-events` · perm `internal.device.callback` · Async **202** `{accepted:true}` · body `{deviceCode, roomId, meetingId, eventType:"occupancy_detected", occupancyCount, confidence, eventTime, metadata}`. Side-effects: iot_device_events; presence_snapshots; room_events; room_booking_usages.first_presence_at. |
 | Face callback path (repo) | [device-callbacks.controller.ts:5](../../../../src/modules/iot/controllers/device-callbacks.controller.ts) `@Controller('device-callbacks')` → `/api/v1/device-callbacks/face/heartbeat\|verify\|stranger`. Biến thể short: [short-device-callbacks.controller.ts:4-26](../../../../src/modules/iot/controllers/short-device-callbacks.controller.ts) `@Controller('hb')` → `/api/v1/hb/:deviceCode/:callbackToken`. ⇒ pattern repo = `device-callbacks/<vendor>/*`; contract UC-75 = `/internal/camera-service/...`; CLAUDE §22.7b = `/room-camera/*`. **3 path khác nhau → [NC-1]**. |
 | Auth callback (token validate) | [iot-devices.service.ts:1002-1078](../../../../src/modules/iot/services/iot-devices.service.ts) `receiveHeartbeat`: extract callbackToken từ header `X-Callback-Token`/body/query/`params.callbackToken` → sha256 so với `device.metadataJson.face_server_config.callback_token_hash` ([:1041]). **KHÔNG có** hàm validate token độc lập (logic nhúng trong handler, gắn `face_server_config`). Token lưu **hash** trong `metadata_json` ([:719-720] `callback_token_hash`/`callback_token_last4`). ⇒ camera service cần config token riêng (vd `camera_service_config.callback_token_hash`) — **[NC-3]**. iot_devices KHÔNG có cột token (chỉ `mqtt_topic`). |
 | iot_device_events (raw) | [iot-device-event.entity.ts:46-88](../../../../src/modules/iot/entities/iot-device-event.entity.ts): `device_id`(NN), `room_id`?, `meeting_id`?, `event_type`, `payload_json`(jsonb), `event_time`, `severity`, `error_message`. ⇒ lưu raw đủ. |

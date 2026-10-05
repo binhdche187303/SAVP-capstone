@@ -95,7 +95,7 @@
 ---
 
 ## 6. API Contract
-**File**: `docs/API_CONTRACT_v1.0.md` (sửa)
+**File**: `docs/API_CONTRACT_v1.0_with_system_roles.md` (sửa)
 
 - [ ] Thêm mục **IOT-013** (mirror IOT-011/012): 2 GET (list + detail), list query params, response list `{ data[] snake_case, meta { page, limit, total, totalPages } }` (meta camelCase), detail 404. + 1 dòng CHANGELOG.
 

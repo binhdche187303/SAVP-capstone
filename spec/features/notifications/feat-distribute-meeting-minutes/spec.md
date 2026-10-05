@@ -5,7 +5,7 @@
 | :--- | :--- | :--- |
 | 2026-07-18 | Khởi tạo spec cho UC-146 | Toàn bộ file |
 
-> Nguồn gốc: **UC-146** trong `docs/API_CONTRACT_v1.0.md` mục 15 (dòng 4780-4810). Đặt trong module `notifications` (theo yêu cầu gốc — nhóm chung với UC-143..145) nhưng **đọc/ghi dữ liệu thuộc domain `minutes`** — feature này KHÔNG trùng với `feat-share-meeting-minutes` (cấp quyền xem vĩnh viễn) hay `feat-export-meeting-minutes` (xuất file); đây thuần túy là **gửi thông báo có nội dung biên bản**, không thay đổi quyền truy cập.
+> Nguồn gốc: **UC-146** trong `docs/API_CONTRACT_v1.0_with_system_roles.md` mục 15 (dòng 4780-4810). Đặt trong module `notifications` (theo yêu cầu gốc — nhóm chung với UC-143..145) nhưng **đọc/ghi dữ liệu thuộc domain `minutes`** — feature này KHÔNG trùng với `feat-share-meeting-minutes` (cấp quyền xem vĩnh viễn) hay `feat-export-meeting-minutes` (xuất file); đây thuần túy là **gửi thông báo có nội dung biên bản**, không thay đổi quyền truy cập.
 
 ## 1. Context & Goal
 
@@ -43,7 +43,7 @@ Cung cấp `POST /api/v1/meetings/{meetingId}/minutes/distributions` cho phép H
 - **Secondary Actor**: Participant (nếu `recipientScope=participants`) hoặc user bất kỳ trong `recipientUserIds` (nếu `recipientScope=custom`).
 
 ### 2.2 Role & Permission Rules
-- Permission: `minutes.distribute` (`module_code=minutes`, `action_code=distribute`) — dùng ĐÚNG code ngắn gọn theo `docs/API_CONTRACT_v1.0.md` dòng 4786 (khác convention `meeting.minutes.xxx` của các permission minutes khác — vì đây là code đã chốt sẵn trong contract chính thức, ưu tiên contract theo thứ tự CLAUDE.md mục 1).
+- Permission: `minutes.distribute` (`module_code=minutes`, `action_code=distribute`) — dùng ĐÚNG code ngắn gọn theo `docs/API_CONTRACT_v1.0_with_system_roles.md` dòng 4786 (khác convention `meeting.minutes.xxx` của các permission minutes khác — vì đây là code đã chốt sẵn trong contract chính thức, ưu tiên contract theo thứ tự CLAUDE.md mục 1).
 - Role mặc định: `EMPLOYEE`, `MANAGER`, `BUSINESS_ADMIN`, `SYSTEM_ADMIN` (role code đúng — không `INTERNAL_USER`).
 
 ### 2.3 Actor Constraints
@@ -81,7 +81,7 @@ Cung cấp `POST /api/v1/meetings/{meetingId}/minutes/distributions` cho phép H
 ### 3.6 Traceability
 | FR ID | Nguồn gốc |
 | :--- | :--- |
-| FR-001, FR-008 | `docs/API_CONTRACT_v1.0.md` UC-146 |
+| FR-001, FR-008 | `docs/API_CONTRACT_v1.0_with_system_roles.md` UC-146 |
 | FR-002, FR-010, FR-013 | Pattern ownership + status-published đã dùng ở `feat-share-meeting-minutes`/`feat-issue-meeting-minutes` |
 | FR-004 | Suy luận nghiệp vụ (mục 1.5) — skip thay vì fail cứng, khác chủ đích với share |
 

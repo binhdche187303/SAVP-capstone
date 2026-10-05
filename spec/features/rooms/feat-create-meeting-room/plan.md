@@ -1,7 +1,7 @@
 ﻿# Implementation Plan: UC-RM-01 Tao thu cong phong hop moi
 
 **Branch**: feat-create-meeting-room | **Date**: 2026-06-16 | **Spec**: spec.md
-**Input**: Feature specification from spec/features/room/feat-create-meeting-room/spec.md
+**Input**: Feature specification from spec/features/rooms/feat-create-meeting-room/spec.md
 
 ---
 
@@ -40,7 +40,7 @@ All gates passed:
 ### Documentation
 
 `
-spec/features/room/feat-create-meeting-room/
+spec/features/rooms/feat-create-meeting-room/
   plan.md              # File nay
   spec.md              # Feature specification (da co)
   research.md          # Codebase analysis

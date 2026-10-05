@@ -1,7 +1,7 @@
 ﻿# 📝 CHANGELOG & REVISION HISTORY
 | Ngày cập nhật | Tóm tắt thay đổi | Các dòng thay đổi |
 | :--- | :--- | :--- |
-| 2026-06-04 | Khởi tạo đặc tả tính năng Tạo tài khoản thủ công (manual-employee-account) từ UC-06 + Database v3.2 Compact + API_CONTRACT_v1.0.md | Toàn bộ tài liệu |
+| 2026-06-04 | Khởi tạo đặc tả tính năng Tạo tài khoản thủ công (manual-employee-account) từ UC-06 + Database v3.2 Compact + API_CONTRACT_v1.0_with_system_roles.md | Toàn bộ tài liệu |
 
 # Feature Specification: UC-06 — Tạo tài khoản thủ công (Manual Employee Account)
 
@@ -12,7 +12,7 @@
 - **Status**: Draft — Clarified
 - **Source Documents**:
   - UC-06 — Tạo tài khoản thủ công (UseCase_List_SMRMPTS.xlsx)
-  - [API_CONTRACT_v1.0.md](../../../../docs/API_CONTRACT_v1.0.md) (mục UC-06)
+  - [API_CONTRACT_v1.0_with_system_roles.md](../../../../docs/API_CONTRACT_v1.0_with_system_roles.md) (mục UC-06)
   - [AGENTS.md](../../../../AGENTS.md) (Database v3.2 Compact, Business Rules, Permission naming)
   - Database v3.2 Compact (39 bảng) — entities: `users`, `departments`, `roles`, `user_roles`, `audit_logs`, `notifications`, `background_jobs`
 

@@ -15,8 +15,22 @@
 | Ngày | Tóm tắt | Ghi chú |
 |---|---|---|
 | 2026-06-03 | Tạo mới toàn bộ API Contract v1.0 từ UseCase_List_SMRMPTS.xlsx + Database v3.2 Compact | Tạo mới |
-| 2026-07-26 | BE-01: Thêm UC mới `POST /api/v1/auth/refresh` (sau UC-02), đồng bộ với `API_CONTRACT_v1.0.md`. Sửa câu sai ở Business rules của UC-02 — "không còn `sessionId`/`refreshToken`" chỉ đúng với `sessionId`/bảng `user_sessions`; `refreshToken` vẫn dùng. | Section UC-02, UC mới sau UC-02 |
-| 2026-07-27 | Đợt P1 (BE-05): gỡ trùng route `GET /meetings/{meetingId}/attendance` — UC-81 (danh sách chung) và UC-101/UC-IMM-08 (điểm danh trong live-meeting session) từng cùng khai path này. Thêm UC-81b `GET /api/v1/live-meetings/{meetingId}/attendance`; đính chính ghi chú sai ở UC-101. Ghi chú residual: UC-17b/UC-18b (đợt P0) vẫn CHƯA có trong file này dù đã có ở `API_CONTRACT_v1.0.md` — nợ tài liệu từ đợt trước, ngoài phạm vi đợt này. | UC-81 (sau, mới UC-81b), UC-101 |
+| 2026-06-15 | Thêm IOT-011 (Feature #12) — Cập nhật thông tin thiết bị IoT/Camera (PATCH /api/v1/iot-devices/{deviceId}), permission `iot.device.update`. Tránh trùng UC-73 (đã là "Lưu raw event"). | Section 8 (sau UC-69) |
+| 2026-06-15 | Sửa ví dụ request/response của IOT-011 sang **snake_case** cho khớp wire-format thật (`toIotDeviceResponse`). Ghi chú UC-67 đang camelCase chưa đồng bộ. | Section 8 (IOT-011) |
+| 2026-06-15 | Thêm IOT-012 (Feature #13) — Disable/Re-enable thiết bị IoT/Camera (POST /:id/disable, /:id/enable, @HttpCode(200), no body), permission `iot.device.disable`/`iot.device.enable`. | Section 8 (sau IOT-011) |
+| 2026-06-15 | Thêm IOT-013 (Feature #14) — List + Detail thiết bị IoT/Camera (GET /iot-devices, GET /:id), permission `iot.device.read`. Read-only; data snake_case, meta camelCase {page,limit,total,totalPages}. | Section 8 (sau IOT-012) |
+| 2026-06-15 | Thêm IOT-014 (Feature #15) — Phát hiện camera offline bằng active TCP probe (POST /iot-devices/probe-status + cron EVERY_MINUTE), permission `iot.device.probe`. Đổi status ip_camera, audit auto_online/auto_offline. | Section 8 (sau IOT-013) |
+| 2026-06-15 | Đánh dấu UC-30/108/109/110 (recording-config) = ✅ Đã implement (REC-001). | Section 5 (UC-30), Section 12 (UC-108/109/110) |
+| 2026-07-26 | Đợt P0 (BE-06/01/02/03): BE-01 thêm UC-02b `POST /api/v1/auth/refresh` + sửa câu sai ở Business rules UC-02 ("không còn `sessionId`/`refreshToken`" → chỉ đúng với `sessionId`/bảng `user_sessions`, `refreshToken` vẫn dùng). BE-02 thêm UC-17b `GET /api/v1/meetings` (list, admin). BE-03 thêm UC-18b `PATCH /api/v1/meetings/{meetingId}` (chỉ title/description). Chi tiết: `spec/features/auth/feat-refresh-token/`, `spec/features/meeting/feat-list-meetings/`, `spec/features/meeting/feat-update-meeting-metadata/`. | UC-02, UC-02b (mới), UC-17b (mới), UC-18b (mới) |
+| 2026-07-27 | Đợt P1 (A.2): thêm Phụ lục F — SAVP Campus Extension, mục đầu tiên `GET /api/v1/campus-dashboard/zones/{zoneId}/timeline` (ZPT-001/UC-119 theo numbering spec-kit riêng của SAVP — KHÔNG trùng UC-119 "Tạo metadata file phương tiện" của tài liệu này, hai hệ numbering độc lập). Ghi chú residual: các endpoint SAVP khác đã code (gate-access, alerts, campus-dashboard overview/traffic, restricted-zone, crowd-alert, vehicle-control) CHƯA có trong tài liệu này — nợ tài liệu từ trước đợt P1, ngoài phạm vi đợt này. | Phụ lục F (mới) |
+| 2026-07-27 | Đợt P1 (BE-05): gỡ trùng route `GET /meetings/{meetingId}/attendance` — UC-81 (danh sách chung) và UC-101/UC-IMM-08 (điểm danh trong live-meeting session) từng cùng khai path này, NestJS chỉ route theo thứ tự import module. Thêm UC-81b `GET /api/v1/live-meetings/{meetingId}/attendance` cho UC-101/UC-IMM-08; đính chính ghi chú sai ở UC-101. | UC-81 (sau, mới UC-81b), UC-101 |
+| 2026-07-27 | Đợt P1 (BE-08): thêm UC-07b `PATCH /api/v1/departments/{id}` (không cho sửa `departmentCode`). Chi tiết: `spec/features/account/feat-update-department/`. | UC-07 (sau, mới UC-07b) |
+| 2026-07-27 | Đợt P1 (BE-07): thêm UC-146b — Notification Inbox List/Detail (chưa từng có trong tài liệu này) + mark-read mới (`PATCH .../read`, `PATCH .../read-all`) qua Redis, không đụng schema DB. Chi tiết: `spec/features/notifications/feat-notification-inbox/`. | UC-146 (sau, mới UC-146b) |
+| 2026-07-27 | Đợt P1 (BE-09): thêm UC-158b `GET/PATCH /api/v1/system-configurations` (allowlist 9 key phẳng FE `SystemSettings.jsx`), khác UC-47 (endpoint chuyên biệt cũ). Chi tiết: `spec/features/administration/feat-system-configurations/`. | UC-158 (sau, mới UC-158b) |
+| 2026-07-27 | Đợt P1 (BE-04): thêm UC-14b `GET /api/v1/users/export` (background job + poll, KHÔNG phải blob — hợp đồng mới với FE, Nam phải sửa `UserManagement.jsx`). Chi tiết: `spec/features/account/feat-export-user-accounts/`. | UC-14 (sau, mới UC-14b) |
+| 2026-07-27 | Đợt P1 (BE-10, đóng mục không code): ghi chú tại UC-72 — stranger alert resolve đi qua `POST /security-alerts/{id}/resolve` sẵn có, KHÔNG có endpoint `PATCH /face-access/stranger-alerts/{id}/resolve` riêng (`stranger_alerts` không phải bảng thật). Chi tiết: `spec/features/face-access/feat-resolve-stranger-alert/`. | UC-72 |
+| 2026-07-27 | **[BE-04, đợt sửa lại cùng ngày]** Đảo ngược UC-14b khỏi background job — trả về `200` + file XLSX trực tiếp (blob), đúng luồng FE cũ đang gọi. Chi tiết: `PLAN_THUC_THI_BE04_SUA_LAI_2026-07-27.md`, `spec/features/account/feat-export-user-accounts/`. | UC-14b |
+| 2026-10-05 | Gộp `API_CONTRACT_v1.0.md` vào file này: bổ sung UC-07b, UC-14b, UC-17b, UC-18b, IOT-011..014, UC-146b, UC-158b, Phụ lục F và toàn bộ changelog cũ. Xóa file `API_CONTRACT_v1.0.md`, file này là API contract duy nhất. | Toàn bộ file |
 
 ---
 
@@ -263,8 +277,8 @@
 - Xác thực chữ ký refresh token bằng secret riêng (`AUTH_REFRESH_TOKEN_SECRET`, khác secret access token).
 - Rotation: mỗi lần refresh phát `jti` mới cho cả access + refresh token mới; `jti` cũ bị blacklist ngay (TTL = thời gian còn lại của refresh token cũ) — chống replay.
 - Vì login phát access+refresh **cùng một `jti`**, blacklist `jti` cũ khi rotation cũng khai tử access token cũ tương ứng.
-- Redis không phản hồi được → fail-closed, trả 401.
-- Không dùng bảng `user_sessions` — trạng thái revoke hoàn toàn dựa vào Redis blacklist theo `jti`.
+- Redis không phản hồi được → fail-closed, trả 401 (ưu tiên an toàn hơn khả dụng).
+- Không dùng bảng `user_sessions` (đúng DB v3.2 Compact) — trạng thái revoke hoàn toàn dựa vào Redis blacklist theo `jti`.
 - Chi tiết: `spec/features/auth/feat-refresh-token/spec.md`.
 
 ---
@@ -540,6 +554,34 @@
 
 ---
 
+### UC-07b — Cập nhật phòng ban (mới, 2026-07-27, BE-08)
+
+> Spec: `spec/features/account/feat-update-department/`. KHÔNG cho sửa `departmentCode` (mã định danh — muốn sửa phải là UC riêng).
+
+| Field | Value |
+|---|---|
+| Method | `PATCH` |
+| Endpoint | `/api/v1/departments/{id}` |
+| Permission | `department.update` |
+| Async | No |
+
+**Request Body (tất cả optional, gửi ít nhất 1 field):**
+```json
+{
+  "departmentName": "Phòng Công nghệ thông tin (đổi tên)",
+  "parentDepartmentId": "uuid",
+  "managerUserId": "uuid",
+  "description": "Mô tả mới",
+  "isActive": true
+}
+```
+
+**Response 200:** cùng shape UC-07.
+
+**Error:** `400 EMPTY_UPDATE_PAYLOAD` (body rỗng) · `404 DEPARTMENT_NOT_FOUND` · `404 RESOURCE_NOT_FOUND` (parent/manager không tồn tại/không active) · `409 DEPARTMENT_ALREADY_EXISTS` (tên trùng phòng ban khác) · `422 VALIDATION_ERROR` (chu trình cha-con, hoặc vượt quá 5 cấp).
+
+---
+
 ### UC-08 — Cập nhật vai trò và quyền tài khoản
 
 | Field | Value |
@@ -778,6 +820,32 @@
 
 ---
 
+### UC-14b — Xuất danh sách người dùng ra file Excel (2026-07-27, BE-04, sửa lại cùng ngày)
+
+> Spec: `spec/features/account/feat-export-user-accounts/`. **[Đợt sửa lại 2026-07-27]** Đảo ngược khỏi phương án background job (dòng log cùng ngày ở trên) — trả về đúng luồng blob đồng bộ mà FE cũ vẫn đang gọi (`sysAdminServices.js:338`, `businessAdminServices.js:120` dùng `responseType: 'blob'`). Nam **vẫn cần** thêm nhánh `responseType: 'blob'` ở `request.js` cho route này (không phải "khỏi sửa gì") — nhưng không còn `{jobId}`/poll để xử lý riêng.
+
+| Field | Value |
+|---|---|
+| Method | `GET` |
+| Endpoint | `/api/v1/users/export` |
+| Permission | `accounts.user.export` |
+| Async | No — render đồng bộ trong cùng request |
+
+**Query:** `?search=&departmentId=uuid&roleId=uuid&locked=true` (tất cả optional — khớp filter thật FE gửi trên màn `UserManagement.jsx`, không có `page`/`limit`, export lấy toàn bộ có LIMIT trần 10.000 dòng)
+
+**Response 200:** body là bytes file XLSX (không phải JSON).
+```
+Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+Content-Disposition: attachment; filename="danh-sach-nguoi-dung-YYYYMMDD-HHmmss.xlsx"
+```
+
+- KHÔNG tạo `background_jobs`, KHÔNG có `jobId`, KHÔNG poll `GET /api/v1/background-jobs/{jobId}`.
+- File output: 1 sheet XLSX, không chứa `password_hash` hay field nhạy cảm khác. Rỗng vẫn trả `200` (file chỉ có header).
+- Audit log: `entityType: 'users'` (đổi từ `background_jobs` ở đợt trước), best-effort — lỗi ghi audit không chặn việc tải file.
+- **Route order:** `GET /users/export` đăng ký TRƯỚC `GET /users/{userId}` — nếu không, `:userId` sẽ nuốt `"export"` và trả `400` (parse UUID thất bại).
+
+---
+
 ### UC-15 — Xem chi tiết hồ sơ tài khoản
 
 | Field | Value |
@@ -939,6 +1007,52 @@
 **Module:** `meetings` | **Tables:** `meetings`, `meeting_requests`, `meeting_participants`, `meeting_external_participants`, `meeting_agendas`, `meeting_recurrence_rules`, `meeting_notes`, `meeting_events`, `room_bookings`, `recording_configs`
 **System Roles:** `INTERNAL_USER`, `MANAGER`, `BUSINESS_ADMIN`, `SYSTEM_ADMIN`
 
+### UC-17b — Danh sách cuộc họp (admin, có phân trang/filter)
+
+| Field | Value |
+|---|---|
+| Method | `GET` |
+| Endpoint | `/api/v1/meetings` |
+| Permission | `meeting.read.all` (BUSINESS_ADMIN, SYSTEM_ADMIN) |
+| Async | No |
+
+**Query params:** `page` (default 1), `limit` (default 20, max 100), `sortBy` (allowlist: `created_at`, `start_time`, `title`, `status`), `sortOrder` (`asc`/`desc`), `status`, `roomId` (UUID), `organizerId` (UUID), `from`, `to` (ISO 8601, lọc theo `start_time`), `search` (theo `title`, ILIKE).
+
+**Response 200:**
+```json
+{
+  "success": true,
+  "message": "Lay danh sach cuoc hop thanh cong",
+  "data": [
+    {
+      "id": "uuid",
+      "meetingCode": "MT-20260726-001",
+      "title": "Sprint Review",
+      "status": "scheduled",
+      "meetingType": "normal",
+      "meetingMode": "offline",
+      "startTime": "2026-07-27T10:00:00.000Z",
+      "endTime": "2026-07-27T11:00:00.000Z",
+      "roomId": "uuid",
+      "roomName": "Phong A",
+      "organizerId": "uuid",
+      "organizerName": "Nguyen Van A",
+      "createdAt": "2026-07-20T00:00:00.000Z"
+    }
+  ],
+  "meta": { "page": 1, "limit": 20, "total": 125, "totalPages": 7 }
+}
+```
+
+**Business rules:**
+- Không trả `cancellationReason` hay dữ liệu nhạy cảm khác — đây là màn LIST tổng quan, không phải detail.
+- `sortBy` bắt buộc qua allowlist (validation pipe `@IsIn`), không nối trực tiếp vào SQL.
+- `from > to` → 400 `INVALID_DATE_RANGE`.
+- Khác `GET /meetings/my-schedule` (`schedule.read.self`) — endpoint đó chỉ trả lịch của chính người gọi, không cần permission admin.
+- Chi tiết: `spec/features/meeting/feat-list-meetings/spec.md`.
+
+---
+
 ### UC-18 — Tạo cuộc họp mới thủ công
 
 | Field | Value |
@@ -1002,6 +1116,49 @@
 - Tạo `room_bookings` nếu có room
 - `409` — phòng bị conflict
 - Ghi `meeting_events` (type: `meeting_created`)
+
+---
+
+### UC-18b — Cập nhật thông tin cơ bản cuộc họp (title/description)
+
+| Field | Value |
+|---|---|
+| Method | `PATCH` |
+| Endpoint | `/api/v1/meetings/{meetingId}` |
+| Permission | `meeting.update.own` (chỉ organizer/host của meeting đó) |
+| Async | No |
+
+**Phạm vi CỐ Ý HẸP:** chỉ `title`, `description`. Thời gian đi `PATCH /meetings/{meetingId}/time` (UC-19), phòng đi `PATCH /meetings/{meetingId}/room`, participants/agenda/recording đi endpoint chuyên trách riêng. `forbidNonWhitelisted: true` → field ngoài `title`/`description` sẽ bị từ chối (400).
+
+**Request:**
+```json
+{
+  "title": "Tên cuộc họp mới (tùy chọn)",
+  "description": "Mô tả mới (tùy chọn)"
+}
+```
+
+**Response 200:**
+```json
+{
+  "success": true,
+  "message": "Cap nhat cuoc hop thanh cong",
+  "data": {
+    "meetingId": "uuid",
+    "title": "Tên cuộc họp mới",
+    "description": "Mô tả mới",
+    "updatedAt": "2026-07-26T10:00:00.000Z"
+  }
+}
+```
+
+**Business rules:**
+- Bắt buộc gửi ít nhất 1 trong 2 field — body rỗng → 400 `EMPTY_UPDATE_PAYLOAD`.
+- Chỉ organizer hoặc host của meeting mới được sửa — khác thì 403.
+- Meeting đã `cancelled`/`completed` → 409 `INVALID_MEETING_STATUS`.
+- Field không gửi giữ nguyên giá trị cũ (partial update).
+- Ghi `meeting_events` (type: `metadata_updated`).
+- Chi tiết: `spec/features/meeting/feat-update-meeting-metadata/spec.md`.
 
 ---
 
@@ -1375,6 +1532,8 @@
 ---
 
 ### UC-30 — Cấu hình tính năng ghi hình cho cuộc họp
+
+> ✅ **Đã implement (REC-001)** — `spec/features/recording/feat-configure-recording`.
 
 | Field | Value |
 |---|---|
@@ -2797,6 +2956,200 @@
 
 ---
 
+### IOT-011 (Feature #12) — Cập nhật thông tin thiết bị IoT/Camera
+
+| Field | Value |
+|---|---|
+| Method | `PATCH` |
+| Endpoint | `/api/v1/iot-devices/{deviceId}` |
+| Permission | `iot.device.update` |
+| Async | No |
+
+> Spec: `spec/features/iot/feat-update-iot-device` (IOT-011). Chỉ cập nhật trường mô tả/kết nối tổng quát. Các field ngoài allowlist bị từ chối 400 (`forbidNonWhitelisted`). Không sửa `room_id` (dùng assign-room), `stream_url` (UC-69), Face Server config (UC-68), `status`/`health_status`/`last_seen_at` (hệ thống tự quản), `device_code`/`device_type` (bất biến), `metadata_json`/`equipment_id`/`agent_version`/`firmware_version`/`mqtt_topic` (ngoài phạm vi).
+
+> **Casing**: wire-format thực tế dùng **snake_case** (DTO input `@Expose` snake + presenter `toIotDeviceResponse()` xuất snake). Ví dụ dưới đây bám đúng code thật. (Lưu ý: ví dụ UC-67 ở trên đang minh hoạ camelCase nhưng response thật của create cũng là snake_case — UC-67 nên được đồng bộ riêng.)
+
+**Request Body (partial — chỉ 4 trường allowlist, snake_case):**
+```json
+{
+  "device_name": "Camera góc phòng họp A — tầng 3",
+  "ip_address": "192.168.1.51",
+  "mac_address": "AA:BB:CC:DD:EE:FF",
+  "network_identifier": "ipcam-a3-floor3"
+}
+```
+
+**Response 200 (full device, snake_case — theo `toIotDeviceResponse`):**
+```json
+{
+  "success": true,
+  "message": "IoT device updated successfully",
+  "data": {
+    "id": "uuid",
+    "device_name": "Camera góc phòng họp A — tầng 3",
+    "device_code": "IPCAM-A3-01",
+    "device_type": "ip_camera",
+    "room_id": "uuid|null",
+    "ip_address": "192.168.1.51",
+    "mac_address": "AA:BB:CC:DD:EE:FF",
+    "status": "online",
+    "health_status": "healthy",
+    "last_seen_at": "2026-06-15T09:00:00+07:00",
+    "metadata_json": { "manufacturer": "Hikvision" },
+    "created_by_name": null,
+    "created_at": "2026-06-03T10:00:00+07:00",
+    "updated_at": "2026-06-15T09:05:00+07:00"
+  }
+}
+```
+
+- `409 MAC_ADDRESS_EXISTS` nếu `mac_address` mới trùng thiết bị khác.
+- `404 IOT_DEVICE_NOT_FOUND` nếu không tìm thấy `{deviceId}`.
+- Ghi `audit_logs` (action_type: `update`, entity_type: `iot_devices`).
+
+---
+
+### IOT-012 (Feature #13) — Vô hiệu hóa / Kích hoạt lại thiết bị IoT/Camera
+
+| Field | Value |
+|---|---|
+| Method | `POST` |
+| Endpoint | `/api/v1/iot-devices/{deviceId}/disable` · `/api/v1/iot-devices/{deviceId}/enable` |
+| Permission | `iot.device.disable` (disable) · `iot.device.enable` (enable) |
+| Async | No |
+
+> Spec: `spec/features/iot/feat-disable-enable-iot-device` (IOT-012). 2 action endpoint **không body**, trả **200** (`@HttpCode(200)`). Soft theo **ADR-008**: chỉ đổi cột `status`, KHÔNG hard-delete/`deleted_at`, giữ `iot_device_events`. KHÔNG chạm `health_status`/`last_seen_at`/`room_id`/`metadata_json`. Idempotent: disable khi đã `disabled` (hoặc enable khi khác `disabled`) → 200 no-op, không ghi/audit.
+
+**Chuyển trạng thái:** disable: bất kỳ → `disabled`. enable: `disabled` → `offline` (chờ heartbeat cập nhật `online`).
+
+**Request Body:** (không) — `{deviceId}` qua path, `ParseUUIDPipe`.
+
+**Response 200 (full device, snake_case — theo `toIotDeviceResponse`):**
+```json
+{
+  "success": true,
+  "message": "IoT device disabled successfully",
+  "data": {
+    "id": "uuid",
+    "device_name": "Camera góc phòng họp A",
+    "device_code": "IPCAM-A3-01",
+    "device_type": "ip_camera",
+    "room_id": "uuid|null",
+    "ip_address": "192.168.1.51",
+    "mac_address": "AA:BB:CC:DD:EE:FF",
+    "status": "disabled",
+    "health_status": "healthy",
+    "last_seen_at": "2026-06-15T09:00:00+07:00",
+    "metadata_json": { "manufacturer": "Hikvision" },
+    "created_by_name": null,
+    "created_at": "2026-06-03T10:00:00+07:00",
+    "updated_at": "2026-06-15T10:00:00+07:00"
+  }
+}
+```
+
+> Enable trả `"status": "offline"` và `"message": "IoT device enabled successfully"`. `health_status`/`last_seen_at`/`room_id`/`metadata_json` giữ nguyên giá trị cũ (chỉ `status` đổi).
+
+- `404 IOT_DEVICE_NOT_FOUND` nếu không tìm thấy `{deviceId}`; sai UUID → 400.
+- Ghi `audit_logs` (action_type: `disable` | `enable`, entity_type: `iot_devices`, `changed_fields.status` = { old, new }).
+
+---
+
+### IOT-013 (Feature #14) — Liệt kê & Xem chi tiết thiết bị IoT/Camera
+
+| Field | Value |
+|---|---|
+| Method | `GET` |
+| Endpoint | `/api/v1/iot-devices` (list) · `/api/v1/iot-devices/{deviceId}` (detail) |
+| Permission | `iot.device.read` (cả 2) |
+| Async | No |
+
+> Spec: `spec/features/iot/feat-list-iot-devices` (IOT-013). **Read-only** (không audit). List trả MỌI status (kể cả `disabled`); `status` filter để thu hẹp. Sort cố định `created_at DESC`. **`data[]` snake_case** (theo `toIotDeviceResponse`, mask `metadata_json`); **`meta` camelCase** (theo CLAUDE.md §8.4).
+
+**List query params:**
+
+| Param | Type | Default | Validation |
+|---|---|---|---|
+| `page` | int | 1 | min 1 |
+| `limit` | int | 20 | min 1, **max 100** (>100 → 400) |
+| `status` | enum | — | `online\|offline\|disabled\|maintenance` |
+| `device_type` | enum | — | `ip_camera\|door_camera\|room_camera\|face_server\|microphone\|capture_agent\|occupancy_sensor\|display` |
+| `room_id` | uuid | — | UUID v4 |
+| `search` | string | — | max 200, ILIKE trên `device_name`/`device_code` |
+
+**Response 200 (List):**
+```json
+{
+  "success": true,
+  "message": "IoT devices retrieved successfully",
+  "data": [
+    {
+      "id": "uuid",
+      "device_name": "Camera góc phòng họp A",
+      "device_code": "IPCAM-A3-01",
+      "device_type": "ip_camera",
+      "room_id": "uuid|null",
+      "ip_address": "192.168.1.51",
+      "mac_address": "AA:BB:CC:DD:EE:FF",
+      "status": "online",
+      "health_status": "healthy",
+      "last_seen_at": "2026-06-15T09:00:00+07:00",
+      "metadata_json": { "manufacturer": "Hikvision" },
+      "created_by_name": null,
+      "created_at": "2026-06-03T10:00:00+07:00",
+      "updated_at": "2026-06-15T09:05:00+07:00"
+    }
+  ],
+  "meta": { "page": 1, "limit": 20, "total": 42, "totalPages": 3 }
+}
+```
+
+**Response 200 (Detail):** `{ success, message: "IoT device retrieved successfully", data: <full device snake_case theo toIotDeviceResponse> }`.
+
+- `400 VALIDATION_ERROR` nếu page/limit/enum/uuid/search sai hoặc `limit > 100`; detail `{deviceId}` sai UUID → 400.
+- `404 IOT_DEVICE_NOT_FOUND` (detail) nếu không tìm thấy thiết bị. List rỗng → 200 `data: []`, `meta.total = 0`.
+
+---
+
+### IOT-014 (Feature #15) — Phát hiện camera offline bằng Active Probe
+
+| Field | Value |
+|---|---|
+| Method | `POST` |
+| Endpoint | `/api/v1/iot-devices/probe-status` |
+| Permission | `iot.device.probe` |
+| HTTP code | `200` (`@HttpCode(200)`) |
+| Body | (không) |
+| Async | No |
+
+> Spec: `spec/features/iot/feat-detect-offline-devices` (IOT-014). Backend **active TCP probe** tới `host:port` RTSP của từng `ip_camera` (parse `stream_url`, fallback `ip_address:554`, validate port 1–65535); mở được → `online`, timeout/refuse → `offline`. Chỉ maintain camera `status ∈ {online, offline}` (**bỏ** `disabled`/`maintenance`). Chỉ đổi cột `status`; transition mới ghi `audit_logs` (`auto_online`/`auto_offline`). Idempotent: trạng thái không đổi → không ghi.
+>
+> **Cron**: chạy mỗi phút (`CronExpression.EVERY_MINUTE`, name `device-offline-detect`) **cùng logic** `detectOfflineDevices`, gate `SCHEDULER_ENABLED && DEVICE_OFFLINE_DETECT_ENABLED` (actor = null). **Endpoint** dưới đây là bản chạy tay (admin), **không** gate ENV (actor = user JWT).
+
+**Response 200:**
+```json
+{
+  "success": true,
+  "message": "Device status probe completed",
+  "data": {
+    "checked": 12,
+    "online_count": 9,
+    "offline_count": 3,
+    "transitions": [
+      { "id": "uuid", "from": "online", "to": "offline" },
+      { "id": "uuid", "from": "offline", "to": "online" }
+    ]
+  }
+}
+```
+
+- `checked` = số camera thực sự probe (đã trừ disabled/maintenance/không-địa-chỉ). `transitions` chỉ gồm camera đổi trạng thái.
+- `401 UNAUTHORIZED` nếu thiếu JWT; `403 FORBIDDEN` nếu thiếu `iot.device.probe`.
+- Ghi `audit_logs` (action_type: `auto_online` | `auto_offline`, entity_type: `iot_devices`, `changed_fields.status` = { old, new }).
+- **Config**: `DEVICE_OFFLINE_DETECT_ENABLED` (default true), `RTSP_PROBE_TIMEOUT_MS` (default 3000). v1 chỉ TCP-connect (không ffprobe/RTSP auth); probe song song cap 10.
+
+---
+
 ### UC-70 — Nhận heartbeat từ Face Server
 
 **Internal callback endpoint:**
@@ -2884,6 +3237,8 @@
 ```
 
 **Response 202:** Tạo unknown face alert notification
+
+> **[Ghi chú 2026-07-27, BE-10]** Stranger event từ endpoint này ĐỒNG THỜI được ghi vào bảng `security_alerts` thật (qua `AlertsService.recordAlert()`, `alertType: 'stranger'`) — xử lý ACKNOWLEDGE/RESOLVE cho stranger alert đi qua `POST /api/v1/security-alerts/{id}/acknowledge` / `POST /api/v1/security-alerts/{id}/resolve` (module `alerts`, nhóm "Trung tâm cảnh báo an ninh" SAVP — UC-122/123 theo numbering spec-kit riêng, KHÔNG phải UC-122/123 của tài liệu này nếu trùng số; toàn bộ nhóm endpoint `security-alerts` **CHƯA được đưa vào tài liệu này**, nợ tài liệu ghi ở Phụ lục F). **KHÔNG có** endpoint `PATCH /face-access/stranger-alerts/{id}/resolve` riêng — `GET /face-access/stranger-alerts` chỉ là view tổng hợp `GROUP BY` trên `iot_device_events`, không có `id` ổn định để PATCH. Chi tiết: `spec/features/face-access/feat-resolve-stranger-alert/`.
 
 ---
 
@@ -3642,8 +3997,8 @@ Sau khi nhận raw event từ UC-70/71/72, backend normalize payload:
 > [P1 BE-05, 2026-07-27 — đính chính] Trước đây tài liệu ghi "dùng chung endpoint UC-81" —
 > KHÔNG còn đúng. `live-meeting.controller.ts` từng đăng ký TRÙNG path với UC-81
 > (`GET /meetings/{meetingId}/attendance`), NestJS chỉ route tới 1 trong 2 handler tùy thứ tự
-> import module. Đã tách path riêng, xem chi tiết đầy đủ ở **UC-81b** (ngay sau UC-81). Endpoint
-> thật: `GET /api/v1/live-meetings/{meetingId}/attendance`.
+> import module. Đã tách path riêng, xem chi tiết đầy đủ ở **UC-81b** (ngay sau UC-81, section
+> 10). Endpoint thật: `GET /api/v1/live-meetings/{meetingId}/attendance`.
 
 ---
 
@@ -3746,11 +4101,13 @@ Sau khi nhận raw event từ UC-70/71/72, backend normalize payload:
 ### UC-108 — Tạo cấu hình ghi âm/ghi hình
 **System Role:** `INTERNAL_USER`, `MANAGER`, `BUSINESS_ADMIN`, `SYSTEM_ADMIN`
 
-> Xem `POST /api/v1/meetings/{meetingId}/recording-config` tại [UC-30](#uc-30--cấu-hình-tính-năng-ghi-hình-cho-cuộc-họp).
+> ✅ **Đã implement (REC-001)**. Xem `POST /api/v1/meetings/{meetingId}/recording-config` tại [UC-30](#uc-30--cấu-hình-tính-năng-ghi-hình-cho-cuộc-họp).
 
 ---
 
 ### UC-109 — Xem cấu hình ghi âm/ghi hình
+
+> ✅ **Đã implement (REC-001)** — GET trả 404 `RECORDING_CONFIG_NOT_FOUND` nếu meeting chưa có config.
 
 | Field | Value |
 |---|---|
@@ -3784,6 +4141,8 @@ Sau khi nhận raw event từ UC-70/71/72, backend normalize payload:
 ---
 
 ### UC-110 — Cập nhật cấu hình ghi âm/ghi hình
+
+> ✅ **Đã implement (REC-001)** — PATCH partial; 404 nếu chưa có; 409 `RECORDING_IN_PROGRESS` khi đang ghi.
 
 | Field | Value |
 |---|---|
@@ -4846,6 +5205,27 @@ Sau khi nhận raw event từ UC-70/71/72, backend normalize payload:
 
 ---
 
+### UC-146b — Hộp thư thông báo cá nhân: List / Detail / Đánh dấu đã đọc (mới, 2026-07-27)
+
+> Không có UC gốc trong Feature Table — bổ sung bắt buộc cho FE (`spec/features/notifications/feat-notification-inbox/`). List/Detail tạo 2026-07-18; mark-read (BE-07) tái áp dụng 2026-07-27 qua Redis, KHÔNG thêm bảng/cột DB (xem spec §1.2 để biết bối cảnh quyết định Product Owner).
+
+**`GET /api/v1/notifications`** — Permission `notification.read.self` — `?page&limit` — trả `{data: [...], meta}`, mỗi item có `isRead: boolean`.
+
+**`GET /api/v1/notifications/{id}`** — Permission `notification.read.self` — trả chi tiết + `isRead`. `403 NOTIFICATION_ACCESS_DENIED` nếu không phải recipient; `404 NOTIFICATION_NOT_FOUND`.
+
+**`PATCH /api/v1/notifications/read-all`** — Permission `notification.update.self` — không body, `userId` lấy từ token — đánh dấu mọi notification tới thời điểm gọi là đã đọc.
+
+**`PATCH /api/v1/notifications/{id}/read`** — Permission `notification.update.self` — không body — đánh dấu 1 notification đã đọc (idempotent). `403 NOTIFICATION_ACCESS_DENIED` nếu không phải recipient.
+
+**Response mark-read (200):**
+```json
+{ "success": true, "message": "Đã đánh dấu thông báo là đã đọc" }
+```
+
+**Lưu ý kỹ thuật:** trạng thái đã đọc lưu ở Redis (`notif:read:{userId}` SET TTL 90 ngày, `notif:readall:{userId}` mốc timestamp) — KHÔNG phải cột trên bảng `notifications`. Redis mất dữ liệu (flush) → user thấy lại thông báo cũ như chưa đọc (residual đã ghi nhận, chấp nhận).
+
+---
+
 ### UC-147 — Xuất biên bản cuộc họp
 
 | Field | Value |
@@ -5234,6 +5614,47 @@ Sau khi nhận raw event từ UC-70/71/72, backend normalize payload:
 
 ---
 
+### UC-158b — Xem/cập nhật cấu hình hệ thống (mới, 2026-07-27, BE-09)
+
+> Spec: `spec/features/administration/feat-system-configurations/`. KHÁC với UC-47 (`/system-configs/no-show-threshold`, permission `admin.config.update`) — đây là endpoint TỔNG QUÁT theo allowlist 9 key phẳng mà `systemAdmin/SystemSettings.jsx` quản trị, KHÔNG phải endpoint chuyên biệt theo từng nhóm cấu hình. 2 kiểu endpoint cùng tồn tại, phục vụ 2 màn FE khác nhau.
+
+**`GET /api/v1/system-configurations`** — Permission `admin.manage_config` (chỉ `SYSTEM_ADMIN`).
+
+**Response 200:**
+```json
+{
+  "success": true,
+  "message": "Lấy cấu hình hệ thống thành công",
+  "data": [
+    {
+      "id": "uuid",
+      "key": "no_show_threshold_minutes",
+      "value": "10",
+      "valueType": "number",
+      "configGroup": "no_show",
+      "description": "Số phút chờ trước khi đánh dấu no-show",
+      "isSensitive": false,
+      "updatedAt": "2026-07-27T10:00:00+07:00"
+    }
+  ]
+}
+```
+
+**`PATCH /api/v1/system-configurations`** — Permission `admin.manage_config`.
+
+**Request Body:**
+```json
+{ "key": "grace_minutes", "value": "5" }
+```
+
+`key` phải nằm trong allowlist 9 key (`is_auto_release_enabled`, `no_show_threshold_minutes`, `grace_minutes`, `is_early_release_enabled`, `early_departure_threshold_minutes`, `is_host_warning_enabled`, `recording_retention_days`, `is_recording_consent_required`, `overrun_grace_minutes`); `value` LUÔN là string (kể cả boolean/number).
+
+**Error:** `400 CONFIG_KEY_NOT_ALLOWED` (key ngoài allowlist) · `400 INVALID_CONFIG_VALUE` (sai kiểu hoặc ngoài biên min/max) · `403` (thiếu `admin.manage_config`).
+
+**Lưu ý kỹ thuật:** `config_key` KHÔNG có unique index trên RDS thật — upsert dùng `SELECT ... FOR UPDATE` trong transaction, KHÔNG `ON CONFLICT`.
+
+---
+
 ## Phụ lục A — Danh sách Permission Codes
 
 | Permission Code | Mô tả |
@@ -5451,5 +5872,57 @@ Sau khi nhận raw event từ UC-70/71/72, backend normalize payload:
 8. **Realtime push:** Dùng WebSocket Gateway để push events cho dashboard, không polling.
 
 9. **Timezone:** Tất cả datetime trong API request/response phải có timezone offset. Default `Asia/Ho_Chi_Minh` (+07:00).
+
+---
+
+## Phụ lục F — SAVP Campus Extension (mở rộng, ngoài 158 UC gốc)
+
+> **Lưu ý numbering:** UC của phần mở rộng SAVP (Smart AI Vision Platform, xem `CLAUDE.md` §0/§5.5, dải UC-90 → UC-120 theo tài liệu spec-kit riêng ở `spec/features/zones/`, `spec/features/gate-access/`, `spec/features/alerts/`...) là một **hệ numbering độc lập** với UC-01 → UC-158 của tài liệu API Contract này. Trùng số (vd. UC-119) là trùng ngẫu nhiên giữa hai hệ, KHÔNG phải cùng một use case. Mục dưới đây dùng mã code riêng của spec-kit (`ZPT-001`...) để tránh nhầm lẫn.
+>
+> **Residual/nợ tài liệu:** Tính đến 2026-07-27, đây là entry ĐẦU TIÊN của phần SAVP trong tài liệu này. Các endpoint SAVP khác đã có code chạy thật (gate-access pairing/history, alert rules, security alerts, person/vehicle control list, campus-dashboard overview/traffic-heatmap, restricted-zone intrusion, crowd-alert) **chưa được đưa vào** Phụ lục này — nợ tài liệu tồn đọng từ các đợt trước, ngoài phạm vi đợt P1 (chỉ thêm đúng 1 mục A.2 đang sửa). Cần một đợt riêng để backfill toàn bộ.
+
+### ZPT-001 — Xem timeline hiện diện theo khu vực (Zone Presence Timeline)
+
+> Spec đầy đủ: `spec/features/zones/uc119-zone-presence-timeline/spec.md`. Đính chính 2026-07-27: dữ liệu nguồn là NHẬT KÝ BẮT GẶP (`appear`/`disappear`/`count`), không có `enter`/`exit` để ghép cặp tính thời lượng lưu lại — response trả `sightingCount` (số lượt bắt gặp) thay vì thời lượng.
+
+| Field | Value |
+|---|---|
+| Method | `GET` |
+| Endpoint | `/api/v1/campus-dashboard/zones/{zoneId}/timeline` |
+| Permission | `campus_dashboard.timeline.read` |
+| Async | No |
+
+**Query:** `?from=2026-07-01T00:00:00Z&to=2026-07-02T00:00:00Z&userId={uuid?}` (`from`/`to` bắt buộc, khoảng tối đa 31 ngày; `userId` tùy chọn UUID)
+
+**Response 200 (có userId):**
+```json
+{
+  "success": true,
+  "message": "Zone presence timeline retrieved successfully",
+  "data": {
+    "events": [
+      { "eventTime": "2026-07-01T08:00:00.000Z", "eventType": "appear", "occupancyCount": null, "userId": "uuid" }
+    ],
+    "personDataAvailable": true,
+    "sightingCount": 1
+  }
+}
+```
+
+**Response 200 (không có dữ liệu — EX1):**
+```json
+{
+  "success": true,
+  "message": "Zone presence timeline retrieved successfully",
+  "data": {
+    "events": [],
+    "personDataAvailable": null,
+    "sightingCount": null,
+    "message": "Không có dữ liệu hiện diện trong khoảng thời gian này."
+  }
+}
+```
+
+**Error:** `404 ZONE_NOT_FOUND` (zone không tồn tại/đã xóa mềm) · `400 INVALID_TIMELINE_RANGE` (khoảng > 31 ngày) · `403` (thiếu permission).
 
 10. **Soft delete:** Các resource quan trọng (meetings, rooms, equipments, users, minutes, media_files) dùng soft delete (`deleted_at`). Các API list mặc định lọc `deleted_at IS NULL`.

@@ -20,7 +20,7 @@
 | T-4.9 | Tạo `spec.md` | `spec/features/meeting/feat-list-meetings/spec.md` | ✅ Xong |
 | T-4.10 | Tạo `plan.md` | `spec/features/meeting/feat-list-meetings/plan.md` | ✅ Xong |
 | T-4.11 | Tạo `tasks.md` (file này) | `spec/features/meeting/feat-list-meetings/tasks.md` | ✅ Xong |
-| T-4.12 | Thêm UC mới `GET /api/v1/meetings` vào `API_CONTRACT_v1.0.md` (trước UC-18, mã UC-17b) | `docs/API_CONTRACT_v1.0.md` | ✅ Xong |
+| T-4.12 | Thêm UC mới `GET /api/v1/meetings` vào `API_CONTRACT_v1.0_with_system_roles.md` (trước UC-18, mã UC-17b) | `docs/API_CONTRACT_v1.0_with_system_roles.md` | ✅ Xong |
 
 **Extra (phát sinh khi code, không có trong plan gốc):**
 - Đổi constructor `MeetingsController` (thêm `MeetingListService`) làm gãy 2 file test có sẵn (`update-agenda-item.controller.spec.ts`, `delete-agenda-item.controller.spec.ts`) do chúng tự dựng `TestingModule` với danh sách provider cứng. Đã thêm `{ provide: MeetingListService, useValue: {} }` vào cả 2 file để phục hồi — xác nhận bằng cách chạy lại `npx jest src/modules/meetings` và so khớp số fail với baseline T-1.5 trước/sau.

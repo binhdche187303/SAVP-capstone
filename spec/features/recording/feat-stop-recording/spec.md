@@ -13,7 +13,7 @@ category: recording
 - **Status**: Draft (RECON xong — còn [NEEDS CLARIFICATION])
 - **Source Documents**:
   - `CLAUDE.md` (SEC-01 không log secret; ARCH-02 inline/queue; 10.7 recording tách session/media; DATA-01 không migration)
-  - `docs/API_CONTRACT_v1.0.md` (UC-116 stop-video — dòng 3950-3972)
+  - `docs/API_CONTRACT_v1.0_with_system_roles.md` (UC-116 stop-video — dòng 3950-3972)
   - `spec/features/recording/feat-start-recording` (REC-002 — start, RecordingProcessManager)
   - `src/modules/recording/entities/recording-session.entity.ts`, `media-file.entity.ts`
   - `src/modules/recording/services/recording-process-manager.ts`
@@ -58,7 +58,7 @@ REC-002 (#23b) đã cho **bắt đầu** ghi hình: ffmpeg ghi RTSP→mp4 local,
 
 | Hạng mục | Phát hiện |
 |---|---|
-| UC-116 (contract) | [API_CONTRACT_v1.0.md:3950-3972](../../../../docs/API_CONTRACT_v1.0.md): `POST /api/v1/live-meetings/{meetingId}/recording/{sessionId}/stop-video` · perm `recording.video.stop` · **Async: Yes** · **202** `{recordingSessionId, status:"processing", jobId, stoppedAt}` · ghi chú "Trigger background_jobs (media_processing) để upload S3". ⇒ contract thiết kế async+S3; v1 local đồng bộ → lệch response/status (xem [NC-5]). `sessionId` nằm TRONG path. |
+| UC-116 (contract) | [API_CONTRACT_v1.0_with_system_roles.md:4074-4100](../../../../docs/API_CONTRACT_v1.0_with_system_roles.md): `POST /api/v1/live-meetings/{meetingId}/recording/{sessionId}/stop-video` · perm `recording.video.stop` · **Async: Yes** · **202** `{recordingSessionId, status:"processing", jobId, stoppedAt}` · ghi chú "Trigger background_jobs (media_processing) để upload S3". ⇒ contract thiết kế async+S3; v1 local đồng bộ → lệch response/status (xem [NC-5]). `sessionId` nằm TRONG path. |
 | recording_session (cập nhật khi stop) | [recording-session.entity.ts:66-106](../../../../src/modules/recording/entities/recording-session.entity.ts): `status`(enum, set `stopped`), `stopped_at`(nullable), `stopped_by`(nullable uuid), `file_size_bytes`(bigint nullable → lưu dạng string), `duration_seconds`(int nullable), `checksum`(varchar255 nullable), `storage_path`(đã set ở REC-002). Active = status ∈ {starting,recording,paused} & `stopped_at` IS NULL. |
 | media_files (INSERT 1 dòng video) | [media-file.entity.ts:37-131](../../../../src/modules/recording/entities/media-file.entity.ts). **NOT NULL** (không nullable, không default): `file_name`(varchar255), `file_type`(varchar50), `mime_type`(varchar120), `storage_provider`(varchar50), `storage_key`(text). **Default**: `version_no=1`, `visibility_level='internal'`, `is_active=true`, `uploaded_at=now()`. Nullable hữu ích: `meeting_id`, `recording_session_id`, `uploaded_by`, `file_size_bytes`(bigint→string), `checksum`, `duration_seconds`, `file_code`, `file_url`, `metadata_json`. |
 | enum media_files | `MediaFileType`: audio/**video**/image/document/transcript/minutes_attachment/export/evidence. `StorageProvider`: **local**/s3/minio/cloud_provider. ⇒ INSERT video local: `file_type='video'`, `mime_type='video/mp4'`, `storage_provider='local'`, `storage_key=<storage_path>`, `file_name=<id>.mp4`. |

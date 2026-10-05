@@ -61,7 +61,7 @@ Bug `role_code='admin'` (chữ thường, không khớp 4 role thật của hệ
 ## 4. Constitution
 
 - **NO-SCOPE-01**: Không tạo bảng `stranger_alerts`, không tạo entity/migration mới.
-- **DOC-01**: Đóng mục bằng ghi chú tài liệu (spec này + `docs/API_CONTRACT_v1.0.md` + `LO_TRINH_SAVP_TAI.md`), không phải bằng code.
+- **DOC-01**: Đóng mục bằng ghi chú tài liệu (spec này + `docs/API_CONTRACT_v1.0_with_system_roles.md` + `LO_TRINH_SAVP_TAI.md`), không phải bằng code.
 
 ## 5. Residuals / known-gaps
 

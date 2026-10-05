@@ -38,7 +38,7 @@
   - UC-MM-01 Tạo cuộc họp mới thủ công (User Story / Use Case Description)
   - Database v3.2 Compact (39 tables) — `database_v3_2_compact_39_tables.md`
   - AGENTS.md — Backend Agent Guide v1.1
-  - API_CONTRACT_v1.0.md (nếu có)
+  - API_CONTRACT_v1.0_with_system_roles.md (nếu có)
   - SPEC_ALIGNMENT_WITH_DB_V3_2_COMPACT.md
 
 ---

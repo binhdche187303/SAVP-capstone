@@ -8,7 +8,7 @@
 | 2026-07-27 | **[ĐỢT P1, BE-07]** Tái áp dụng "đã đọc" — nhưng KHÔNG vi phạm quyết định PO ở dòng trên: KHÔNG có bảng mới, KHÔNG có cột JSON mới trên `notifications` (điều PO thực sự từ chối, xem §1.2 cập nhật). Trạng thái đọc lưu 100% ở Redis (TTL, tự rã), không phải baseline database. Thêm `isRead` vào response list/detail, thêm `PATCH /notifications/:id/read` + `PATCH /notifications/read-all`. Xem §1.2 (cập nhật), §mới "Cơ chế Redis". Chi tiết: `PLAN_THUC_THI_P1_CODE_VA_SPEC_2026-07-27.md` §3B. Nếu team coi đây là thay đổi quyết định nghiệp vụ (không chỉ kỹ thuật), cần PO xác nhận lại — ghi rõ ở residual. | §1.2, §1.3, §3 (FR mới), §5 (mới), §6, §7, §8 |
 | 2026-08-08 | [Xử lý xung đột phòng/giờ họp — Nhóm E] Thêm field `payloadJson` vào response `GET /notifications` (list) và `GET /notifications/:id` (detail). **Lưu ý: đây KHÔNG phải cột mới** — `notifications.payload_json` (jsonb) đã tồn tại sẵn trong baseline entity, dùng bởi các notification type khác (meeting invite/reminder) nhưng trước giờ bị `NotificationListItemDto`/`listMyNotifications`/`getMyNotificationDetail` lọc bỏ khi trả cho FE. Không vi phạm quyết định PO ở dòng 2026-07-18 (quyết định đó chỉ về cơ chế theo dõi "đã đọc", không liên quan `payload_json`). Mục đích: cho phép FE hiển thị chi tiết xung đột phòng khi thông báo `meeting_request_rejected` có đính kèm `conflictDetails`/`suggestedAlternatives` (xem `feat-review-meeting-request` FR-036/FR-038/FR-039). Xem `KE_HOACH_XU_LY_XUNG_DOT_PHONG_GIO_HOP_2026-08-08.md` ở root repo. | §5.4 (Dữ liệu đầu ra), DTO `NotificationListItemDto` |
 
-> Nguồn gốc: **Không có UC gốc trong `docs/API_CONTRACT_v1.0.md`.** Endpoint gợi ý `GET /notifications` đã được liệt kê ở mục 22.13 ("API endpoint grouping gợi ý") của `CLAUDE.md` nhưng CHƯA có đặc tả chi tiết. Tạm đặt tên **UC-NOTI-01/02 (mới)**, chờ Product Owner gán số chính thức vào Feature Table.
+> Nguồn gốc: **Không có UC gốc trong `docs/API_CONTRACT_v1.0_with_system_roles.md`.** Endpoint gợi ý `GET /notifications` đã được liệt kê ở mục 22.13 ("API endpoint grouping gợi ý") của `CLAUDE.md` nhưng CHƯA có đặc tả chi tiết. Tạm đặt tên **UC-NOTI-01/02 (mới)**, chờ Product Owner gán số chính thức vào Feature Table.
 
 ## 1. Context & Goal
 
@@ -53,7 +53,7 @@ Cung cấp 2 endpoint đọc-chuyên-biệt cho user hiện tại (không phải
 - **Primary Actor**: Bất kỳ user nội bộ đã đăng nhập (Employee/Manager/Admin) — chỉ thao tác trên thông báo của chính mình.
 
 ### 2.2 Role & Permission Rules
-- Permission đọc: `notification.read.self` (`module_code=notifications`, `action_code=read.self`) — đúng theo `docs/API_CONTRACT_v1.0.md` dòng 5285-5287 (đã liệt kê `notification.invite.send`/`.reminder.send`/`.cancellation.send` trong Phụ lục A nhưng **thiếu** `read.self` — bổ sung ở feature này).
+- Permission đọc: `notification.read.self` (`module_code=notifications`, `action_code=read.self`) — đúng theo `docs/API_CONTRACT_v1.0_with_system_roles.md` dòng 5285-5287 (đã liệt kê `notification.invite.send`/`.reminder.send`/`.cancellation.send` trong Phụ lục A nhưng **thiếu** `read.self` — bổ sung ở feature này).
 - **[BE-07, mới]** Permission ghi (mark-read): `notification.update.self` — role giống hệt `notification.read.self` (mọi role đăng nhập đều đánh dấu được thông báo CỦA CHÍNH MÌNH là đã đọc).
 - Role mặc định: **TẤT CẢ role đăng nhập được** (`EMPLOYEE`, `MANAGER`, `BUSINESS_ADMIN`, `SYSTEM_ADMIN`) — đây là quyền đọc/ghi trạng thái đọc thông báo của chính mình, không phải quyền nghiệp vụ đặc thù, tương tự `schedule.read.self` (`meetings.controller.ts:738`).
 

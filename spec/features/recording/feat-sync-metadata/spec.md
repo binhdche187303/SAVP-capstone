@@ -13,7 +13,7 @@ category: recording
 - **Status**: Draft (RECON xong — còn [NEEDS CLARIFICATION])
 - **Source Documents**:
   - `CLAUDE.md` (SEC-01 không log secret; ARCH-02 inline/queue; 10.7 recording/media; DATA-01 không migration)
-  - `docs/API_CONTRACT_v1.0.md` (UC-119 internal "tạo media_files với metadata"; UC-120/121 list/detail)
+  - `docs/API_CONTRACT_v1.0_with_system_roles.md` (UC-119 internal "tạo media_files với metadata"; UC-120/121 list/detail)
   - `spec/features/recording/feat-stop-recording` (REC-003 — finalizeFileToStopped), `feat-recording-status` (REC-004 — reconcile dùng chung finalize)
   - `src/modules/recording/services/recording-session.service.ts` (finalizeFileToStopped), `recording/utils/ffmpeg.util.ts`
   - `src/modules/recording/entities/media-file.entity.ts`, `src/config/env.validation.ts`
@@ -57,7 +57,7 @@ REC-003/004 đã finalize recording: `finalizeFileToStopped()` đọc size + sha
 
 | Hạng mục | Phát hiện |
 |---|---|
-| UC-119 (contract) | [API_CONTRACT_v1.0.md:3998-4003](../../../../docs/API_CONTRACT_v1.0.md): UC-119 "Tạo metadata file phương tiện" là **Internal process** (KHÔNG method/path/permission): "Tạo `media_files` với đầy đủ metadata; Cập nhật `recording_sessions.status='stopped'`". ⇒ ĐÚNG là `finalizeFileToStopped` hiện có ⇒ #26 enrich metadata ở internal đó, **không cần endpoint mới** (xem [NC-1]). |
+| UC-119 (contract) | [API_CONTRACT_v1.0_with_system_roles.md:4128-4133](../../../../docs/API_CONTRACT_v1.0_with_system_roles.md): UC-119 "Tạo metadata file phương tiện" là **Internal process** (KHÔNG method/path/permission): "Tạo `media_files` với đầy đủ metadata; Cập nhật `recording_sessions.status='stopped'`". ⇒ ĐÚNG là `finalizeFileToStopped` hiện có ⇒ #26 enrich metadata ở internal đó, **không cần endpoint mới** (xem [NC-1]). |
 | UC-120/121 (phân biệt) | [:4006-4046] UC-120 `GET /meetings/{meetingId}/media-files` (list), UC-121 `GET /media-files/{fileId}` (detail), perm `recording.files.read`, Async No — **chỉ đọc**, là phase khác (#27); #26 KHÔNG lấn (chỉ ghi metadata lúc finalize). Response 120/121 có `durationSeconds` ⇒ cần đúng. |
 | UC-118 (phân biệt) | [:3989-3994] sync video+audio offset (cần audio) — out-of-scope. |
 | ffprobe | `D:\ffmpeg\bin` có `ffmpeg.exe`, `ffplay.exe`, **`ffprobe.exe`** (cùng thư mục `FFMPEG_PATH`). Cú pháp: `ffprobe -v quiet -print_format json -show_format -show_streams <file>` → JSON `{ format:{ duration, bit_rate, ... }, streams:[{ codec_type, codec_name, width, height, avg_frame_rate, bit_rate, ... }] }`. |

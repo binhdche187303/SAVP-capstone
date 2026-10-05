@@ -13,7 +13,7 @@ category: recording
 - **Status**: Draft (đã chốt clarifications)
 - **Source Documents**:
   - `CLAUDE.md` (SEC-01 không log secret; ARCH-02 inline/queue; 11.x camera/RTSP; DATA-01)
-  - `docs/API_CONTRACT_v1.0.md` (UC-111 start-video)
+  - `docs/API_CONTRACT_v1.0_with_system_roles.md` (UC-111 start-video)
   - `spec/features/recording/feat-configure-recording` (REC-001)
   - `spec/features/iot/feat-store-rtsp-credentials` (IOT-015 — decryptSecret)
   - `src/modules/recording/entities/recording-session.entity.ts`

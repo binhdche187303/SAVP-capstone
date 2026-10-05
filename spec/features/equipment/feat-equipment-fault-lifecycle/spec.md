@@ -7,7 +7,7 @@
 | 2026-08-20 | ĐẢO NGƯỢC quyết định notify: người dùng chốt lại — báo lỗi thiết bị giờ notify role `BUSINESS_ADMIN` (không còn `SYSTEM_ADMIN`), vì BA mới là người thực tế xử lý confirm/resolve trên FE. Đổi `resolveSystemAdminIds()` → `resolveBusinessAdminIds()` trong `equipment.service.ts`, SQL `role_code` đổi từ `SYSTEM_ADMIN` sang `BUSINESS_ADMIN`. Permission `equipment.confirm_fault`/`equipment.resolve_fault` giữ nguyên `[SYSTEM_ADMIN, BUSINESS_ADMIN]` — không đổi. | Mục 0 (dòng "Notification chỉ gửi..."), §Primary Actor/Trigger/Expected Output, FR-01, AC-01, C3, EC-04 |
 
 > Phạm vi: mở rộng UC-62 (`feat-report-equipment-fault`, đã triển khai) bằng 3 việc: (1) notify SYSTEM_ADMIN khi có report mới, (2) endpoint mới cho sysadmin xác nhận lỗi thật, (3) endpoint mới cho sysadmin cập nhật lại sau khi sửa vật lý xong (recovery — điểm đã được UC-62 §10/§11-C10 đánh dấu "KHÔNG thuộc UC-62, là UC riêng future").
-> KHÔNG bao gồm: cảnh báo khi đặt phòng (`spec/features/meetings/feat-room-equipment-fault-warning/`) và badge thiết bị hỏng khi tìm phòng (`spec/features/rooms/feat-room-search-equipment-badge/`) — 2 feature riêng, module khác.
+> KHÔNG bao gồm: cảnh báo khi đặt phòng (`spec/features/meeting/feat-room-equipment-fault-warning/`) và badge thiết bị hỏng khi tìm phòng (`spec/features/rooms/feat-room-search-equipment-badge/`) — 2 feature riêng, module khác.
 > Tài liệu này chỉ là đặc tả (spec). KHÔNG kèm code.
 
 ---

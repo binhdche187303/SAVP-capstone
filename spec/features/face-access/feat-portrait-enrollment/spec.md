@@ -13,7 +13,7 @@ category: face-access
 - **Source Documents**:
   - `spec/global/constitution.md` (SEC-02 auth; SEC-03 validate input/no-traversal; DATA-01 no migration)
   - `CLAUDE.md` (§11 face; §13 DTO/upload; §22.2 accounts)
-  - `docs/API_CONTRACT_v1.0.md` (UC-17 — 795-832: face_profiles status pending_review)
+  - `docs/API_CONTRACT_v1.0_with_system_roles.md` (UC-17 — 795-832: face_profiles status pending_review)
   - `src/modules/storage/storage.service.ts`, `src/modules/accounts/entities/face-profile.entity.ts`, `src/modules/recording/entities/media-file.entity.ts`
 
 ---

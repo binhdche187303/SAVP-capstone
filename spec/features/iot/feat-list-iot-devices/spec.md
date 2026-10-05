@@ -15,7 +15,7 @@ category: iot
 - **Source Documents**:
   - `CLAUDE.md` (Sections 8.1 response format, 8.4 pagination, 11.1)
   - `spec/global/constitution.md` (SEC-02/03, ARCH-03, DATA-01, API consistency)
-  - `docs/API_CONTRACT_v1.0.md` (Section 8 — IoT Device Management)
+  - `docs/API_CONTRACT_v1.0_with_system_roles.md` (Section 8 — IoT Device Management)
   - `src/modules/iot/entities/iot-device.entity.ts` (IoTDeviceEntity, IoTDeviceType, IoTDeviceStatus)
   - `src/modules/iot/dto/iot-device-response.dto.ts` (toIotDeviceResponse)
   - Spec liên quan: `feat-update-iot-device` (IOT-011), `feat-disable-enable-iot-device` (IOT-012), `feat-register-camera-device` (IOT-001)

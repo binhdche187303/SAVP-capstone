@@ -19,7 +19,7 @@
 | T-5.8 | Tạo `spec.md` (mục "Ngoài phạm vi" liệt kê rõ endpoint chuyên trách cho time/room/participants/agenda/recording + cảnh báo `forbidNonWhitelisted`) | `spec/features/meeting/feat-update-meeting-metadata/spec.md` | ✅ Xong |
 | T-5.9 | Tạo `plan.md` | `spec/features/meeting/feat-update-meeting-metadata/plan.md` | ✅ Xong |
 | T-5.10 | Tạo `tasks.md` (file này) | `spec/features/meeting/feat-update-meeting-metadata/tasks.md` | ✅ Xong |
-| T-5.11 | Thêm UC mới `PATCH /api/v1/meetings/{meetingId}` vào `API_CONTRACT_v1.0.md` (mã UC-18b, sau UC-18) | `docs/API_CONTRACT_v1.0.md` | ✅ Xong |
+| T-5.11 | Thêm UC mới `PATCH /api/v1/meetings/{meetingId}` vào `API_CONTRACT_v1.0_with_system_roles.md` (mã UC-18b, sau UC-18) | `docs/API_CONTRACT_v1.0_with_system_roles.md` | ✅ Xong |
 
 **Extra (phát sinh khi code, không có trong plan gốc):**
 - Thêm `MeetingEventType.METADATA_UPDATED = 'metadata_updated'` vào `meeting-event.entity.ts` — không có giá trị enum sẵn có phù hợp cho sự kiện "sửa title/description" (không có migration vì cột `event_type` là `varchar`, không CHECK constraint).

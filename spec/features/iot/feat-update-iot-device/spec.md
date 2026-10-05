@@ -15,7 +15,7 @@ category: iot
 - **Source Documents**:
   - `CLAUDE.md` (Sections 11.1, 11.8, 11.17)
   - `spec/global/constitution.md` (SEC-01..03, ARCH-03, DATA-01)
-  - `docs/API_CONTRACT_v1.0.md` (Section 8 — IoT Device Management, UC-67/68/69; mục IOT-011 (Feature #12) cho update)
+  - `docs/API_CONTRACT_v1.0_with_system_roles.md` (Section 8 — IoT Device Management, UC-67/68/69; mục IOT-011 (Feature #12) cho update)
   - `docs/ARCHITECTURE_DECISIONS.md` (ADR-008: status-based device lifecycle)
   - `src/modules/iot/entities/iot-device.entity.ts` (IoTDeviceEntity)
   - Spec liên quan: `spec/features/iot/feat-register-camera-device` (IOT-001), `spec/features/iot/feat-assign-camera-to-room` (IOT-002)
@@ -351,7 +351,7 @@ EC-IOT-011-008: IF xảy ra lỗi DB khi ghi, THEN rollback transaction và tr�
 | D-3 | **`device_code`, `device_type`** bất biến; `room_id`, `stream_url`, `status`/`health_status`/`last_seen_at`, `metadata_json` ngoài phạm vi. |
 | D-4 | **Bỏ FR soft-delete**: `iot_devices` không có `deleted_at`; vòng đời "vô hiệu hóa" dùng `status` (online/offline/disabled/maintenance). Ghi nhận tại **ADR-008** trong `docs/ARCHITECTURE_DECISIONS.md`. |
 | D-5 | **Permission**: `iot.device.update` (dot-notation, khớp convention seed permissions + API Contract). |
-| D-6 | **Endpoint**: `PATCH /api/v1/iot-devices/:id`. Đã thêm mục IOT-011 (Feature #12) vào `docs/API_CONTRACT_v1.0.md`. |
+| D-6 | **Endpoint**: `PATCH /api/v1/iot-devices/:id`. Đã thêm mục IOT-011 (Feature #12) vào `docs/API_CONTRACT_v1.0_with_system_roles.md`. |
 | D-7 | **Response**: full device, snake_case (`toIotDeviceResponse`). |
 | D-8 | **mac_address** cho sửa, re-check unique loại trừ chính nó; cho phép `null` để xóa. Tương tự `ip_address`, `network_identifier` cho phép `null`. |
 

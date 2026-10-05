@@ -13,7 +13,7 @@ category: recording
 - **Status**: Draft (RECON xong — còn [NEEDS CLARIFICATION])
 - **Source Documents**:
   - `CLAUDE.md` (SEC-01 không log secret; ARCH-02 inline; DATA-01 không migration; §16 exception)
-  - `docs/API_CONTRACT_v1.0.md` (UC-124 internal error-reports — dòng 4131-4153)
+  - `docs/API_CONTRACT_v1.0_with_system_roles.md` (UC-124 internal error-reports — dòng 4131-4153)
   - `spec/features/recording/feat-start-recording` (REC-002 grace), `feat-stop-recording` (REC-003 empty-file), `feat-recording-status` (REC-004 getStatus)
   - `src/modules/recording/services/recording-session.service.ts`, `recording-process-manager.ts`, `utils/ffmpeg.util.ts`
 
@@ -57,7 +57,7 @@ REC-002 start dùng **grace-window 2s**: ffmpeg sống sau 2s → trả **201 re
 
 | Hạng mục | Phát hiện |
 |---|---|
-| UC-124 (contract) | [API_CONTRACT_v1.0.md:4131-4153](../../../../docs/API_CONTRACT_v1.0.md): **Internal process** — `POST /api/v1/internal/recording/error-reports` · perm `internal.recording.error` · Async · body `{recordingSessionId, errorType, errorMessage, severity}` → set `recording_sessions.status='failed'`, `error_message`, tạo `notifications` Admin. ⇒ thiết kế cho **FFmpeg/Capture Agent NGOÀI** gửi lỗi vào. Model v1 chạy ffmpeg **inline** trong backend ⇒ backend **tự phát hiện** (không cần agent POST). Xem [NC-3]. |
+| UC-124 (contract) | [API_CONTRACT_v1.0_with_system_roles.md:4265-4288](../../../../docs/API_CONTRACT_v1.0_with_system_roles.md): **Internal process** — `POST /api/v1/internal/recording/error-reports` · perm `internal.recording.error` · Async · body `{recordingSessionId, errorType, errorMessage, severity}` → set `recording_sessions.status='failed'`, `error_message`, tạo `notifications` Admin. ⇒ thiết kế cho **FFmpeg/Capture Agent NGOÀI** gửi lỗi vào. Model v1 chạy ffmpeg **inline** trong backend ⇒ backend **tự phát hiện** (không cần agent POST). Xem [NC-3]. |
 | startVideo grace | [recording-session.service.ts:154-163](../../../../src/modules/recording/services/recording-session.service.ts): `processManager.start` → `waitForGrace(sessionId, 2000)`; `'dead'` → 500 `RECORDING_START_FAILED`; `'alive'` → 201 `recording`. **KHÔNG kiểm file>0** ⇒ camera tắt (ffmpeg sống, 0 byte) vẫn trả 201 SAI. Đây là chỗ chèn no-data detection. |
 | manager liveness | [recording-process-manager.ts:61-88](../../../../src/modules/recording/services/recording-process-manager.ts): `waitForGrace` phát hiện exit qua `proc.exitCode !== null \|\| proc.killed` + event `exit`/`error`. `get(sessionId)` trả `ChildProcess` (đọc `exitCode`). `has(sessionId)` liveness. `markStopping(sessionId)` để exit không bị coi failed. `stop(sessionId)` (graceful 'q'+timeout kill). ⇒ service có thể poll `fs.statSync(outPath).size` + check `proc.exitCode` trong cửa sổ; kill khi no-data (reuse `stop()` hoặc thêm method). |
 | ffmpeg args | [ffmpeg.util.ts](../../../../src/modules/recording/utils/ffmpeg.util.ts): `-movflags +frag_keyframe+empty_moov` ⇒ moov ghi SỚM khi vừa kết nối ⇒ **file > 0 nhanh** khi camera OK. Camera tắt → không kết nối → file **0 byte** kéo dài (thực nghiệm). ⇒ dùng `file size > 0` làm dấu hiệu "đã capture". |

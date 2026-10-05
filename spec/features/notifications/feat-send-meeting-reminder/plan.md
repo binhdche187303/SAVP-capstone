@@ -47,7 +47,7 @@ Thấp — tái sử dụng gần như toàn bộ hạ tầng UC-143. Điểm kh
 0 bảng mới, 0 cột mới. 1 permission mới.
 
 ## 5. API / Contract Plan
-`POST /api/v1/meetings/:meetingId/reminders` — trả `202`. Request/Response khớp `docs/API_CONTRACT_v1.0.md` UC-144.
+`POST /api/v1/meetings/:meetingId/reminders` — trả `202`. Request/Response khớp `docs/API_CONTRACT_v1.0_with_system_roles.md` UC-144.
 Error: `400`, `401`, `403 FORBIDDEN/NOT_MEETING_OWNER`, `404 MEETING_NOT_FOUND`, `409 MEETING_NOT_UPCOMING/REMINDER_AFTER_MEETING_START`.
 
 ## 6. Authorization Plan

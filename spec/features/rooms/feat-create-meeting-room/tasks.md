@@ -1,6 +1,6 @@
 ﻿# Tasks: UC-RM-01 Tao thu cong phong hop moi
 
-**Input**: Design documents from spec/features/room/feat-create-meeting-room/
+**Input**: Design documents from spec/features/rooms/feat-create-meeting-room/
 **Prerequisites**: plan.md, spec.md, research.md, data-model.md, contracts/create-room-api.md, quickstart.md
 
 **Organization**: Tasks are grouped by implementation phase. Feature nay la 1 User Story don (tao phong hop), chia nho thanh cac task co dependency.

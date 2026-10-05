@@ -5,7 +5,7 @@
 | :--- | :--- | :--- |
 | 2026-07-17 | Khởi tạo spec cho UC-140 (Feature Table), viết sau khi implement — bổ sung tài liệu speckit theo yêu cầu, đối chiếu lại với code đã chạy thật và test đã pass | Toàn bộ file |
 
-> Nguồn gốc: UC-140 "Xem chi tiết tệp đính kèm" (Feature Table, module Minutes & Knowledge Management). Trigger: "Người có quyền mở chi tiết file". Expected Output: "Hiển thị tên, loại, size, thời gian upload; Signed URL khi cần". Pre-condition: "File đính kèm tồn tại". Related Use Cases theo Feature Table ghi UC-106/UC-107, nhưng rà soát code (`API_CONTRACT_v1.0.md` dòng 4622-4631) cho thấy UC-140 thực chất **dùng chung** endpoint với UC-121 "Xem chi tiết file phương tiện" (`GET /api/v1/media-files/:fileId`) — 2 UC id đó (UC-106/107 trong Feature Table hiện tại là "Gửi cảnh báo thời gian còn lại/xung đột", không liên quan) là dữ liệu cross-reference cũ/không khớp, feature này bám theo API_CONTRACT thay vì cross-reference sai đó.
+> Nguồn gốc: UC-140 "Xem chi tiết tệp đính kèm" (Feature Table, module Minutes & Knowledge Management). Trigger: "Người có quyền mở chi tiết file". Expected Output: "Hiển thị tên, loại, size, thời gian upload; Signed URL khi cần". Pre-condition: "File đính kèm tồn tại". Related Use Cases theo Feature Table ghi UC-106/UC-107, nhưng rà soát code (`API_CONTRACT_v1.0_with_system_roles.md` dòng 4622-4631) cho thấy UC-140 thực chất **dùng chung** endpoint với UC-121 "Xem chi tiết file phương tiện" (`GET /api/v1/media-files/:fileId`) — 2 UC id đó (UC-106/107 trong Feature Table hiện tại là "Gửi cảnh báo thời gian còn lại/xung đột", không liên quan) là dữ liệu cross-reference cũ/không khớp, feature này bám theo API_CONTRACT thay vì cross-reference sai đó.
 
 ## 1. Context & Goal
 

@@ -14,7 +14,7 @@ category: rooms
 - **Source Documents**:
   - `spec/global/constitution.md` (SEC-01 secret; SEC-02 auth; SEC-03 parameterize; DATA-01 no migration; ARCH-01 boundary)
   - `CLAUDE.md` / `AGENTS.md` (§17 audit; §19 background jobs; conventional commits)
-  - `docs/API_CONTRACT_v1.0.md` (UC-41 — 1684-1722; UC-42 — 1726-1744; WS meeting.noshow.alert; perm room.noshow.update — 5238)
+  - `docs/API_CONTRACT_v1.0_with_system_roles.md` (UC-41 — 1684-1722; UC-42 — 1726-1744; WS meeting.noshow.alert; perm room.noshow.update — 5238)
   - `src/modules/rooms/entities/no-show-case.entity.ts`, `room-booking.entity.ts`, `room-booking-usage.entity.ts`
   - `src/modules/scheduler/scheduler.service.ts` (checkNoShow cron skeleton)
   - `src/modules/administration/entities/system-config.entity.ts`, `src/modules/websocket/websocket.service.ts`
@@ -55,8 +55,8 @@ category: rooms
 
 | UC | Scope (≤15 từ) | Actor | Method+Path | Perm |
 |---|---|---|---|---|
-| **UC-41** [API_CONTRACT:1684](../../../../docs/API_CONTRACT_v1.0.md) | Tạo no-show case (gọi bởi scheduler/camera) | **Internal** | `POST /api/v1/internal/no-show-cases` | `internal.system.noshow` (token) |
-| **UC-42** [API_CONTRACT:1726](../../../../docs/API_CONTRACT_v1.0.md) | Cập nhật no-show case (review thủ công) | **User** | `PATCH /api/v1/no-show-cases/:id` | `room.noshow.update` |
+| **UC-41** [API_CONTRACT:1684](../../../../docs/API_CONTRACT_v1.0_with_system_roles.md) | Tạo no-show case (gọi bởi scheduler/camera) | **Internal** | `POST /api/v1/internal/no-show-cases` | `internal.system.noshow` (token) |
+| **UC-42** [API_CONTRACT:1726](../../../../docs/API_CONTRACT_v1.0_with_system_roles.md) | Cập nhật no-show case (review thủ công) | **User** | `PATCH /api/v1/no-show-cases/:id` | `room.noshow.update` |
 
 ---
 

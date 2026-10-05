@@ -14,7 +14,7 @@ category: rooms
 - **Source Documents**:
   - `spec/global/constitution.md` (SEC-02 auth; SEC-03 parameterize; DATA-01 soft-delete; ARCH-01 service boundary)
   - `CLAUDE.md` / `AGENTS.md` (§8.4 pagination/response; §22.6 rooms; DATA-01 không migration)
-  - `docs/API_CONTRACT_v1.0.md` (UC-36 realtime-status — 1498-1531; UC-38 room status — 1579-1614; WS table — 5316-5318)
+  - `docs/API_CONTRACT_v1.0_with_system_roles.md` (UC-36 realtime-status — 1498-1531; UC-38 room status — 1579-1614; WS table — 5316-5318)
   - `spec/features/presence/feat-occupancy-ingest` (OCC-001 / #29 — writer của current_status + room_events)
   - `src/modules/rooms/entities/*`, `src/modules/meetings/entities/meeting.entity.ts`, `src/modules/accounts/entities/user.entity.ts`
   - `src/modules/websocket/websocket.service.ts`
@@ -57,8 +57,8 @@ category: rooms
 
 | UC | Scope (≤15 từ) | Actor | In | Out |
 |---|---|---|---|---|
-| **UC-36** [API_CONTRACT:1498-1531](../../../../docs/API_CONTRACT_v1.0.md) | Xem tổng quan trạng thái nhiều phòng realtime | User có `room.utilization.read` | query `siteName?`,`areaName?` | array room-status |
-| **UC-38** [API_CONTRACT:1579-1614](../../../../docs/API_CONTRACT_v1.0.md) | Xem chi tiết trạng thái 1 phòng | nt | path `roomId` | 1 room-status (full) |
+| **UC-36** [API_CONTRACT:1498-1531](../../../../docs/API_CONTRACT_v1.0_with_system_roles.md) | Xem tổng quan trạng thái nhiều phòng realtime | User có `room.utilization.read` | query `siteName?`,`areaName?` | array room-status |
+| **UC-38** [API_CONTRACT:1579-1614](../../../../docs/API_CONTRACT_v1.0_with_system_roles.md) | Xem chi tiết trạng thái 1 phòng | nt | path `roomId` | 1 room-status (full) |
 
 ---
 

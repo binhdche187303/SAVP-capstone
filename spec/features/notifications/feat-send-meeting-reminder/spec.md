@@ -5,14 +5,14 @@
 | :--- | :--- | :--- |
 | 2026-07-18 | Khởi tạo spec cho UC-144 | Toàn bộ file |
 
-> Nguồn gốc: **UC-144** trong `docs/API_CONTRACT_v1.0.md` mục 15 (dòng 4717-4745).
+> Nguồn gốc: **UC-144** trong `docs/API_CONTRACT_v1.0_with_system_roles.md` mục 15 (dòng 4717-4745).
 
 ## 1. Context & Goal
 
 ### 1.1 Bối cảnh
 Đã xác nhận đọc code: `SchedulerService.sendReminders()` (`src/modules/scheduler/scheduler.service.ts:238-245`) là 1 cron job **đã tồn tại nhưng chỉ log, chưa implement** — comment gốc trong code: `"TODO: Gọi NotificationsService.sendScheduledReminders() khi implement."`. Đây là phần **tự động, theo lịch** (auto reminder trước giờ họp X phút, toàn hệ thống).
 
-UC-144 trong phạm vi tài liệu này chỉ cover phần **thủ công** (`POST /meetings/{meetingId}/reminders`, do Host/Organizer/Admin chủ động gọi cho 1 meeting cụ thể) — theo đúng nguồn gốc UC trong `API_CONTRACT_v1.0.md`. Phần cron tự động toàn hệ thống (`sendReminders()`) là 1 TODO **đã tồn tại từ trước, độc lập** — feature này **không** implement lại toàn bộ cron logic, nhưng thiết kế DTO/entity theo cách để cron job tương lai có thể tái sử dụng cùng 1 con đường ghi dữ liệu (`scheduledSendAt` trên `notifications`) nếu Product Owner sau này quyết định nối 2 luồng lại.
+UC-144 trong phạm vi tài liệu này chỉ cover phần **thủ công** (`POST /meetings/{meetingId}/reminders`, do Host/Organizer/Admin chủ động gọi cho 1 meeting cụ thể) — theo đúng nguồn gốc UC trong `API_CONTRACT_v1.0_with_system_roles.md`. Phần cron tự động toàn hệ thống (`sendReminders()`) là 1 TODO **đã tồn tại từ trước, độc lập** — feature này **không** implement lại toàn bộ cron logic, nhưng thiết kế DTO/entity theo cách để cron job tương lai có thể tái sử dụng cùng 1 con đường ghi dữ liệu (`scheduledSendAt` trên `notifications`) nếu Product Owner sau này quyết định nối 2 luồng lại.
 
 ### 1.2 Mục tiêu
 Cung cấp `POST /api/v1/meetings/{meetingId}/reminders` cho phép Host/Organizer/Admin gửi nhắc lịch họp ngay lập tức (`reminderType=manual`) tới toàn bộ participant hiện tại, hoặc đặt lịch gửi vào 1 thời điểm tương lai (`sendAt`) — trường hợp sau chỉ **tạo bản ghi `notifications` với `scheduledSendAt` đã set và `deliveryStatus=draft`**, việc thực sự dispatch tại đúng thời điểm là trách nhiệm của dispatcher riêng (xem mục 8 Out of Scope).
@@ -74,7 +74,7 @@ Giống hệt `feat-send-meeting-invitation` mục 2.3 (ownership-or-admin).
 ### 3.6 Traceability
 | FR ID | Nguồn gốc |
 | :--- | :--- |
-| FR-001, FR-005 | `docs/API_CONTRACT_v1.0.md` UC-144 |
+| FR-001, FR-005 | `docs/API_CONTRACT_v1.0_with_system_roles.md` UC-144 |
 | FR-004 | Thiết kế nối tiếp `SchedulerService.sendReminders()` TODO hiện có (mục 1.1) |
 | FR-007, FR-012 | Suy luận nghiệp vụ (mục 1.4/1.5) |
 

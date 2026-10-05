@@ -15,7 +15,7 @@ category: iot
 - **Source Documents**:
   - `CLAUDE.md` (Sections 7.3 API route, 11.1, 11.8)
   - `spec/global/constitution.md` (SEC-01..03, ARCH-03, DATA-01)
-  - `docs/API_CONTRACT_v1.0.md` (Section 8 — IoT Device Management; IoT Device Status `online|offline|disabled|maintenance`)
+  - `docs/API_CONTRACT_v1.0_with_system_roles.md` (Section 8 — IoT Device Management; IoT Device Status `online|offline|disabled|maintenance`)
   - `docs/ARCHITECTURE_DECISIONS.md` (ADR-008: status-based device lifecycle)
   - `src/modules/iot/entities/iot-device.entity.ts` (IoTDeviceEntity, IoTDeviceStatus)
   - Spec liên quan: `spec/features/iot/feat-update-iot-device` (IOT-011), `spec/features/iot/feat-register-camera-device` (IOT-001)
