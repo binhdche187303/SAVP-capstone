@@ -9,6 +9,7 @@ import {
   HttpException,
 } from '@nestjs/common';
 import { DataSource, In } from 'typeorm';
+import { lockRoomsForBooking } from '../../../common/utils/room-booking-lock.util.js';
 
 import {
   MeetingEntity,
@@ -943,6 +944,43 @@ export class LiveMeetingService {
           });
         }
 
+        // A1 race: khóa phòng rồi re-check booking kế tiếp trong transaction —
+        // check ngoài transaction có thể lỗi thời nếu vừa có người đặt/duyệt slot sau.
+        await lockRoomsForBooking(em, [lockedMeeting.roomId]);
+        const bufferMs = policy.bufferMinutesBeforeNextMeeting * 60 * 1000;
+        const blocking = await em
+          .createQueryBuilder(RoomBookingEntity, 'rb')
+          .where('rb.roomId = :roomId', { roomId: lockedMeeting.roomId })
+          .andWhere('rb.id != :selfId', { selfId: activeBooking.id })
+          .andWhere('rb.status IN (:...statuses)', {
+            statuses: [
+              RoomBookingStatus.PENDING,
+              RoomBookingStatus.APPROVED,
+              RoomBookingStatus.ACTIVE,
+            ],
+          })
+          .andWhere('rb.reservedStartTime > :oldEnd', { oldEnd: oldEndTime })
+          .andWhere('rb.reservedStartTime < :limit', {
+            limit: new Date(newEndTime.getTime() + bufferMs),
+          })
+          .orderBy('rb.reservedStartTime', 'ASC')
+          .getOne();
+        if (blocking) {
+          throw new ConflictException({
+            success: false,
+            message:
+              'Phong vua co lich ke tiep, khong the gia han den gio yeu cau',
+            error: {
+              code: MEETING_EXTENSION_ERRORS.ROOM_CONFLICT,
+              details: {
+                nextBookingId: blocking.id,
+                nextStartTime: blocking.reservedStartTime.toISOString(),
+                bufferMinutes: policy.bufferMinutesBeforeNextMeeting,
+              },
+            },
+          });
+        }
+
         // 2. INSERT meeting_requests
         const requestPayload = {
           extensionMinutes: dto.extensionMinutes,
@@ -1862,6 +1900,7 @@ export class LiveMeetingService {
               .getOne();
 
             if (currentBooking) {
+              await lockRoomsForBooking(em, [lockedMeeting.roomId]);
               const conflictResult = await this.checkRoomConflictForDecide(
                 em,
                 lockedMeeting.roomId!,

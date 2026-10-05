@@ -17,6 +17,8 @@ import { QueryFailedError } from 'typeorm';
  * dụng" — dán nhãn sai, làm người debug đi lạc hoàn toàn. Nay constraint không nhận
  * ra trả mã trung tính RESOURCE_ALREADY_EXISTS thay vì đoán bừa.
  *
+ * Exclusion violation (23P01) trên `ex_room_bookings_no_overlap` → 409 ROOM_CONFLICT.
+ *
  * Các error code khác trả về 500 Internal Server Error.
  */
 @Catch(QueryFailedError)
@@ -103,6 +105,30 @@ export class QueryFailedFilter implements ExceptionFilter {
         error: {
           code: mapped.code,
           details: { field: mapped.field, constraint: constraint || null },
+        },
+        requestId,
+        timestamp: new Date().toISOString(),
+        path: request.url,
+      });
+      return;
+    }
+
+    // PostgreSQL exclusion violation — A1 Lớp 2: 2 booking approved/active trùng
+    // phòng/giờ lọt qua lock ở app (luồng quên gọi lockRoomsForBooking, script...).
+    if (code === '23P01') {
+      const constraint: string = driverError?.constraint ?? '';
+      this.logger.warn(
+        `Exclusion constraint violation: ${constraint || '(không rõ)'} (requestId: ${requestId})`,
+      );
+      const isRoomOverlap = constraint === 'ex_room_bookings_no_overlap';
+      response.status(HttpStatus.CONFLICT).json({
+        success: false,
+        message: isRoomOverlap
+          ? 'Phòng họp này vừa được đặt. Vui lòng chọn một phòng khác hoặc đổi khung giờ.'
+          : 'Dữ liệu bị trùng, vui lòng thử lại',
+        error: {
+          code: isRoomOverlap ? 'ROOM_CONFLICT' : 'RESOURCE_ALREADY_EXISTS',
+          details: { constraint: constraint || null },
         },
         requestId,
         timestamp: new Date().toISOString(),

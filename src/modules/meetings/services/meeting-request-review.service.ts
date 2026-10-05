@@ -1,3 +1,4 @@
+import { lockRoomsForBooking } from '../../../common/utils/room-booking-lock.util.js';
 ﻿import { UserEntity } from '../../accounts/entities/user.entity.js';
 import {
   Injectable,
@@ -324,6 +325,9 @@ export class MeetingRequestReviewService {
       // approved, khiến các request pending còn lại tự động bị chặn ở đây khi
       // đến lượt duyệt — đó chính là cơ chế Manager "chọn ai được giữ phòng".
       // Buffer (Nhóm B): cần cách nhau tối thiểu bufferMs với booking approved/active.
+      // A1 race: khóa phòng đích trước khi re-check để 2 approve đồng thời
+      // (đổi giờ/đổi phòng) vào cùng phòng không cùng thấy "trống".
+      await lockRoomsForBooking(em, [targetRoomId]);
       const bufferMs = await this.getRoomBookingBufferMs();
       const bufferedTargetStart = new Date(
         targetStartTime.getTime() - bufferMs,

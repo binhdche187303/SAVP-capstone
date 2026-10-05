@@ -121,6 +121,7 @@ describe('MeetingRequestReviewService', () => {
 
   beforeEach(async () => {
     em = {
+      query: jest.fn().mockResolvedValue([]),
       findOne: jest.fn(),
       find: jest.fn(),
       create: jest.fn(<T>(_: any, plain: T): T => plain),

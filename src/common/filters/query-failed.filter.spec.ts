@@ -56,3 +56,34 @@ describe('QueryFailedFilter.mapUniqueViolation', () => {
     expect(r.field).toBe('unknown');
   });
 });
+
+/** A1 Lớp 2: exclusion violation (23P01) → 409 ROOM_CONFLICT thay vì 500. */
+describe('QueryFailedFilter.catch — 23P01', () => {
+  const run = (constraint: string) => {
+    const json = jest.fn();
+    const status = jest.fn().mockReturnValue({ json });
+    const host = {
+      switchToHttp: () => ({
+        getResponse: () => ({ status }),
+        getRequest: () => ({ headers: {}, url: '/api/v1/meetings' }),
+      }),
+    };
+    const err = Object.assign(new Error('conflicting key value'), {
+      driverError: { code: '23P01', constraint },
+    });
+    new QueryFailedFilter().catch(err as any, host as any);
+    return { status, body: json.mock.calls[0][0] };
+  };
+
+  it('ex_room_bookings_no_overlap → 409 ROOM_CONFLICT', () => {
+    const { status, body } = run('ex_room_bookings_no_overlap');
+    expect(status).toHaveBeenCalledWith(409);
+    expect(body.error.code).toBe('ROOM_CONFLICT');
+  });
+
+  it('exclusion lạ → 409 mã trung tính, không gán ROOM_CONFLICT', () => {
+    const { status, body } = run('ex_other');
+    expect(status).toHaveBeenCalledWith(409);
+    expect(body.error.code).toBe('RESOURCE_ALREADY_EXISTS');
+  });
+});

@@ -6,6 +6,7 @@ import {
   JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
+  Exclusion,
 } from 'typeorm';
 import { UserEntity } from '../../../modules/accounts/entities/user.entity.js';
 import { MeetingEntity } from '../../../modules/meetings/entities/meeting.entity.js';
@@ -28,6 +29,12 @@ export enum RoomBookingStatus {
 }
 
 @Entity('room_bookings')
+// A1 Lớp 2: khai báo để DB_SYNCHRONIZE=true không drop constraint do migration
+// 20261005000001 tạo. Vi phạm → 23P01 → QueryFailedFilter trả 409 ROOM_CONFLICT.
+@Exclusion(
+  'ex_room_bookings_no_overlap',
+  `USING gist ("room_id" WITH =, tstzrange("reserved_start_time", "reserved_end_time", '[)') WITH &&) WHERE ("status" IN ('approved', 'active'))`,
+)
 export class RoomBookingEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;

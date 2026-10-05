@@ -100,6 +100,7 @@ import {
   isMeetingIneligibleRole,
   MEETING_INELIGIBLE_ROLE_CODES,
 } from '../../../common/utils/meeting-ineligible-roles.util.js';
+import { lockRoomsForBooking } from '../../../common/utils/room-booking-lock.util.js';
 
 import { CreateMeetingDto } from '../dto/create-meeting.dto.js';
 import { CreateMeetingResponseDto } from '../dto/create-meeting-response.dto.js';
@@ -645,6 +646,7 @@ export class MeetingsService {
     roomId: string,
     startTime: Date,
     endTime: Date,
+    em?: EntityManager,
   ): Promise<ConflictResult> {
     // Chỉ approved/active mới chặn — pending của request khác không tính là
     // xung đột (Manager là người quyết định duyệt request nào khi có 2 pending
@@ -653,7 +655,7 @@ export class MeetingsService {
     const bufferMs = await this.getRoomBookingBufferMs();
     const bufferedStart = new Date(startTime.getTime() - bufferMs);
     const bufferedEnd = new Date(endTime.getTime() + bufferMs);
-    const conflicting = await this.dataSource
+    const conflicting = await (em ?? this.dataSource)
       .getRepository(RoomBookingEntity)
       .findOne({
         where: {
@@ -1141,6 +1143,31 @@ export class MeetingsService {
     for (let attempt = 0; ; attempt++) {
       try {
         await this.dataSource.transaction(async (em) => {
+          // A1 race: booking auto-approve chặn phòng ngay → khóa phòng rồi re-check
+          // trong cùng transaction, tránh 2 request đồng thời cùng lọt check ở trên.
+          // Pending không chặn nhau nên không cần khóa.
+          if (isAutoApprovable) {
+            await lockRoomsForBooking(em, [dto.roomId]);
+            const txConflict = await this.getRoomAvailability(
+              dto.roomId,
+              startTime,
+              endTime,
+              em,
+            );
+            if (txConflict.hasConflict) {
+              throw new ConflictException({
+                success: false,
+                message:
+                  'Phòng họp này vừa được đặt. Vui lòng chọn một phòng khác hoặc đổi khung giờ.',
+                error: {
+                  code: 'ROOM_CONFLICT',
+                  details: {
+                    conflictingBookingId: txConflict.conflictingBookingId,
+                  },
+                },
+              });
+            }
+          }
           const now = new Date();
           meeting = em.create(MeetingEntity, {
             meetingCode,
