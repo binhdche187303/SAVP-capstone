@@ -239,22 +239,25 @@ export class AttendanceService {
       },
     });
 
+    // [STT 5] Chống N+1: trước đây 1 query/participant. Nay lấy toàn bộ record của
+    // meeting trong 1 query, giữ record mới nhất/user (cùng thứ tự updatedAt, createdAt DESC).
+    const activeUserIds = participants
+      .filter((p) => p.user && !p.user.deletedAt)
+      .map((p) => p.userId);
+    const latestByUser = new Map<string, AttendanceRecordEntity>();
+    if (activeUserIds.length > 0) {
+      const allRecords = await this.attendanceRecordRepo.find({
+        where: { meetingId, userId: In(activeUserIds) },
+        order: { updatedAt: 'DESC', createdAt: 'DESC' },
+      });
+      for (const rec of allRecords) {
+        if (!latestByUser.has(rec.userId)) latestByUser.set(rec.userId, rec);
+      }
+    }
+
     const result: ParticipantWithUser[] = [];
     for (const p of participants) {
       if (!p.user || p.user.deletedAt) continue;
-
-      // Find latest attendance record
-      const records = await this.attendanceRecordRepo.find({
-        where: {
-          meetingId,
-          userId: p.userId,
-        },
-        order: {
-          updatedAt: 'DESC',
-          createdAt: 'DESC',
-        },
-        take: 1,
-      });
 
       result.push({
         participantId: p.id,
@@ -266,7 +269,7 @@ export class AttendanceService {
         participantRole: p.participantRole,
         email: p.user.email,
         employeeCode: p.user.employeeCode,
-        attendanceRecord: records.length > 0 ? records[0] : null,
+        attendanceRecord: latestByUser.get(p.userId) ?? null,
       });
     }
 
