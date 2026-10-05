@@ -13,7 +13,9 @@ import { CsvRow } from '../services/room-utilization-report-data.service.js';
 export async function renderRoomUtilizationCsv(
   rows: CsvRow[],
 ): Promise<Buffer> {
-  const ExcelJS = await import('exceljs');
+  // exceljs là CJS: class nằm ở `.default` khi dynamic import (xem xlsx renderer).
+  const mod = await import('exceljs');
+  const ExcelJS = (mod as unknown as { default?: typeof mod }).default ?? mod;
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('data');
 

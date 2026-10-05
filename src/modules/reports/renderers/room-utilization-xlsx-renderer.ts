@@ -16,7 +16,10 @@ import type { RoomUtilizationReportData } from './room-utilization-pdf-renderer.
 export async function renderRoomUtilizationXlsx(
   data: RoomUtilizationReportData,
 ): Promise<Buffer> {
-  const ExcelJSModule = await import('exceljs');
+  // exceljs là CJS: dynamic import trả namespace với class nằm ở `.default`
+  // (`.Workbook` ở top-level = undefined → "Workbook is not a constructor").
+  const mod = await import('exceljs');
+  const ExcelJSModule = (mod as unknown as { default?: typeof mod }).default ?? mod;
   const workbook = new ExcelJSModule.Workbook();
   workbook.creator = 'SmartTracking System';
   workbook.created = new Date();
