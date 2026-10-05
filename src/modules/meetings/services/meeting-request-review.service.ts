@@ -1,5 +1,5 @@
 import { lockRoomsForBooking } from '../../../common/utils/room-booking-lock.util.js';
-﻿import { UserEntity } from '../../accounts/entities/user.entity.js';
+import { UserEntity } from '../../accounts/entities/user.entity.js';
 import {
   Injectable,
   Logger,

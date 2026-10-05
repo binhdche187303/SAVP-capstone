@@ -860,7 +860,7 @@ export class LiveMeetingService {
         (b) =>
           b.id !== activeBooking.id &&
           RELEVANT_BOOKING_STATUSES.includes(b.status) &&
-          b.reservedStartTime > oldEndTime,
+          b.reservedStartTime >= oldEndTime,
       )
       .sort(
         (a, b) => a.reservedStartTime.getTime() - b.reservedStartTime.getTime(),
@@ -959,7 +959,7 @@ export class LiveMeetingService {
               RoomBookingStatus.ACTIVE,
             ],
           })
-          .andWhere('rb.reservedStartTime > :oldEnd', { oldEnd: oldEndTime })
+          .andWhere('rb.reservedStartTime >= :oldEnd', { oldEnd: oldEndTime })
           .andWhere('rb.reservedStartTime < :limit', {
             limit: new Date(newEndTime.getTime() + bufferMs),
           })

@@ -18,6 +18,13 @@ export const VEHICLE_EVENTS_QUEUE_NAME = 'vehicle-events';
 export const VEHICLE_EVENT_JOB_NAME = 'vehicle-event';
 
 /**
+ * Job lỗi chứa imageBase64 (ảnh biển số) — mặc định toàn cục removeOnFail=false sẽ giữ
+ * mãi trong Redis (phình RAM, lưu dữ liệu cá nhân vô thời hạn). Giữ tối đa 1 ngày /
+ * 1000 job để còn debug sự cố, sau đó BullMQ tự xóa.
+ */
+export const VEHICLE_EVENT_REMOVE_ON_FAIL = { age: 24 * 3600, count: 1000 };
+
+/**
  * Giới hạn worker song song → ANPR chỉ chiếm tối đa N kết nối DB (pool mặc định 10),
  * phần còn lại phục vụ API khác. Gộp OCR vẫn đúng khi song song nhờ
  * pg_advisory_xact_lock theo channelId trong onVehicleEvent.

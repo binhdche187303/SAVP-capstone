@@ -23,6 +23,7 @@ import { normalizePlate } from '../utils/normalize-plate.js';
 import {
   VEHICLE_EVENTS_QUEUE_NAME,
   VEHICLE_EVENT_JOB_NAME,
+  VEHICLE_EVENT_REMOVE_ON_FAIL,
 } from '../processors/vehicle-event.processor.js';
 
 /**
@@ -69,7 +70,9 @@ export class VehicleWebhookController {
     // STT 7: enqueue rồi ack ngay — bridge không phải chờ xử lý DB. Redis lỗi → fallback
     // xử lý đồng bộ như cũ (không mất event).
     try {
-      await this.vehicleEventsQueue.add(VEHICLE_EVENT_JOB_NAME, event);
+      await this.vehicleEventsQueue.add(VEHICLE_EVENT_JOB_NAME, event, {
+        removeOnFail: VEHICLE_EVENT_REMOVE_ON_FAIL,
+      });
       return {
         success: true,
         message: 'Vehicle event accepted',
