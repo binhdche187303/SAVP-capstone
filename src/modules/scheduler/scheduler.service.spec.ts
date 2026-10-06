@@ -21,6 +21,7 @@ import { SecurityAlertAutoResolveService } from '../alerts/services/security-ale
 import { RecordingSessionService } from '../recording/services/recording-session.service.js';
 import { RecordingSystemConfigService } from '../recording/services/recording-system-config.service.js';
 import { OccupancyPersistenceService } from '../presence/services/occupancy-persistence.service.js';
+import { KpiRollupJobService } from '../kpi-rollup/services/kpi-rollup-job.service.js';
 import { DataSource } from 'typeorm';
 
 describe('SchedulerService (NSL-001 + EVD-001 + IPS-001 + GAP-001 cron wiring)', () => {
@@ -40,6 +41,7 @@ describe('SchedulerService (NSL-001 + EVD-001 + IPS-001 + GAP-001 cron wiring)',
   let recordingSessionServiceMock: any;
   let recordingSystemConfigServiceMock: any;
   let occupancyPersistenceMock: any;
+  let kpiRollupMock: any;
   let cfg: Record<string, unknown>;
   const calls: string[] = [];
 
@@ -151,6 +153,10 @@ describe('SchedulerService (NSL-001 + EVD-001 + IPS-001 + GAP-001 cron wiring)',
         return { scanned: 0, confirmed: 0 };
       }),
     };
+    kpiRollupMock = {
+      runIncremental: jest.fn(async () => ({ skipped: false, windows: {} })),
+      runReconcile: jest.fn(async () => ({ skipped: false, windows: {} })),
+    };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SchedulerService,
@@ -194,6 +200,7 @@ describe('SchedulerService (NSL-001 + EVD-001 + IPS-001 + GAP-001 cron wiring)',
           provide: OccupancyPersistenceService,
           useValue: occupancyPersistenceMock,
         },
+        { provide: KpiRollupJobService, useValue: kpiRollupMock },
       ],
     }).compile();
     return module.get(SchedulerService);
@@ -700,5 +707,48 @@ describe('SchedulerService (NSL-001 + EVD-001 + IPS-001 + GAP-001 cron wiring)',
       dataSourceMock.query.mockRejectedValueOnce(new Error('db down'));
       await expect(s.recordingMaxDurationEnforce()).resolves.toBeUndefined();
     });
+  });
+
+  // ── KPI-001 kpi-rollup cron ──
+  it('kpiRollupHourly gate OFF (default) → KHÔNG gọi runIncremental', async () => {
+    cfg = { SCHEDULER_ENABLED: true };
+    const s = await build();
+    await s.kpiRollupHourly();
+    expect(kpiRollupMock.runIncremental).not.toHaveBeenCalled();
+  });
+
+  it('kpiRollupHourly ON → gọi runIncremental 1 lần', async () => {
+    cfg = { SCHEDULER_ENABLED: true, SCHEDULER_KPI_ROLLUP_ENABLED: true };
+    const s = await build();
+    await s.kpiRollupHourly();
+    expect(kpiRollupMock.runIncremental).toHaveBeenCalledTimes(1);
+  });
+
+  it('kpiRollupHourly: throw → KHÔNG ném ra cron (ARCH-02)', async () => {
+    cfg = { SCHEDULER_ENABLED: true, SCHEDULER_KPI_ROLLUP_ENABLED: true };
+    const s = await build();
+    kpiRollupMock.runIncremental.mockRejectedValueOnce(new Error('boom'));
+    await expect(s.kpiRollupHourly()).resolves.toBeUndefined();
+  });
+
+  it('kpiRollupReconcile ON → gọi runReconcile; SCHEDULER_ENABLED=false → không gọi', async () => {
+    cfg = { SCHEDULER_ENABLED: true, SCHEDULER_KPI_ROLLUP_ENABLED: true };
+    let s = await build();
+    await s.kpiRollupReconcile();
+    expect(kpiRollupMock.runReconcile).toHaveBeenCalledTimes(1);
+    cfg = { SCHEDULER_ENABLED: false, SCHEDULER_KPI_ROLLUP_ENABLED: true };
+    s = await build();
+    await s.kpiRollupReconcile();
+    expect(kpiRollupMock.runReconcile).not.toHaveBeenCalled();
+  });
+
+  it('kpi cron: lịch phút 05 mỗi giờ + 01:00 theo giờ VN', () => {
+    const src = readFileSync(join(__dirname, 'scheduler.service.ts'), 'utf8');
+    expect(src).toContain(
+      `@Cron('0 5 * * * *', { name: 'kpi-rollup-hourly' })`,
+    );
+    expect(src).toMatch(
+      /@Cron\('0 0 1 \* \* \*', \{\s*name: 'kpi-rollup-reconcile',\s*timeZone: 'Asia\/Ho_Chi_Minh',?\s*\}\)/,
+    );
   });
 });

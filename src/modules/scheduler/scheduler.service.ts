@@ -19,6 +19,10 @@ import { MeetingRequestReviewService } from '../meetings/services/meeting-reques
 import { RecordingSessionService } from '../recording/services/recording-session.service.js';
 import { RecordingSystemConfigService } from '../recording/services/recording-system-config.service.js';
 import { OccupancyPersistenceService } from '../presence/services/occupancy-persistence.service.js';
+import {
+  KpiRollupJobService,
+  type RollupRunResult,
+} from '../kpi-rollup/services/kpi-rollup-job.service.js';
 
 /**
  * SchedulerService — Skeleton cron jobs.
@@ -52,6 +56,7 @@ export class SchedulerService {
   private readonly meetingRequestExpireEnabled: boolean;
   private readonly securityAlertAutoResolveEnabled: boolean;
   private readonly recordingMaxDurationEnabled: boolean;
+  private readonly kpiRollupEnabled: boolean;
 
   constructor(
     private readonly dataSource: DataSource,
@@ -73,6 +78,7 @@ export class SchedulerService {
     private readonly recordingSessionService: RecordingSessionService,
     private readonly recordingSystemConfigService: RecordingSystemConfigService,
     private readonly occupancyPersistenceService: OccupancyPersistenceService,
+    private readonly kpiRollupJobService: KpiRollupJobService,
   ) {
     this.schedulerEnabled = this.configService.get<boolean>(
       'SCHEDULER_ENABLED',
@@ -155,9 +161,14 @@ export class SchedulerService {
       'SCHEDULER_RECORDING_MAX_DURATION_ENABLED',
       false,
     );
+    // KPI-001 (#10): rollup KPI theo giờ + đối soát 01:00 (default OFF).
+    this.kpiRollupEnabled = this.configService.get<boolean>(
+      'SCHEDULER_KPI_ROLLUP_ENABLED',
+      false,
+    );
 
     this.logger.log(
-      `SchedulerService initialized — enabled=${this.schedulerEnabled} | no-show=${this.noShowEnabled} | auto-release=${this.autoReleaseEnabled} | reminder=${this.reminderEnabled} | device-offline-detect=${this.deviceOfflineDetectEnabled} | face-sync=${this.faceSyncEnabled} | early-vacancy=${this.earlyVacancyEnabled} | ivss-sync=${this.ivssSyncEnabled} | ivss-portrait=${this.ivssPortraitEnabled} | restricted-zone=${this.restrictedZoneEnabled} | crowd-alert=${this.crowdAlertEnabled} | gate-pairing=${this.gatePairingEnabled} | auto-complete=${this.autoCompleteEnabled} | meeting-status=${this.meetingStatusEnabled} | meeting-request-expire=${this.meetingRequestExpireEnabled} | security-alert-auto-resolve=${this.securityAlertAutoResolveEnabled} | recording-max-duration=${this.recordingMaxDurationEnabled}`,
+      `SchedulerService initialized — enabled=${this.schedulerEnabled} | no-show=${this.noShowEnabled} | auto-release=${this.autoReleaseEnabled} | reminder=${this.reminderEnabled} | device-offline-detect=${this.deviceOfflineDetectEnabled} | face-sync=${this.faceSyncEnabled} | early-vacancy=${this.earlyVacancyEnabled} | ivss-sync=${this.ivssSyncEnabled} | ivss-portrait=${this.ivssPortraitEnabled} | restricted-zone=${this.restrictedZoneEnabled} | crowd-alert=${this.crowdAlertEnabled} | gate-pairing=${this.gatePairingEnabled} | auto-complete=${this.autoCompleteEnabled} | meeting-status=${this.meetingStatusEnabled} | meeting-request-expire=${this.meetingRequestExpireEnabled} | security-alert-auto-resolve=${this.securityAlertAutoResolveEnabled} | recording-max-duration=${this.recordingMaxDurationEnabled} | kpi-rollup=${this.kpiRollupEnabled}`,
     );
   }
 
@@ -627,6 +638,53 @@ export class SchedulerService {
     );
     // TODO: inject NotificationsService và gọi sendScheduledReminders()
     return Promise.resolve();
+  }
+
+  /**
+   * KPI-001 (task #10) — rollup bảng tổng hợp zone/xe theo giờ (phút 05 mỗi giờ).
+   * Gate SCHEDULER_ENABLED && SCHEDULER_KPI_ROLLUP_ENABLED. Advisory lock trong job ⇒ nhiều
+   * instance chỉ 1 bản chạy. KHÔNG ném ra cron (ARCH-02).
+   */
+  @Cron('0 5 * * * *', { name: 'kpi-rollup-hourly' })
+  async kpiRollupHourly(): Promise<void> {
+    if (!this.schedulerEnabled || !this.kpiRollupEnabled) return;
+    try {
+      const r = await this.kpiRollupJobService.runIncremental();
+      this.logger.log(
+        `[Scheduler] kpi-rollup-hourly: ${this.describeKpiRun(r)}`,
+      );
+    } catch (e) {
+      this.logger.error(
+        `[Scheduler] kpi-rollup-hourly failed: ${e instanceof Error ? e.message : 'unknown'}`,
+      );
+    }
+  }
+
+  /** KPI-001 — đối soát 72h gần nhất lúc 01:00 giờ VN (bắt event đến muộn). */
+  @Cron('0 0 1 * * *', {
+    name: 'kpi-rollup-reconcile',
+    timeZone: 'Asia/Ho_Chi_Minh',
+  })
+  async kpiRollupReconcile(): Promise<void> {
+    if (!this.schedulerEnabled || !this.kpiRollupEnabled) return;
+    try {
+      const r = await this.kpiRollupJobService.runReconcile();
+      this.logger.log(
+        `[Scheduler] kpi-rollup-reconcile: ${this.describeKpiRun(r)}`,
+      );
+    } catch (e) {
+      this.logger.error(
+        `[Scheduler] kpi-rollup-reconcile failed: ${e instanceof Error ? e.message : 'unknown'}`,
+      );
+    }
+  }
+
+  private describeKpiRun(r: RollupRunResult): string {
+    if (r.skipped) return 'skipped (đang chạy ở instance khác)';
+    const parts = Object.entries(r.windows).map(
+      ([name, w]) => `${name}=[${w.from.toISOString()}, ${w.to.toISOString()})`,
+    );
+    return parts.length ? parts.join(' ') : 'không có cửa sổ mới';
   }
 
   /**

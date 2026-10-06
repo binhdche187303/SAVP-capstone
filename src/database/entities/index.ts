@@ -193,3 +193,9 @@ export {
   BackgroundJobType,
   BackgroundJobStatus,
 } from '../../modules/administration/entities/background-job.entity.js';
+
+// Group: KPI rollup (KPI-001)
+export { KpiZoneHourlyEntity } from '../../modules/kpi-rollup/entities/kpi-zone-hourly.entity.js';
+export { KpiVehicleHourlyEntity } from '../../modules/kpi-rollup/entities/kpi-vehicle-hourly.entity.js';
+export { KpiVehiclePlateHourlyEntity } from '../../modules/kpi-rollup/entities/kpi-vehicle-plate-hourly.entity.js';
+export { KpiRollupWatermarkEntity } from '../../modules/kpi-rollup/entities/kpi-rollup-watermark.entity.js';
