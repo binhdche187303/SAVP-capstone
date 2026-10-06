@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module.js';
+import { KpiRollupModule } from '../kpi-rollup/kpi-rollup.module.js';
 import { ZoneEntity } from '../zones/entities/zone.entity.js';
 import { ZonePresenceEventEntity } from '../zones/entities/zone-presence-event.entity.js';
 import { GateAccessLogEntity } from '../zones/entities/gate-access-log.entity.js';
@@ -42,6 +43,7 @@ import { CampusMapController } from './controllers/campus-map.controller.js';
 @Module({
   imports: [
     AuthModule,
+    KpiRollupModule,
     TypeOrmModule.forFeature([
       ZoneEntity,
       ZonePresenceEventEntity,

@@ -15,6 +15,7 @@ import { LiveMeetingModule } from '../live-meeting/live-meeting.module.js';
 import { MeetingsModule } from '../meetings/meetings.module.js';
 import { RecordingModule } from '../recording/recording.module.js';
 import { PresenceModule } from '../presence/presence.module.js';
+import { KpiRollupModule } from '../kpi-rollup/kpi-rollup.module.js';
 
 /**
  * SchedulerModule — Skeleton cho các cron job.
@@ -62,6 +63,9 @@ import { PresenceModule } from '../presence/presence.module.js';
     // không chờ event mới. Cạnh scheduler → presence MỘT CHIỀU (presence không import
     // scheduler) ⇒ không circular.
     PresenceModule,
+    // KPI-001: cron kpi-rollup inject KpiRollupJobService. Cạnh scheduler → kpi-rollup MỘT
+    // CHIỀU (kpi-rollup không import module nghiệp vụ nào) ⇒ không circular.
+    KpiRollupModule,
   ],
   providers: [SchedulerService],
   exports: [SchedulerService],

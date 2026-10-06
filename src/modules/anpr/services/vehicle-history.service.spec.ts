@@ -151,26 +151,36 @@ describe('VehicleHistoryService (VHI-001 / UC7)', () => {
   // ── isBlacklisted/listType (recon 2026-08-08, R1-R3): LEFT JOIN security_alerts
   // qua FK source_event_id → iot_device_events.id (KHÔNG match theo plateNumber+
   // thời gian). KHÔNG đụng luồng ghi (onVehicleEvent()/evaluate()) — chỉ tầng đọc. ──
-  describe('isBlacklisted/listType (LEFT JOIN security_alerts qua source_event_id)', () => {
-    it('SQL: LEFT JOIN security_alerts sa ON sa.source_event_id = iot_device_events.id AND sa.alert_type = vehicle_control_match', async () => {
+  describe('isBlacklisted/listType (LATERAL vehicle_control_list theo biển + thời điểm)', () => {
+    it('STT 19: SQL lấy cờ từ vehicle_control_list theo biển + thời điểm (KHÔNG còn JOIN security_alerts)', async () => {
       wire();
       await service.listAll(q());
       const sql = rowsCall()!.sql;
-      expect(sql).toContain('LEFT JOIN security_alerts sa');
-      expect(sql).toContain('sa.source_event_id = iot_device_events.id');
-      expect(sql).toContain("sa.alert_type = 'vehicle_control_match'");
-      expect(sql).toContain('sa.id IS NOT NULL');
-      expect(sql).toContain("sa.payload_json->>'listType'");
+      expect(sql).not.toContain('security_alerts');
+      expect(sql).toContain('LEFT JOIN LATERAL');
+      expect(sql).toContain('FROM vehicle_control_list vcl');
+      expect(sql).toContain(
+        "vcl.plate_number = iot_device_events.payload_json->>'plateNumber'",
+      );
+      expect(sql).toContain('vcl.active = true');
+      // Dòng phải TỒN TẠI tại thời điểm xe qua (không gắn cờ ngược cho lượt cũ).
+      expect(sql).toContain('vcl.created_at <= iot_device_events.event_time');
+      expect(sql).toContain(
+        'vcl.deleted_at IS NULL OR vcl.deleted_at > iot_device_events.event_time',
+      );
+      // DATA-02: blocklist ưu tiên hơn watchlist (alphabet ASC, mirror checkControlList).
+      expect(sql).toContain('ORDER BY vcl.list_type ASC');
+      expect(sql).toContain('vcl.list_type IS NOT NULL');
     });
 
-    it('DONE: có alert vehicle_control_match gắn qua source_event_id → isBlacklisted=true, listType từ DB (listAll)', async () => {
+    it('DONE: biển nằm trong control-list tại thời điểm xe qua → isBlacklisted=true, listType từ DB (listAll)', async () => {
       wire([row({ is_blacklisted: true, list_type: 'blocklist' })]);
       const r = await service.listAll(q());
       expect(r.items[0].isBlacklisted).toBe(true);
       expect(r.items[0].listType).toBe('blocklist');
     });
 
-    it('DONE: KHÔNG có alert (hoặc bị throttle trong cửa sổ 300s) → isBlacklisted=false, listType=null (listAll)', async () => {
+    it('DONE: biển KHÔNG trong control-list → isBlacklisted=false, listType=null (listAll)', async () => {
       wire([row({ is_blacklisted: false, list_type: null })]);
       const r = await service.listAll(q());
       expect(r.items[0].isBlacklisted).toBe(false);
@@ -184,10 +194,10 @@ describe('VehicleHistoryService (VHI-001 / UC7)', () => {
       expect(r.items[0].listType).toBe('watchlist');
     });
 
-    it('COUNT query KHÔNG cần JOIN security_alerts (isBlacklisted không phải filter, chỉ hiển thị)', async () => {
+    it('COUNT query KHÔNG cần LATERAL control-list (isBlacklisted không phải filter, chỉ hiển thị)', async () => {
       wire();
       await service.listAll(q());
-      expect(countCall()!.sql).not.toContain('security_alerts');
+      expect(countCall()!.sql).not.toContain('vehicle_control_list');
     });
   });
 
@@ -401,7 +411,7 @@ describe('VehicleHistoryService (VHI-001 / UC7)', () => {
     await service.listForUser('u1', q({ from: '2026-06-01T00:00:00.000Z' }));
     for (const c of captured) {
       expect(c.sql).toMatch(/^\s*SELECT/);
-      expect(c.sql).not.toMatch(/INSERT|UPDATE|DELETE/i);
+      expect(c.sql).not.toMatch(/\b(INSERT|UPDATE|DELETE)\b/i);
       expect(c.sql).not.toContain('2026-06-01');
       expect(c.sql).not.toContain('u1'); // userId qua param, không nối chuỗi
     }

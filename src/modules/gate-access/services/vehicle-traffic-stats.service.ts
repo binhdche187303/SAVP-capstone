@@ -7,6 +7,13 @@ import type {
 import { VehicleTrafficStatsResponseDto } from '../dto/vehicle-traffic-stats-response.dto.js';
 import { VehicleTrafficStatsSummaryDto } from '../dto/vehicle-traffic-stats-summary.dto.js';
 import { VehicleTrafficStatsBucketDto } from '../dto/vehicle-traffic-stats-bucket.dto.js';
+import { KpiReadWindowService } from '../../kpi-rollup/services/kpi-read-window.service.js';
+import { BUSINESS_TZ } from '../../kpi-rollup/kpi-rollup.constants.js';
+import {
+  rangeClause,
+  SqlParams,
+} from '../../kpi-rollup/utils/sql-params.util.js';
+import type { ReadWindow } from '../../kpi-rollup/utils/kpi-window.types.js';
 
 const VEHICLE_EVENT_TYPE = 'ivss_vehicle_event';
 
@@ -17,7 +24,7 @@ interface SummaryRow {
   enter_count: number;
   leave_count: number;
   seen_count: number;
-  unique_vehicles: number;
+  unique_vehicles?: number;
 }
 
 interface SeriesRow {
@@ -26,93 +33,167 @@ interface SeriesRow {
   cnt: number;
 }
 
+/** Biểu thức cột theo nguồn — hằng trong code (SEC-03). */
+interface SourceCols {
+  zone: string;
+  vehicleType: string;
+  direction: string;
+  matchState: string;
+  plate: string;
+  ts: string;
+}
+const AGG_COLS: SourceCols = {
+  zone: 'zone_id',
+  vehicleType: 'vehicle_type',
+  direction: 'direction',
+  matchState: 'match_state',
+  plate: 'plate_number',
+  ts: 'bucket_hour',
+};
+const RAW_COLS: SourceCols = {
+  zone: 'zone_id',
+  vehicleType: "payload_json->>'vehicleType'",
+  direction: "payload_json->>'direction'",
+  matchState: "payload_json->>'matchState'",
+  plate: "payload_json->>'plateNumber'",
+  ts: 'event_time',
+};
+
 /**
  * VehicleTrafficStatsService (VTS-001 / UC-114) — thống kê lưu lượng phương tiện.
  *
  * Nguồn: `iot_device_events WHERE event_type='ivss_vehicle_event'` — ĐÚNG PRE-2 SRS trích
- * dẫn "UC-ANPR-05" (sự kiện biển số thô), KHÔNG PHẢI `gate_access_logs`. Raw SQL qua
- * `DataSource` mirror CHÍNH XÁC `VehicleHistoryService` (cùng bảng, cùng event_type) — KHÔNG
- * `@InjectRepository` (enum entity `IoTDeviceEventType` không có giá trị này).
+ * dẫn "UC-ANPR-05" (sự kiện biển số thô), KHÔNG PHẢI `gate_access_logs`.
+ * KPI-001: giờ tròn đã rollup đọc `kpi_vehicle_hourly` / `kpi_vehicle_plate_hourly`, mép +
+ * phần chưa rollup đọc raw; bucket series theo giờ VN (trước đây theo UTC của session DB).
  *
- * DATA-02 (crux): `event_type = 'ivss_vehicle_event'` LUÔN là điều kiện WHERE đầu tiên.
+ * DATA-02 (crux): phần raw luôn có `event_type = 'ivss_vehicle_event'` là điều kiện WHERE đầu tiên.
  * Vocabulary `direction` payload THẬT: `enter/leave/seen` (KHÔNG PHẢI `in/out`).
  */
 @Injectable()
 export class VehicleTrafficStatsService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly kpiReadWindow: KpiReadWindowService,
+  ) {}
 
   async getStats(
     query: VehicleTrafficStatsQueryDto,
   ): Promise<VehicleTrafficStatsResponseDto> {
-    if (new Date(query.from).getTime() > new Date(query.to).getTime()) {
+    const from = new Date(query.from);
+    const to = new Date(query.to);
+    if (from.getTime() > to.getTime()) {
       throw new BadRequestException({
         code: 'INVALID_DATE_RANGE',
         message: 'Khoảng thời gian không hợp lệ',
       });
     }
 
-    const { where, params } = this.buildWhere(query);
+    const window = await this.kpiReadWindow.resolve('vehicle_hourly', from, to);
     const groupBy: TrafficStatsGroupBy = query.groupBy ?? 'day';
 
-    const summaryRows: SummaryRow[] = await this.dataSource.manager.query(
-      `SELECT
-         COUNT(*)::int AS total,
-         COUNT(*) FILTER (WHERE payload_json->>'matchState' = 'matched')::int AS matched,
-         COUNT(*) FILTER (WHERE payload_json->>'matchState' = 'unmatched')::int AS unmatched,
-         COUNT(*) FILTER (WHERE payload_json->>'direction' = 'enter')::int AS enter_count,
-         COUNT(*) FILTER (WHERE payload_json->>'direction' = 'leave')::int AS leave_count,
-         COUNT(*) FILTER (WHERE payload_json->>'direction' = 'seen')::int AS seen_count,
-         COUNT(DISTINCT payload_json->>'plateNumber')::int AS unique_vehicles
-       FROM iot_device_events WHERE ${where}`,
-      params,
+    const summaryRows: SummaryRow[] = await this.runUnion(
+      query,
+      window,
+      (cols, w) =>
+        `SELECT ${cols.direction} AS direction, ${cols.matchState} AS match_state, ${
+          cols === AGG_COLS ? 'event_count' : 'COUNT(*)'
+        } AS cnt ${w}${cols === RAW_COLS ? ' GROUP BY 1, 2' : ''}`,
+      (u) => `SELECT
+         COALESCE(SUM(cnt), 0)::int AS total,
+         COALESCE(SUM(cnt) FILTER (WHERE match_state = 'matched'), 0)::int AS matched,
+         COALESCE(SUM(cnt) FILTER (WHERE match_state = 'unmatched'), 0)::int AS unmatched,
+         COALESCE(SUM(cnt) FILTER (WHERE direction = 'enter'), 0)::int AS enter_count,
+         COALESCE(SUM(cnt) FILTER (WHERE direction = 'leave'), 0)::int AS leave_count,
+         COALESCE(SUM(cnt) FILTER (WHERE direction = 'seen'), 0)::int AS seen_count
+       FROM (${u}) t`,
+      'kpi_vehicle_hourly',
     );
 
-    const seriesRows: SeriesRow[] = await this.dataSource.manager.query(
-      `SELECT ${this.bucketExpr(groupBy)} AS bucket, payload_json->>'direction' AS direction, COUNT(*)::int AS cnt
-         FROM iot_device_events WHERE ${where}
-        GROUP BY bucket, direction ORDER BY bucket ASC`,
-      params,
+    const uniqueRows: Array<{ unique_vehicles: number }> = await this.runUnion(
+      query,
+      window,
+      (cols, w) => `SELECT ${cols.plate} AS plate ${w}`,
+      (u) =>
+        `SELECT COUNT(DISTINCT plate)::int AS unique_vehicles FROM (${u}) t`,
+      'kpi_vehicle_plate_hourly',
+    );
+
+    const seriesRows: SeriesRow[] = await this.runUnion(
+      query,
+      window,
+      (cols, w) =>
+        `SELECT ${this.bucketExpr(groupBy, cols.ts)} AS bucket, ${cols.direction} AS direction, ${
+          cols === AGG_COLS ? 'event_count' : 'COUNT(*)'
+        } AS cnt ${w}${cols === RAW_COLS ? ' GROUP BY 1, 2' : ''}`,
+      (u) => `SELECT bucket, direction, SUM(cnt)::int AS cnt FROM (${u}) t
+              GROUP BY bucket, direction ORDER BY bucket ASC`,
+      'kpi_vehicle_hourly',
     );
 
     return {
-      summary: this.toSummaryDto(summaryRows[0]),
+      summary: this.toSummaryDto(
+        summaryRows[0],
+        uniqueRows[0]?.unique_vehicles,
+      ),
       series: this.pivotSeries(seriesRows),
     };
   }
 
-  /** Filter động: `event_type` LUÔN đầu tiên, bind tham số nối tiếp (SEC-03). */
-  private buildWhere(query: VehicleTrafficStatsQueryDto): {
-    where: string;
-    params: unknown[];
-  } {
-    const params: unknown[] = [];
-    let where = `event_type = '${VEHICLE_EVENT_TYPE}'`;
-
-    params.push(query.from);
-    where += ` AND event_time >= $${params.length}`;
-    params.push(query.to);
-    where += ` AND event_time <= $${params.length}`;
-
-    if (query.zoneId) {
-      params.push(query.zoneId);
-      where += ` AND zone_id = $${params.length}`;
+  /**
+   * Ghép `UNION ALL` giữa phần aggregate (nếu có) và phần raw. `select(cols, fromWhere)` dựng
+   * SELECT của 1 nguồn; `wrap(union)` dựng query ngoài.
+   */
+  private runUnion<T>(
+    query: VehicleTrafficStatsQueryDto,
+    window: ReadWindow,
+    select: (cols: SourceCols, fromWhere: string) => string,
+    wrap: (union: string) => string,
+    aggTable: 'kpi_vehicle_hourly' | 'kpi_vehicle_plate_hourly',
+  ): Promise<T[]> {
+    const p = new SqlParams();
+    const parts: string[] = [];
+    if (window.agg) {
+      const where =
+        `FROM ${aggTable} WHERE bucket_hour >= ${p.add(window.agg.from)}` +
+        ` AND bucket_hour < ${p.add(window.agg.to)}` +
+        this.filterSql(query, p, AGG_COLS);
+      parts.push(select(AGG_COLS, where));
     }
-    if (query.vehicleType) {
-      params.push(query.vehicleType);
-      where += ` AND payload_json->>'vehicleType' = $${params.length}`;
-    }
+    const rawWhere =
+      `FROM iot_device_events WHERE event_type = '${VEHICLE_EVENT_TYPE}'` +
+      ` AND ${rangeClause('event_time', window.raw, p)}` +
+      this.filterSql(query, p, RAW_COLS);
+    parts.push(select(RAW_COLS, rawWhere));
+    return this.dataSource.manager.query(
+      wrap(parts.join('\n UNION ALL \n')),
+      p.values,
+    );
+  }
 
-    return { where, params };
+  /** Filter động, bind tham số nối tiếp (SEC-03). */
+  private filterSql(
+    query: VehicleTrafficStatsQueryDto,
+    p: SqlParams,
+    cols: SourceCols,
+  ): string {
+    let sql = '';
+    if (query.zoneId) sql += ` AND ${cols.zone} = ${p.add(query.zoneId)}`;
+    if (query.vehicleType)
+      sql += ` AND ${cols.vehicleType} = ${p.add(query.vehicleType)}`;
+    return sql;
   }
 
   /** CHỈ 2 nhánh cố định — KHÔNG nội suy giá trị query param vào biểu thức SQL (SEC-03). */
-  private bucketExpr(groupBy: TrafficStatsGroupBy): string {
-    return groupBy === 'hour'
-      ? "to_char(event_time, 'YYYY-MM-DD HH24:00')"
-      : "to_char(event_time, 'YYYY-MM-DD')";
+  private bucketExpr(groupBy: TrafficStatsGroupBy, tsColumn: string): string {
+    const fmt = groupBy === 'hour' ? 'YYYY-MM-DD HH24:00' : 'YYYY-MM-DD';
+    return `to_char(${tsColumn} AT TIME ZONE '${BUSINESS_TZ}', '${fmt}')`;
   }
 
-  private toSummaryDto(row?: SummaryRow): VehicleTrafficStatsSummaryDto {
+  private toSummaryDto(
+    row?: SummaryRow,
+    uniqueVehicles?: number,
+  ): VehicleTrafficStatsSummaryDto {
     return {
       total_events: row?.total ?? 0,
       total_matched: row?.matched ?? 0,
@@ -120,7 +201,7 @@ export class VehicleTrafficStatsService {
       total_enter: row?.enter_count ?? 0,
       total_leave: row?.leave_count ?? 0,
       total_seen: row?.seen_count ?? 0,
-      unique_vehicles: row?.unique_vehicles ?? 0,
+      unique_vehicles: uniqueVehicles ?? 0,
     };
   }
 

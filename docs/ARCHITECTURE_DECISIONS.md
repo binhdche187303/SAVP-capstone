@@ -5,6 +5,7 @@
 | :--- | :--- | :--- |
 | 2026-06-04 | Tạo tài liệu ban đầu: ghi lại quyết định kiến trúc Hybrid TypeORM | Toàn bộ file |
 | 2026-06-15 | Thêm ADR-008: IoT Device dùng status-based disable thay soft delete (phục vụ spec IOT-011) | Cuối file |
+| 2026-10-05 | ADR-004: thêm 5 bảng Học vụ (ACD-001) vào danh sách soft delete | ADR-004 |
 
 ---
 
@@ -148,7 +149,7 @@ deletedAt: Date | null;
 - Để thấy records đã xóa: dùng `repository.find({ withDeleted: true })`
 
 ### Bảng áp dụng soft delete
-`departments`, `users`, `face_profiles`, `meetings`, `meeting_notes`, `rooms`, `equipments`, `device_user_mappings`, `media_files`, `meeting_minutes`
+`departments`, `users`, `face_profiles`, `meetings`, `meeting_notes`, `rooms`, `equipments`, `device_user_mappings`, `media_files`, `meeting_minutes`, `semesters`, `subjects`, `study_shifts`, `students`, `class_sections` (ACD-001; `class_enrollments`/`class_sessions` dùng status, không soft delete — tiền lệ ADR-008)
 
 ---
 

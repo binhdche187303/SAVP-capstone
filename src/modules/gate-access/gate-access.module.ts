@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module.js';
+import { KpiRollupModule } from '../kpi-rollup/kpi-rollup.module.js';
 import { GateAccessLogEntity } from '../zones/entities/gate-access-log.entity.js';
 import { GateAccessHistoryService } from './services/gate-access-history.service.js';
 import { VehicleTrafficStatsService } from './services/vehicle-traffic-stats.service.js';
@@ -25,7 +26,11 @@ import { UserJourneyService } from './services/user-journey.service.js';
  * chấp nhận cross-module raw-SQL read qua `DataSource`).
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([GateAccessLogEntity]), AuthModule],
+  imports: [
+    TypeOrmModule.forFeature([GateAccessLogEntity]),
+    AuthModule,
+    KpiRollupModule,
+  ],
   controllers: [
     GateAccessHistoryController,
     VehicleTrafficStatsController,

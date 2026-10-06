@@ -41,6 +41,8 @@ import { UtilizationModule } from './modules/utilization/utilization.module';
 import { IvssModule } from './modules/ivss/ivss.module';
 import { AnprModule } from './modules/anpr/anpr.module';
 import { ZonesModule } from './modules/zones/zones.module';
+import { AcademicModule } from './modules/academic/academic.module';
+import { KpiRollupModule } from './modules/kpi-rollup/kpi-rollup.module';
 import { AlertsModule } from './modules/alerts/alerts.module';
 import { GateAccessModule } from './modules/gate-access/gate-access.module';
 import { RestrictedZoneModule } from './modules/restricted-zone/restricted-zone.module';
@@ -123,6 +125,8 @@ void loadDevModule; // suppress unused warning
     IvssModule,
     AnprModule,
     ZonesModule, // schema-only: đăng ký entity scope Zone (SAVP)
+    AcademicModule, // schema-only: đăng ký entity Học vụ (ACD-001, nền điểm danh phòng học #23)
+    KpiRollupModule, // KPI-001 (#10): bảng tổng hợp theo giờ + cron rollup + đọc lai
     AlertsModule, // schema-only: đăng ký entity Security Alert Center (SAVP)
     GateAccessModule, // Bước 2 SAVP: ghép cặp + tra cứu + thống kê gate access (GAP-001/GAH-001/VTS-001)
     RestrictedZoneModule, // Bước 3 SAVP (ARZ-001/UC-124): cron xâm nhập khu vực hạn chế
