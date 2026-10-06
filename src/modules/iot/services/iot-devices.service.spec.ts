@@ -41,10 +41,16 @@ describe('IotDevicesService', () => {
   let dataSourceMock: any;
   let auditRepoMock: any;
   let queryRunnerMock: any; // Keep as any for deep mocking
-  let deviceOfflineHookMock: { onDeviceOffline: jest.Mock };
+  let deviceOfflineHookMock: {
+    onDeviceOffline: jest.Mock;
+    onDeviceOnline: jest.Mock;
+  };
 
   beforeEach(async () => {
-    deviceOfflineHookMock = { onDeviceOffline: jest.fn() };
+    deviceOfflineHookMock = {
+      onDeviceOffline: jest.fn(),
+      onDeviceOnline: jest.fn(),
+    };
     queryRunnerMock = {
       connect: jest.fn(),
       startTransaction: jest.fn(),
@@ -1056,7 +1062,7 @@ describe('IotDevicesService', () => {
         );
       });
 
-      it('offline->online → KHÔNG gọi hook', async () => {
+      it('offline->online → gọi onDeviceOnline, KHÔNG gọi onDeviceOffline', async () => {
         (dataSourceMock.manager.find as jest.Mock).mockResolvedValue([
           cam({ id: 'c1', status: 'offline' }),
         ]);
@@ -1065,6 +1071,9 @@ describe('IotDevicesService', () => {
         await service.detectOfflineDevices(null);
 
         expect(deviceOfflineHookMock.onDeviceOffline).not.toHaveBeenCalled();
+        expect(deviceOfflineHookMock.onDeviceOnline).toHaveBeenCalledWith(
+          expect.objectContaining({ deviceId: 'c1' }),
+        );
       });
 
       it('đã offline, vẫn offline (không transition) → KHÔNG gọi hook', async () => {

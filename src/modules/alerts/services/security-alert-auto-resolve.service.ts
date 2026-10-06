@@ -44,6 +44,20 @@ export class SecurityAlertAutoResolveService {
               resolution_note = 'Tự động đóng do không tái phát trong ' || $1::int || ' phút'
         WHERE status <> 'resolved'
           AND COALESCE(last_seen_at, triggered_at) < NOW() - ($1::int * INTERVAL '1 minute')
+          -- device_error: KHÔNG tự đóng khi còn camera trong alert vẫn offline (offline chỉ
+          -- ghi 1 lần lúc chuyển trạng thái → last_seen_at không cập nhật). Đóng khi online lại.
+          AND NOT (
+            alert_type = 'device_error'
+            AND EXISTS (
+              SELECT 1 FROM iot_devices d
+               WHERE d.status = 'offline'
+                 AND (
+                   d.id::text = payload_json->>'deviceId'
+                   OR COALESCE(payload_json->'offlineDevices', '[]'::jsonb)
+                      @> jsonb_build_array(jsonb_build_object('deviceId', d.id::text))
+                 )
+            )
+          )
         RETURNING id`,
       [timeoutMinutes],
     );
