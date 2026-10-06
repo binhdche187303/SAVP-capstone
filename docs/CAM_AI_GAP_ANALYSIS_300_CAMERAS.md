@@ -23,7 +23,7 @@
 | :--- | :-: | :-: | :-: | :-: |
 | Xlsx — Tối ưu (1–10) | 10 | 2 | 6 | 2 |
 | Xlsx — Nâng cấp (11–21) | 11 | 0 | 6 | 5 |
-| Xlsx — Xây mới (22–33) | 12 | 0 | 4 | 8 |
+| Xlsx — Xây mới (22–33) | 12 | 1 | 4 | 7 |
 
 **Kết luận chính:**
 
@@ -91,7 +91,7 @@ Giả định (cần xác nhận lại khi có API nhà cung cấp):
 
 | # | Công việc | Trạng thái | Ghi chú |
 | :-: | :--- | :-: | :--- |
-| 22 | DB schema Học vụ | 🔧❌ | LamNH đang làm, chưa thấy migration/entity (`classroom/semester/student` không có trong `src`). |
+| 22 | DB schema Học vụ | ✅ | ACD-001: 7 bảng `semesters`, `subjects`, `study_shifts`, `students`, `class_sections`, `class_enrollments`, `class_sessions` + seed 6 ca + script demo (`scripts/seed-academic-demo.ts`). Spec: `spec/features/academic/feat-academic-db-schema/`. |
 | 23 | Mapping điểm danh theo ca học | ❌ | Có thể tái dùng logic attendance + `ivss.channel_room_map` (camera phòng → phòng → ca học). |
 | 24 | Đồng bộ SIS/LMS | ❌ | Chờ API của trường. |
 | 25 | Đồng bộ HRM/eOffice | ❌ | Hiện chỉ import Excel tài khoản. |
@@ -117,7 +117,7 @@ Giả định (cần xác nhận lại khi có API nhà cung cấp):
 | 2.4 Biển số | Đăng ký xe, webhook ANPR, resolve, biển lạ, blocklist/watchlist, lịch sử, thống kê lưu lượng (UC-114), export | Phân loại loại phương tiện từ camera (cần field từ API nhà cung cấp) |
 | 2.5 Điểm danh cổng | Gate log + pairing vào/ra, lịch sử, cảnh báo không quyền | Đối chiếu lịch làm việc/lịch học (thiếu dữ liệu HRM/SIS) |
 | 2.6 Hành lang/khu công cộng | Zone presence, occupancy, timeline, heatmap theo zone, crowd/restricted alert | Heatmap trên mặt bằng |
-| 2.7 Phòng học | — | Toàn bộ (#22–24) |
+| 2.7 Phòng học | Schema Học vụ (#22): học kỳ, môn, ca, SV, lớp học phần, danh sách lớp, buổi học | Điểm danh theo ca (#23), đồng bộ SIS (#24), báo cáo chuyên cần SV |
 | 2.8 Phòng họp | **Đầy đủ** (booking, duyệt, check-in/out tự động, thời lượng, tỉ lệ, PDF điểm danh) | Đồng bộ lịch từ eOffice |
 | 2.9 Tích hợp eOffice/HRM/SIS/IOC | — | Toàn bộ |
 | 2.10 Khách | Guest live meeting (khác nghiệp vụ) | Toàn bộ Visitor |

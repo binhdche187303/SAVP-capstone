@@ -346,7 +346,7 @@ Cột này là **đối chiếu ở mức module**, không phải chứng minh U
 | Heatmap điểm ảnh (pixel) | Phụ thuộc camera Dahua tự sinh — không kiểm soát được, chưa xác minh thiết bị hỗ trợ. **Làm heatmap mức khu vực thay thế.** |
 | Lịch gửi báo cáo tự động | Lao động chân tay (thêm cron + template), 0 giá trị kỹ thuật để bảo vệ. Xuất thủ công là đủ. |
 | Báo cáo định dạng Word | Thêm renderer thứ 3 cho mỗi báo cáo. PDF + Excel đã đủ chứng minh năng lực. |
-| Điểm danh phòng học | Không khác phòng họp → không tạo giá trị kỹ thuật mới. |
+| ~~Điểm danh phòng học~~ | **Mở lại 2026-10-05** — triển khai theo gap analysis #22–#24. Nền schema: ACD-001 (`spec/features/academic/feat-academic-db-schema/`). |
 | Tích hợp eOffice / HRM / SIS | Không có hệ thống thật để tích hợp → chỉ mock được, không bảo vệ được. |
 | Quản lý khách/guest | Workflow mới hoàn toàn, không tái dùng được nền có sẵn. |
 | SMS | Cần cổng SMS trả phí. Email + in-app đủ chứng minh cơ chế cảnh báo đa kênh. |

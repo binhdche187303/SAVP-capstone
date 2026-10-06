@@ -194,6 +194,30 @@ export {
   BackgroundJobStatus,
 } from '../../modules/administration/entities/background-job.entity.js';
 
+// Group: Academic (Học vụ — ACD-001)
+export {
+  SemesterEntity,
+  SemesterStatus,
+} from '../../modules/academic/entities/semester.entity.js';
+export { SubjectEntity } from '../../modules/academic/entities/subject.entity.js';
+export { StudyShiftEntity } from '../../modules/academic/entities/study-shift.entity.js';
+export {
+  StudentEntity,
+  StudentStudyStatus,
+} from '../../modules/academic/entities/student.entity.js';
+export {
+  ClassSectionEntity,
+  ClassSectionStatus,
+} from '../../modules/academic/entities/class-section.entity.js';
+export {
+  ClassEnrollmentEntity,
+  ClassEnrollmentStatus,
+} from '../../modules/academic/entities/class-enrollment.entity.js';
+export {
+  ClassSessionEntity,
+  ClassSessionStatus,
+} from '../../modules/academic/entities/class-session.entity.js';
+
 // Group: KPI rollup (KPI-001)
 export { KpiZoneHourlyEntity } from '../../modules/kpi-rollup/entities/kpi-zone-hourly.entity.js';
 export { KpiVehicleHourlyEntity } from '../../modules/kpi-rollup/entities/kpi-vehicle-hourly.entity.js';
