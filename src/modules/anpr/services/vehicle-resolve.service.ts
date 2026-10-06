@@ -243,6 +243,8 @@ export class VehicleResolveService implements VehicleEventHandlerPort {
         evt.plateNumber,
         { channelId: evt.channelId, direction },
         eventId ?? undefined,
+        // STT 20 (perf): matched = đăng ký active đã resolve ở trên → evaluate bỏ query đăng ký.
+        { registeredActive: userId !== null },
       );
 
       if (matchState !== 'matched') {
