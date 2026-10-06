@@ -68,6 +68,11 @@ describe('VehicleControlAlertService (VCC-001 / UC9)', () => {
     expect(dto.priority).toBe('high');
     expect(dto.channel).toBe('in_app');
     expect(dto.recipientUserIds).toEqual(['admin1', 'admin2']);
+    // Tiếng Việt thật, không phải chuỗi escape literal "ả" (lộ ra ở WS realtime)
+    expect(dto.subject).toBe('Cảnh báo: xe trong danh sách chặn');
+    expect(dto.content).toContain('Biển số 30A12345 vừa qua cổng');
+    expect(dto.content).toContain('Lý do: stolen.');
+    expect(`${dto.subject}${dto.content}`).not.toMatch(/\\u[0-9a-fA-F]{4}/);
     expect(dto.payloadJson).toMatchObject({
       plateNumber: '30A12345',
       listType: 'blocklist',

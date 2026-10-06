@@ -17,6 +17,8 @@ import { PersonWatchlistCheckService } from './services/person-watchlist-check.s
 import { SecurityAlertConfigService } from './services/security-alert-config.service.js';
 import { SecurityAlertConfigController } from './controllers/security-alert-config.controller.js';
 import { SecurityAlertAutoResolveService } from './services/security-alert-auto-resolve.service.js';
+import { SecurityAlertNotifierService } from './services/security-alert-notifier.service.js';
+import { WebsocketModule } from '../websocket/websocket.module.js';
 
 /**
  * AlertsModule (SAVP Security Alert Center scope — SRS UC-121→125, UC-129).
@@ -67,6 +69,9 @@ import { SecurityAlertAutoResolveService } from './services/security-alert-auto-
     AuthModule,
     NotificationsModule,
     AdministrationModule,
+    // SecurityAlertNotifierService phát WS `security.alert.new` (NotificationsModule đã
+    // import WebsocketModule sẵn — không tạo vòng mới).
+    WebsocketModule,
   ],
   controllers: [
     AlertRulesController,
@@ -81,6 +86,7 @@ import { SecurityAlertAutoResolveService } from './services/security-alert-auto-
     PersonWatchlistCheckService,
     SecurityAlertConfigService,
     SecurityAlertAutoResolveService,
+    SecurityAlertNotifierService,
   ],
   exports: [
     TypeOrmModule,

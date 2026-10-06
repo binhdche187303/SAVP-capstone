@@ -168,7 +168,7 @@ export class CrowdAlertService {
     occupancyCount: number,
   ): boolean {
     const threshold = rule.threshold as number; // caller đảm bảo threshold !== null
-    return occupancyCount >= threshold;
+    return occupancyCount > threshold; // spec UC-121 §2.3: "vượt quá", bằng ngưỡng chưa tính
   }
 
   /**

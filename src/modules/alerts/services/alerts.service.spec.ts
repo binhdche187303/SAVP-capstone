@@ -5,6 +5,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { SecurityAlertEntity } from '../entities/security-alert.entity.js';
 import { AlertsService } from './alerts.service.js';
 import { SecurityAlertConfigService } from './security-alert-config.service.js';
+import { SecurityAlertNotifierService } from './security-alert-notifier.service.js';
 
 describe('AlertsService (ASC-001 / UC-123)', () => {
   let service: AlertsService;
@@ -50,6 +51,53 @@ describe('AlertsService (ASC-001 / UC-123)', () => {
       ],
     }).compile();
     service = module.get(AlertsService);
+  });
+
+
+  describe('notifier (lỗi 3: thông báo cảnh báo mới)', () => {
+    let notifier: { notifyNewAlert: jest.Mock };
+    let svc: AlertsService;
+
+    beforeEach(async () => {
+      notifier = { notifyNewAlert: jest.fn().mockResolvedValue(undefined) };
+      const m = await Test.createTestingModule({
+        providers: [
+          AlertsService,
+          { provide: getRepositoryToken(SecurityAlertEntity), useValue: repo },
+          {
+            provide: SecurityAlertConfigService,
+            useValue: securityAlertConfigService,
+          },
+          { provide: SecurityAlertNotifierService, useValue: notifier },
+        ],
+      }).compile();
+      svc = m.get(AlertsService);
+    });
+
+    it('alert MỚI → gọi notifyNewAlert đúng 1 lần với alert vừa tạo', async () => {
+      const r = await svc.recordAlert({ alertType: 'crowd', zoneId: 'z1' });
+      expect(r.isNew).toBe(true);
+      expect(notifier.notifyNewAlert).toHaveBeenCalledTimes(1);
+      expect(notifier.notifyNewAlert).toHaveBeenCalledWith(r.alert);
+    });
+
+    it('bump alert đang mở (isNew=false) → KHÔNG gọi notifier (chống spam)', async () => {
+      repo.save.mockRejectedValueOnce({ driverError: { code: '23505' } });
+      const open = { id: 'open-1', alertType: 'crowd', zoneId: 'z1', status: 'new' };
+      repo.findOne
+        .mockResolvedValueOnce(open)
+        .mockResolvedValueOnce({ ...open, occurrenceCount: 2 });
+      const r = await svc.recordAlert({ alertType: 'crowd', zoneId: 'z1' });
+      expect(r.isNew).toBe(false);
+      expect(notifier.notifyNewAlert).not.toHaveBeenCalled();
+    });
+
+    it('notifier treo → recordAlert KHÔNG chờ (fire-and-forget)', async () => {
+      notifier.notifyNewAlert.mockReturnValue(new Promise(() => undefined));
+      await expect(
+        svc.recordAlert({ alertType: 'crowd', zoneId: 'z1' }),
+      ).resolves.toMatchObject({ isNew: true });
+    });
   });
 
   describe('recordAlert', () => {

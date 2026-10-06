@@ -15,6 +15,8 @@ import { FACE_VERIFY_HOOK } from '../../../common/ports/face-verify-hook.js';
 import type { FaceVerifyHook } from '../../../common/ports/face-verify-hook.js';
 import { STRANGER_ALERT_HOOK } from '../../../common/ports/stranger-alert-hook.js';
 import type { StrangerAlertHook } from '../../../common/ports/stranger-alert-hook.js';
+import { DEVICE_OFFLINE_ALERT_HOOK } from '../../../common/ports/device-offline-alert-hook.js';
+import type { DeviceOfflineAlertHook } from '../../../common/ports/device-offline-alert-hook.js';
 import * as crypto from 'crypto';
 import { probeTcp } from '../utils/rtsp-probe.util.js';
 import {
@@ -93,6 +95,10 @@ export class IotDevicesService {
     @Optional()
     @Inject(STRANGER_ALERT_HOOK)
     private readonly strangerAlertHook?: StrangerAlertHook,
+    // Hook cảnh báo camera online → offline, optional (không phụ thuộc alerts).
+    @Optional()
+    @Inject(DEVICE_OFFLINE_ALERT_HOOK)
+    private readonly deviceOfflineAlertHook?: DeviceOfflineAlertHook,
   ) {}
 
   async create(
@@ -611,6 +617,36 @@ export class IotDevicesService {
         await queryRunner.rollbackTransaction();
       } finally {
         await queryRunner.release();
+      }
+    }
+
+    // Cảnh báo camera vừa mất kết nối — SAU khi transition đã commit; lỗi hook KHÔNG
+    // ảnh hưởng kết quả probe (đã ghi status/audit xong).
+    if (this.deviceOfflineAlertHook) {
+      const detectedAt = new Date();
+      for (const t of transitions) {
+        if (
+          t.from !== IoTDeviceStatus.ONLINE ||
+          t.to !== IoTDeviceStatus.OFFLINE
+        )
+          continue;
+        const device = results.find((r) => r.device.id === t.id)?.device;
+        if (!device) continue;
+        try {
+          await this.deviceOfflineAlertHook.onDeviceOffline({
+            deviceId: device.id,
+            deviceCode: device.deviceCode,
+            deviceName: device.deviceName,
+            zoneId: device.zoneId ?? null,
+            detectedAt,
+          });
+        } catch (e) {
+          this.logger.error(
+            `device offline alert hook failed (device=${device.deviceCode}): ${
+              e instanceof Error ? e.message : 'unknown'
+            }`,
+          );
+        }
       }
     }
 

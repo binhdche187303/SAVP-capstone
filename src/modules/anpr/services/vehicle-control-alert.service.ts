@@ -106,12 +106,12 @@ export class VehicleControlAlertService {
         if (controlListMatch.listType === 'blocklist') {
           alertType = 'vehicle_control_match';
           severity = 'high';
-          subject = 'C\\u1ea3nh b\\u00e1o: xe trong danh s\\u00e1ch ch\\u1eb7n';
+          subject = 'Cảnh báo: xe trong danh sách chặn';
           notificationType = NotificationType.VEHICLE_CONTROL_LIST_MATCH;
         } else {
           alertType = 'vehicle_control_match';
           severity = 'medium';
-          subject = 'C\\u1ea3nh b\\u00e1o: xe c\\u1ea7n theo d\\u00f5i';
+          subject = 'Cảnh báo: xe cần theo dõi';
           notificationType = NotificationType.VEHICLE_CONTROL_LIST_MATCH;
         }
       }
@@ -127,7 +127,7 @@ export class VehicleControlAlertService {
             alertType = 'unknown_vehicle';
             severity = 'medium';
             subject =
-              'C\\u1ea3nh b\\u00e1o: bi\\u1ec3n s\\u1ed1 kh\\u00f4ng x\\u00e1c \\u0111\\u1ecbnh';
+              'Cảnh báo: biển số không xác định';
             notificationType = NotificationType.UNKNOWN_VEHICLE_ALERT;
           } else if (
             regRows[0].status === 'pending' ||
@@ -136,7 +136,7 @@ export class VehicleControlAlertService {
             alertType = 'vehicle_unauthorized';
             severity = 'low';
             subject =
-              'Th\\u00f4ng b\\u00e1o: xe \\u0111ang ch\\u1edd duy\\u1ec7t/b\\u1ecb t\\u1eeb ch\\u1ed1i';
+              'Thông báo: xe đang chờ duyệt/bị từ chối';
             notificationType = NotificationType.VEHICLE_UNAUTHORIZED_ALERT;
           }
         } catch (e) {
@@ -191,10 +191,10 @@ export class VehicleControlAlertService {
         return;
       }
       const alertContent =
-        `Bi\\u1ec3n s\\u1ed1 ${plateNumber} v\\u1eeba qua c\\u1ed5ng ` +
+        `Biển số ${plateNumber} vừa qua cổng ` +
         `(channel ${context.channelId}, direction ${context.direction}).` +
-        (payload.listType ? ` Lo\\u1ea1i: ${payload.listType}.` : '') +
-        (payload.reason ? ` L\\u00fd do: ${payload.reason}.` : '');
+        (payload.listType ? ` Loại: ${payload.listType}.` : '') +
+        (payload.reason ? ` Lý do: ${payload.reason}.` : '');
       await this.notificationsService.createNotification({
         notificationType,
         channel: NotificationChannel.IN_APP,
