@@ -7,6 +7,11 @@ import {
   DeleteDateColumn,
 } from 'typeorm';
 
+const numericTransformer = {
+  to: (value: number | null | undefined) => value,
+  from: (value: string | null) => (value == null ? null : Number(value)),
+};
+
 /**
  * ZoneEntity (SAVP Zone scope) — không gian có kiểm soát (phòng họp, cổng, khu vực).
  *
@@ -45,8 +50,9 @@ export class ZoneEntity {
    * Toạ độ GPS (migration 20260722000010) — dashboard/heatmap khuôn viên (UC-126/UC-120)
    * và sơ đồ lắp đặt camera (UC-95). KHÔNG phải toạ độ pixel trên sơ đồ mặt bằng.
    *
-   * ⚠ Chưa có endpoint nào GHI 2 field này (UpdateZoneDto không có, toZoneResponse không
-   * trả ra) — sẽ NULL cho tới khi điền SQL tay hoặc bổ sung vào luồng cập nhật zone.
+   * Ghi qua POST/PATCH /zones (`latitude`/`longitude`, phải đi cặp). Postgres trả `numeric`
+   * dạng chuỗi → transformer ép về number (so sánh changedKeys ở ZonesService.update cần
+   * cùng kiểu).
    */
   @Column({
     name: 'latitude',
@@ -54,6 +60,7 @@ export class ZoneEntity {
     precision: 9,
     scale: 6,
     nullable: true,
+    transformer: numericTransformer,
   })
   latitude: number | null;
 
@@ -63,6 +70,7 @@ export class ZoneEntity {
     precision: 9,
     scale: 6,
     nullable: true,
+    transformer: numericTransformer,
   })
   longitude: number | null;
 

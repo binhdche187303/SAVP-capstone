@@ -1,5 +1,6 @@
 import {
   Injectable,
+  BadRequestException,
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
@@ -66,6 +67,22 @@ const zoneCodeConflict = (): ConflictException =>
     message: 'Mã khu vực đã tồn tại',
   });
 
+/**
+ * Toạ độ GPS phải đi cặp: chỉ có lat hoặc chỉ có lng thì không đặt được marker trên bản đồ.
+ * Kiểm trên giá trị CUỐI (sau khi gộp với bản ghi hiện có ở update).
+ */
+const assertCoordinatePair = (
+  latitude: number | null,
+  longitude: number | null,
+): void => {
+  if ((latitude == null) !== (longitude == null)) {
+    throw new BadRequestException({
+      code: 'ZONE_COORDINATES_INCOMPLETE',
+      message: 'Phải nhập đủ cả vĩ độ và kinh độ (hoặc để trống cả hai)',
+    });
+  }
+};
+
 /** Field được phép cập nhật qua UC-91 (OQ-1: tất cả field nghiệp vụ, gồm cả `zone_code`). */
 type ZoneUpdatableFields = Pick<
   ZoneEntity,
@@ -77,6 +94,8 @@ type ZoneUpdatableFields = Pick<
   | 'floor'
   | 'description'
   | 'metadataJson'
+  | 'latitude'
+  | 'longitude'
 >;
 
 /**
@@ -111,6 +130,7 @@ export class ZonesService {
   async create(dto: CreateZoneDto, actorUserId: string): Promise<ZoneEntity> {
     // OQ-5: chuẩn hóa TRƯỚC pre-check để pre-check và bản ghi lưu dùng cùng một giá trị.
     const zoneCode = normalizeZoneCode(dto.zoneCode);
+    assertCoordinatePair(dto.latitude ?? null, dto.longitude ?? null);
 
     // CRUX: `deletedAt: IsNull()` BẮT BUỘC — khớp ngữ nghĩa partial unique
     // `UQ_zones_code_active` và OQ-3 (mã của zone đã xóa-mềm được phép dùng lại).
@@ -129,6 +149,8 @@ export class ZonesService {
       floor: dto.floor ?? null,
       description: dto.description ?? null,
       metadataJson: dto.metadataJson ?? null,
+      latitude: dto.latitude ?? null,
+      longitude: dto.longitude ?? null,
     });
 
     const queryRunner = this.dataSource.createQueryRunner();
@@ -212,6 +234,14 @@ export class ZonesService {
     if (dto.floor !== undefined) updates.floor = dto.floor;
     if (dto.description !== undefined) updates.description = dto.description;
     if (dto.metadataJson !== undefined) updates.metadataJson = dto.metadataJson;
+    if (dto.latitude !== undefined) updates.latitude = dto.latitude;
+    if (dto.longitude !== undefined) updates.longitude = dto.longitude;
+    if (updates.latitude !== undefined || updates.longitude !== undefined) {
+      assertCoordinatePair(
+        updates.latitude !== undefined ? updates.latitude : entity.latitude,
+        updates.longitude !== undefined ? updates.longitude : entity.longitude,
+      );
+    }
 
     // 3. CRUX: pre-check trùng mã — CHỈ khi mã thực sự đổi, và PHẢI loại chính bản ghi này
     //    ra khỏi truy vấn (`Not(id)`). Thiếu `Not(id)` thì PATCH gửi lại đúng mã cũ sẽ tự

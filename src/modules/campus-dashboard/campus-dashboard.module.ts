@@ -23,6 +23,8 @@ import { BusinessAdminSummaryService } from './services/business-admin-summary.s
 import { BusinessAdminSummaryController } from './controllers/business-admin-summary.controller.js';
 import { PresenceByDepartmentService } from './services/presence-by-department.service.js';
 import { PresenceByDepartmentController } from './controllers/presence-by-department.controller.js';
+import { CampusMapService } from './services/campus-map.service.js';
+import { CampusMapController } from './controllers/campus-map.controller.js';
 
 /**
  * CampusDashboardModule (CDB-001 / UC-126, dùng chung cho UC-119/UC-120/CDB-RS-001 — Bước 4 SAVP).
@@ -58,6 +60,7 @@ import { PresenceByDepartmentController } from './controllers/presence-by-depart
     EmployeeSummaryController,
     BusinessAdminSummaryController,
     PresenceByDepartmentController,
+    CampusMapController,
   ],
   providers: [
     CampusDashboardRepository,
@@ -68,6 +71,7 @@ import { PresenceByDepartmentController } from './controllers/presence-by-depart
     EmployeeSummaryService,
     BusinessAdminSummaryService,
     PresenceByDepartmentService,
+    CampusMapService,
   ],
   exports: [],
 })

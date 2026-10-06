@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { CampusDashboardRepository } from '../repositories/campus-dashboard.repository.js';
+import { toZoneCoordinates } from '../utils/to-zone-coordinates.util.js';
 import type {
   TrafficResponseDto,
   TrafficSeriesPointDto,
@@ -78,7 +79,7 @@ export class ZoneTrafficHeatmapService {
         peakOccupancy,
         peakAt: row.peak_at ? new Date(row.peak_at).toISOString() : null,
         relativeDensity: maxPeak === 0 ? 0 : peakOccupancy / maxPeak,
-        coordinates: null, // BLOCKED — kế thừa UC-126 §2.1
+        coordinates: toZoneCoordinates(zone),
       };
     });
 
