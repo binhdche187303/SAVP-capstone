@@ -23,7 +23,6 @@ const RECIPIENT_PERMISSION = 'security_alert.read';
  * phát WS + email cho chúng, KHÔNG gửi in-app lần 2.
  */
 const SELF_NOTIFYING_TYPES = new Set([
-  'stranger',
   'person_watchlist_match',
   'vehicle_control_match',
   'unknown_vehicle',
@@ -31,6 +30,12 @@ const SELF_NOTIFYING_TYPES = new Set([
 
 /** Email chỉ gửi khi rule chọn kênh email VÀ severity đạt ngưỡng này trở lên. */
 const EMAIL_SEVERITIES = new Set(['high', 'critical']);
+
+/**
+ * Loại gửi email CHỈ theo ô tick Email của rule, KHÔNG xét ngưỡng severity — người lạ
+ * (medium) trước đây gửi email theo env STRANGER_ALERT_EMAIL_ENABLED, nay theo rule.
+ */
+const EMAIL_ANY_SEVERITY_TYPES = new Set(['stranger']);
 
 const SEVERITY_LABEL: Record<string, string> = {
   low: 'Thấp',
@@ -96,7 +101,11 @@ export class SecurityAlertNotifierService {
       };
 
       for (const r of recipients) {
-        this.websocketService.emitToUser(r.id, SECURITY_ALERT_NEW_EVENT, payload);
+        this.websocketService.emitToUser(
+          r.id,
+          SECURITY_ALERT_NEW_EVENT,
+          payload,
+        );
       }
 
       if (
@@ -124,7 +133,8 @@ export class SecurityAlertNotifierService {
         .filter((e): e is string => !!e);
       if (
         channels.includes('email') &&
-        EMAIL_SEVERITIES.has(alert.severity) &&
+        (EMAIL_SEVERITIES.has(alert.severity) ||
+          EMAIL_ANY_SEVERITY_TYPES.has(alert.alertType)) &&
         emails.length > 0
       ) {
         await this.safe('email', alert.id, () =>
@@ -170,9 +180,10 @@ export class SecurityAlertNotifierService {
   }
 
   private notificationTypeOf(alertType: string): NotificationType {
-    return alertType === 'device_error'
-      ? NotificationType.DEVICE_OFFLINE_ALERT
-      : NotificationType.SECURITY_ALERT;
+    if (alertType === 'device_error')
+      return NotificationType.DEVICE_OFFLINE_ALERT;
+    if (alertType === 'stranger') return NotificationType.UNKNOWN_FACE_ALERT;
+    return NotificationType.SECURITY_ALERT;
   }
 
   /** Kênh của rule đã kích hoạt alert; không có rule (fail-open UC-122) → in_app. */
@@ -243,6 +254,17 @@ export class SecurityAlertNotifierService {
         return {
           title: 'Cảnh báo: camera mất kết nối',
           content: `Camera ${name}${code ? ` (${code})` : ''} không còn phản hồi.`,
+        };
+      }
+      case 'stranger': {
+        const device =
+          (p.deviceCode as string | undefined) ??
+          (p.deviceId as string | undefined) ??
+          'không rõ';
+        const roomName = p.roomName as string | null | undefined;
+        return {
+          title: 'Cảnh báo khuôn mặt lạ',
+          content: `Phát hiện khuôn mặt lạ tại thiết bị ${device}${roomName ? ` (phòng ${roomName})` : ''}.`,
         };
       }
       default:
