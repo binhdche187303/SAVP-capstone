@@ -147,7 +147,47 @@ describe('SecurityAlertNotifierService', () => {
     expect(dto.content).toBe('Camera Cam cổng (CAM-1) không còn phản hồi.');
   });
 
-  it.each(['stranger', 'person_watchlist_match', 'unknown_vehicle'])(
+  const strangerAlert = (over: Record<string, unknown> = {}): any =>
+    crowdAlert({
+      alertType: 'stranger',
+      severity: 'medium',
+      zoneId: null,
+      payloadJson: {
+        deviceId: 'dev1',
+        deviceCode: 'FACE-1',
+        roomName: 'Phòng A',
+      },
+      ...over,
+    });
+
+  it('stranger → in_app UNKNOWN_FACE_ALERT cho người có quyền (gồm MANAGER), nội dung thiết bị + phòng', async () => {
+    ruleRepo.findOne.mockResolvedValue({ channels: ['in_app'] });
+    await service.notifyNewAlert(strangerAlert());
+    expect(notif.createNotification).toHaveBeenCalledTimes(1);
+    const dto = notif.createNotification.mock.calls[0][0];
+    expect(dto.notificationType).toBe(NotificationType.UNKNOWN_FACE_ALERT);
+    expect(dto.recipientUserIds).toEqual(['sa1', 'mgr1']);
+    expect(dto.subject).toBe('Cảnh báo khuôn mặt lạ');
+    expect(dto.content).toBe(
+      'Phát hiện khuôn mặt lạ tại thiết bị FACE-1 (phòng Phòng A).',
+    );
+  });
+
+  it('stranger (medium) + rule tick email → GỬI email (theo rule, không xét ngưỡng high)', async () => {
+    await service.notifyNewAlert(strangerAlert());
+    expect(notif.enqueueEmailNotification).toHaveBeenCalledTimes(1);
+    expect(notif.enqueueEmailNotification.mock.calls[0][0].toEmails).toEqual([
+      'sa@x.vn',
+    ]);
+  });
+
+  it('stranger + rule KHÔNG tick email → KHÔNG email', async () => {
+    ruleRepo.findOne.mockResolvedValue({ channels: ['in_app'] });
+    await service.notifyNewAlert(strangerAlert());
+    expect(notif.enqueueEmailNotification).not.toHaveBeenCalled();
+  });
+
+  it.each(['person_watchlist_match', 'unknown_vehicle'])(
     '%s đã tự gửi in_app → notifier KHÔNG gửi in_app lần 2, vẫn WS',
     async (alertType) => {
       await service.notifyNewAlert(crowdAlert({ alertType }));
