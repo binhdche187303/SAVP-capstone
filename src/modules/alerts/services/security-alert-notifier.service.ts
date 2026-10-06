@@ -165,6 +165,53 @@ export class SecurityAlertNotifierService {
     }
   }
 
+  /**
+   * Thông báo in-app (+ WS) cho thay đổi trạng thái camera trên alert `device_error` ĐÃ MỞ
+   * (6.2 camera có tín hiệu lại / 6.3 thêm camera khác cùng khu vực rớt). Bump không qua
+   * `notifyNewAlert` nên cần đường riêng. NotThrow.
+   */
+  async notifyDeviceStatus(
+    alert: SecurityAlertEntity,
+    title: string,
+    content: string,
+  ): Promise<void> {
+    try {
+      const recipients = await this.resolveRecipients();
+      if (recipients.length === 0) return;
+      const payload = {
+        alertId: alert.id,
+        alertType: alert.alertType,
+        severity: alert.severity,
+        zoneId: alert.zoneId,
+        title,
+        triggeredAt: alert.triggeredAt,
+      };
+      for (const r of recipients) {
+        this.websocketService.emitToUser(
+          r.id,
+          SECURITY_ALERT_NEW_EVENT,
+          payload,
+        );
+      }
+      await this.notificationsService.createNotification({
+        notificationType: NotificationType.DEVICE_OFFLINE_ALERT,
+        channel: NotificationChannel.IN_APP,
+        subject: title,
+        content,
+        priority: PRIORITY_BY_SEVERITY[alert.severity],
+        relatedEntityType: 'security_alert',
+        relatedEntityId: alert.id,
+        recipientScope: 'user_list',
+        recipientUserIds: recipients.map((r) => r.id),
+        payloadJson: payload,
+      });
+    } catch (e) {
+      this.logger.error(
+        `notifyDeviceStatus failed (alert=${alert.id}): ${e instanceof Error ? e.message : 'unknown'}`,
+      );
+    }
+  }
+
   private async safe(
     channel: string,
     alertId: string,

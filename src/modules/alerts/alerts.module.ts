@@ -94,6 +94,7 @@ import { WebsocketModule } from '../websocket/websocket.module.js';
     AlertsService,
     PersonWatchlistCheckService,
     SecurityAlertAutoResolveService,
+    SecurityAlertNotifierService,
   ],
 })
 export class AlertsModule {}

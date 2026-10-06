@@ -625,24 +625,32 @@ export class IotDevicesService {
     if (this.deviceOfflineAlertHook) {
       const detectedAt = new Date();
       for (const t of transitions) {
-        if (
-          t.from !== IoTDeviceStatus.ONLINE ||
-          t.to !== IoTDeviceStatus.OFFLINE
-        )
-          continue;
+        const goesOffline =
+          t.from === (IoTDeviceStatus.ONLINE as string) &&
+          t.to === (IoTDeviceStatus.OFFLINE as string);
+        const goesOnline =
+          t.from === (IoTDeviceStatus.OFFLINE as string) &&
+          t.to === (IoTDeviceStatus.ONLINE as string);
+        if (!goesOffline && !goesOnline) continue;
         const device = results.find((r) => r.device.id === t.id)?.device;
         if (!device) continue;
+        const evt = {
+          deviceId: device.id,
+          deviceCode: device.deviceCode,
+          deviceName: device.deviceName,
+          zoneId: device.zoneId ?? null,
+          detectedAt,
+        };
         try {
-          await this.deviceOfflineAlertHook.onDeviceOffline({
-            deviceId: device.id,
-            deviceCode: device.deviceCode,
-            deviceName: device.deviceName,
-            zoneId: device.zoneId ?? null,
-            detectedAt,
-          });
+          if (goesOffline) {
+            await this.deviceOfflineAlertHook.onDeviceOffline(evt);
+          } else {
+            // Camera có tín hiệu lại → gỡ khỏi alert đang mở / đóng alert nếu hết camera rớt.
+            await this.deviceOfflineAlertHook.onDeviceOnline?.(evt);
+          }
         } catch (e) {
           this.logger.error(
-            `device offline alert hook failed (device=${device.deviceCode}): ${
+            `device status alert hook failed (device=${device.deviceCode}): ${
               e instanceof Error ? e.message : 'unknown'
             }`,
           );
