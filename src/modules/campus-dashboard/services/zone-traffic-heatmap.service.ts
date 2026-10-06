@@ -11,6 +11,7 @@ import {
   mergeZoneHeatmapParts,
   type ZoneHeatmapPart,
 } from '../utils/merge-zone-heatmap.util.js';
+import { toZoneCoordinates } from '../utils/to-zone-coordinates.util.js';
 import type {
   TrafficResponseDto,
   TrafficSeriesPointDto,
@@ -98,7 +99,7 @@ export class ZoneTrafficHeatmapService {
         peakOccupancy,
         peakAt: row.peakAt ? row.peakAt.toISOString() : null,
         relativeDensity: maxPeak === 0 ? 0 : peakOccupancy / maxPeak,
-        coordinates: null, // BLOCKED — kế thừa UC-126 §2.1
+        coordinates: toZoneCoordinates(zone),
       };
     });
 

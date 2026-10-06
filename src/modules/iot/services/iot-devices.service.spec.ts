@@ -21,6 +21,7 @@ import { probeRtspRuntime } from '../utils/rtsp-runtime-probe.util.js';
 import * as nodeCrypto from 'crypto';
 import { FaceDeviceProviderFactory } from '../../face-access/face-device-provider.factory.js';
 import { FaceGateClient } from '../../face-access/clients/facegate.client.js';
+import { DEVICE_OFFLINE_ALERT_HOOK } from '../../../common/ports/device-offline-alert-hook.js';
 
 jest.mock('../utils/rtsp-probe.util.js', () => ({
   probeTcp: jest.fn(),
@@ -40,8 +41,10 @@ describe('IotDevicesService', () => {
   let dataSourceMock: any;
   let auditRepoMock: any;
   let queryRunnerMock: any; // Keep as any for deep mocking
+  let deviceOfflineHookMock: { onDeviceOffline: jest.Mock };
 
   beforeEach(async () => {
+    deviceOfflineHookMock = { onDeviceOffline: jest.fn() };
     queryRunnerMock = {
       connect: jest.fn(),
       startTransaction: jest.fn(),
@@ -98,6 +101,7 @@ describe('IotDevicesService', () => {
           provide: ConfigService,
           useValue: { get: jest.fn((_k: string, def?: unknown) => def) },
         },
+        { provide: DEVICE_OFFLINE_ALERT_HOOK, useValue: deviceOfflineHookMock },
       ],
     }).compile();
 
@@ -1024,6 +1028,85 @@ describe('IotDevicesService', () => {
       expect(r.offline_count).toBe(2);
       expect(queryRunnerMock.rollbackTransaction).toHaveBeenCalledTimes(1);
       expect(r.transitions).toHaveLength(1); // chỉ c2 thành công
+    });
+
+    describe('device offline alert hook', () => {
+      it('online->offline → gọi hook với device + zoneId', async () => {
+        (dataSourceMock.manager.find as jest.Mock).mockResolvedValue([
+          cam({
+            id: 'c1',
+            status: 'online',
+            deviceCode: 'CAM-1',
+            deviceName: 'Cam 1',
+            zoneId: 'z1',
+          }),
+        ]);
+        probeTcpMock.mockResolvedValue('offline');
+
+        await service.detectOfflineDevices(null);
+
+        expect(deviceOfflineHookMock.onDeviceOffline).toHaveBeenCalledTimes(1);
+        expect(deviceOfflineHookMock.onDeviceOffline).toHaveBeenCalledWith(
+          expect.objectContaining({
+            deviceId: 'c1',
+            deviceCode: 'CAM-1',
+            deviceName: 'Cam 1',
+            zoneId: 'z1',
+          }),
+        );
+      });
+
+      it('offline->online → KHÔNG gọi hook', async () => {
+        (dataSourceMock.manager.find as jest.Mock).mockResolvedValue([
+          cam({ id: 'c1', status: 'offline' }),
+        ]);
+        probeTcpMock.mockResolvedValue('online');
+
+        await service.detectOfflineDevices(null);
+
+        expect(deviceOfflineHookMock.onDeviceOffline).not.toHaveBeenCalled();
+      });
+
+      it('đã offline, vẫn offline (không transition) → KHÔNG gọi hook', async () => {
+        (dataSourceMock.manager.find as jest.Mock).mockResolvedValue([
+          cam({ id: 'c1', status: 'offline' }),
+        ]);
+        probeTcpMock.mockResolvedValue('offline');
+
+        await service.detectOfflineDevices(null);
+
+        expect(deviceOfflineHookMock.onDeviceOffline).not.toHaveBeenCalled();
+      });
+
+      it('transition rollback → KHÔNG gọi hook', async () => {
+        (dataSourceMock.manager.find as jest.Mock).mockResolvedValue([
+          cam({ id: 'c1', status: 'online' }),
+        ]);
+        probeTcpMock.mockResolvedValue('offline');
+        queryRunnerMock.manager.save.mockRejectedValueOnce(
+          new Error('DB fail'),
+        );
+
+        await service.detectOfflineDevices(null);
+
+        expect(deviceOfflineHookMock.onDeviceOffline).not.toHaveBeenCalled();
+      });
+
+      it('hook throw → KHÔNG throw, transition vẫn trả về', async () => {
+        (dataSourceMock.manager.find as jest.Mock).mockResolvedValue([
+          cam({ id: 'c1', status: 'online' }),
+        ]);
+        probeTcpMock.mockResolvedValue('offline');
+        deviceOfflineHookMock.onDeviceOffline.mockRejectedValueOnce(
+          new Error('alert down'),
+        );
+
+        const r = await service.detectOfflineDevices(null);
+
+        expect(r.transitions).toEqual([
+          { id: 'c1', from: 'online', to: 'offline' },
+        ]);
+      });
     });
   });
 

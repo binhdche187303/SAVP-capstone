@@ -51,7 +51,7 @@ describe('DashboardOverviewService (CDB-001 / UC-126)', () => {
     expect(result.buildings).toEqual([]);
   });
 
-  it('group đúng Building→Floor→Zone, coordinates luôn null', async () => {
+  it('group đúng Building→Floor→Zone, zone chưa đặt toạ độ → coordinates null', async () => {
     repoMock.loadZoneHierarchy.mockResolvedValue([zone()]);
     repoMock.loadDevicesByZone.mockResolvedValue([
       {
@@ -80,6 +80,19 @@ describe('DashboardOverviewService (CDB-001 / UC-126)', () => {
       exitsToday: 2,
     });
     expect(zoneOverview.cameraStatus.overall).toBe('online');
+  });
+
+  it('zone có latitude/longitude → coordinates {lat, lng} (kể cả khi driver trả chuỗi)', async () => {
+    repoMock.loadZoneHierarchy.mockResolvedValue([
+      zone({ latitude: '21.028500', longitude: '105.854200' }),
+    ]);
+
+    const result = await service.getOverview({});
+
+    expect(result.buildings[0].floors[0].zones[0].coordinates).toEqual({
+      lat: 21.0285,
+      lng: 105.8542,
+    });
   });
 
   it('filter building/floor được truyền đúng xuống repository', async () => {

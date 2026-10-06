@@ -22,6 +22,8 @@ export interface ZoneResponse {
   building: string | null;
   floor: string | null;
   description: string | null;
+  latitude: number | null;
+  longitude: number | null;
   metadata_json: Record<string, unknown> | null;
   status: string;
   created_at: Date;
@@ -56,6 +58,8 @@ export function toZoneResponse(
     building: entity.building,
     floor: entity.floor,
     description: entity.description,
+    latitude: entity.latitude ?? null,
+    longitude: entity.longitude ?? null,
     metadata_json: entity.metadataJson,
     status: entity.status,
     created_at: entity.createdAt,

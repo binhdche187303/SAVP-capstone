@@ -1,5 +1,9 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return */
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { IsNull, Not, DataSource } from 'typeorm';
@@ -100,6 +104,8 @@ describe('ZonesService (ZNC-001 / UC-90)', () => {
     expect(created.floor).toBeNull();
     expect(created.description).toBeNull();
     expect(created.metadataJson).toBeNull();
+    expect(created.latitude).toBeNull();
+    expect(created.longitude).toBeNull();
     // status/id/timestamps/deletedAt do DB + entity default lo — service KHÔNG đụng.
     expect(created).not.toHaveProperty('status');
     expect(created).not.toHaveProperty('id');
@@ -213,6 +219,23 @@ describe('ZonesService (ZNC-001 / UC-90)', () => {
     expect(created.floor).toBe('B1');
     expect(created.description).toBe('Cổng phía Đông');
     expect(created.metadataJson).toEqual({ lane: 2 });
+  });
+
+  it('tạo kèm toạ độ đủ cặp → ghi latitude/longitude', async () => {
+    await service.create(dto({ latitude: 21.0285, longitude: 105.8542 }), 'u1');
+
+    const created = repo.create.mock.calls[0][0];
+    expect(created.latitude).toBe(21.0285);
+    expect(created.longitude).toBe(105.8542);
+  });
+
+  it('tạo với toạ độ thiếu 1 nửa → 400 ZONE_COORDINATES_INCOMPLETE, KHÔNG save', async () => {
+    await expect(
+      service.create(dto({ longitude: 105.8542 }), 'u1'),
+    ).rejects.toMatchObject({
+      response: { code: 'ZONE_COORDINATES_INCOMPLETE' },
+    });
+    expect(queryRunner.manager.save).not.toHaveBeenCalled();
   });
 
   // ── UC-91 (ZNU-001): update ──
@@ -454,6 +477,81 @@ describe('ZonesService (ZNC-001 / UC-90)', () => {
       expect(queryRunner.manager.save).toHaveBeenCalledTimes(1);
       expect(r.zoneType).toBe('gate');
       expect(r.zoneCode).toBe('GATE-01');
+    });
+
+    // ── Toạ độ GPS (Bản đồ khuôn viên) ──
+    it('đặt toạ độ lần đầu (đủ cặp) → save với latitude/longitude mới', async () => {
+      repo.findOne.mockResolvedValueOnce(
+        makeZone({ latitude: null, longitude: null }),
+      );
+
+      const r = await service.update(
+        'z1',
+        { latitude: 21.0285, longitude: 105.8542 },
+        'u1',
+      );
+
+      expect(queryRunner.manager.save).toHaveBeenCalledTimes(1);
+      expect(r.latitude).toBe(21.0285);
+      expect(r.longitude).toBe(105.8542);
+    });
+
+    it('chỉ gửi 1 nửa cặp khi zone chưa có toạ độ → 400 ZONE_COORDINATES_INCOMPLETE, KHÔNG save', async () => {
+      repo.findOne.mockResolvedValueOnce(
+        makeZone({ latitude: null, longitude: null }),
+      );
+
+      await expect(
+        service.update('z1', { latitude: 21.0285 }, 'u1'),
+      ).rejects.toMatchObject({
+        response: { code: 'ZONE_COORDINATES_INCOMPLETE' },
+      });
+      expect(queryRunner.manager.save).not.toHaveBeenCalled();
+    });
+
+    it('zone đã có toạ độ: sửa riêng latitude → hợp lệ (gộp với longitude đang có)', async () => {
+      repo.findOne.mockResolvedValueOnce(
+        makeZone({ latitude: 21, longitude: 105 }),
+      );
+
+      const r = await service.update('z1', { latitude: 21.5 }, 'u1');
+
+      expect(r.latitude).toBe(21.5);
+      expect(r.longitude).toBe(105);
+    });
+
+    it('xoá chỉ 1 nửa cặp → 400; xoá cả cặp (null, null) → OK', async () => {
+      repo.findOne.mockResolvedValueOnce(
+        makeZone({ latitude: 21, longitude: 105 }),
+      );
+      await expect(
+        service.update('z1', { latitude: null }, 'u1'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      repo.findOne.mockResolvedValueOnce(
+        makeZone({ latitude: 21, longitude: 105 }),
+      );
+      const r = await service.update(
+        'z1',
+        { latitude: null, longitude: null },
+        'u1',
+      );
+      expect(r.latitude).toBeNull();
+      expect(r.longitude).toBeNull();
+    });
+
+    it('gửi lại đúng toạ độ đang có → no-op, KHÔNG save', async () => {
+      repo.findOne.mockResolvedValueOnce(
+        makeZone({ latitude: 21.0285, longitude: 105.8542 }),
+      );
+
+      await service.update(
+        'z1',
+        { latitude: 21.0285, longitude: 105.8542 },
+        'u1',
+      );
+
+      expect(queryRunner.manager.save).not.toHaveBeenCalled();
     });
   });
 

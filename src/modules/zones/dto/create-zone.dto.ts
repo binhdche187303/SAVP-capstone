@@ -4,7 +4,10 @@ import {
   IsOptional,
   IsObject,
   IsIn,
+  IsNumber,
+  Max,
   MaxLength,
+  Min,
 } from 'class-validator';
 import { Expose } from 'class-transformer';
 import { ZONE_TYPES, type ZoneType } from '../constants/zone-type.constant.js';
@@ -60,4 +63,17 @@ export class CreateZoneDto {
   @IsOptional()
   @IsObject()
   metadataJson?: Record<string, unknown>;
+
+  // Toạ độ GPS cho Bản đồ khuôn viên — phải gửi đủ cặp (kiểm ở ZonesService).
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 6 })
+  @Min(-90)
+  @Max(90)
+  latitude?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 6 })
+  @Min(-180)
+  @Max(180)
+  longitude?: number;
 }

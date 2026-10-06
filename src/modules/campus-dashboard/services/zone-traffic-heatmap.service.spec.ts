@@ -94,7 +94,7 @@ describe('ZoneTrafficHeatmapService (ZTH-001 / UC-120 + KPI-001)', () => {
   it('relativeDensity: zone peak cao nhất = 1.0, zone thấp hơn đúng tỉ lệ', async () => {
     repoMock.loadZoneHierarchy.mockResolvedValue([
       zone({ id: 'z1' }),
-      zone({ id: 'z2' }),
+      zone({ id: 'z2', latitude: 21.0285, longitude: 105.8542 }),
     ]);
     dataSourceMock.query
       .mockResolvedValueOnce([]) // series
@@ -122,7 +122,9 @@ describe('ZoneTrafficHeatmapService (ZTH-001 / UC-120 + KPI-001)', () => {
     expect(z1.relativeDensity).toBe(1);
     expect(z2.relativeDensity).toBe(0.5);
     expect(z1.avgOccupancy).toBe(10);
+    // Zone chưa đặt vị trí → null; có toạ độ → {lat, lng}.
     expect(z1.coordinates).toBeNull();
+    expect(z2.coordinates).toEqual({ lat: 21.0285, lng: 105.8542 });
   });
 
   it('tất cả peak=0 → relativeDensity=0 (không NaN)', async () => {

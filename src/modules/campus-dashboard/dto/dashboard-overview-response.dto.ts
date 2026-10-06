@@ -26,7 +26,7 @@ export interface ZoneOverviewDto {
   zoneCode: string;
   zoneName: string;
   zoneType: string;
-  /** BLOCKED (spec §2.1): LUÔN `null` cho tới khi `zones` có cột tọa độ thật. */
+  /** Toạ độ GPS từ `zones.latitude/longitude`; `null` khi zone chưa được đặt vị trí. */
   coordinates: ZoneCoordinatesDto | null;
   occupancy: ZoneOccupancyDto;
   gateTraffic: ZoneGateTrafficDto;

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { CampusDashboardRepository } from '../repositories/campus-dashboard.repository.js';
 import { resolveOccupancyStatus } from '../utils/resolve-occupancy-status.util.js';
 import { resolveCameraStatus } from '../utils/resolve-camera-status.util.js';
+import { toZoneCoordinates } from '../utils/to-zone-coordinates.util.js';
 import type { QueryDashboardOverviewDto } from '../dto/query-dashboard-overview.dto.js';
 import type {
   BuildingOverviewDto,
@@ -87,7 +88,7 @@ export class DashboardOverviewService {
       zoneCode: zone.zoneCode,
       zoneName: zone.zoneName,
       zoneType: zone.zoneType,
-      coordinates: null, // BLOCKED — xem spec §2.1
+      coordinates: toZoneCoordinates(zone),
       occupancy,
       gateTraffic: { entriesToday, exitsToday },
       cameraStatus,

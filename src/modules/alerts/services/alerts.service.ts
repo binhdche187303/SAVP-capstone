@@ -2,6 +2,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
@@ -13,6 +14,7 @@ import {
 } from 'typeorm';
 import { SecurityAlertEntity } from '../entities/security-alert.entity.js';
 import { SecurityAlertConfigService } from './security-alert-config.service.js';
+import { SecurityAlertNotifierService } from './security-alert-notifier.service.js';
 import type { ZoneEntity } from '../../zones/entities/zone.entity.js';
 import type {
   AlertSeverity,
@@ -67,6 +69,8 @@ export class AlertsService {
     @InjectRepository(SecurityAlertEntity)
     private readonly repo: Repository<SecurityAlertEntity>,
     private readonly securityAlertConfigService: SecurityAlertConfigService,
+    @Optional()
+    private readonly notifier?: SecurityAlertNotifierService,
   ) {}
 
   private resolveSeverity(
@@ -88,7 +92,7 @@ export class AlertsService {
     const triggeredAt = input.triggeredAt ?? new Date();
 
     const inserted = await this.tryInsert(input, zoneId, severity, triggeredAt);
-    if (inserted) return { alert: inserted, isNew: true };
+    if (inserted) return this.newAlert(inserted);
 
     const open = await this.findOpenAlert(input.alertType, zoneId);
     if (open) {
@@ -99,7 +103,7 @@ export class AlertsService {
     // Race hiếm: 23505 báo có alert mở nhưng SELECT lại không thấy (vừa resolved giữa
     // 2 bước) — retry INSERT đúng 1 lần, KHÔNG lặp vô hạn.
     const retried = await this.tryInsert(input, zoneId, severity, triggeredAt);
-    if (retried) return { alert: retried, isNew: true };
+    if (retried) return this.newAlert(retried);
 
     const openAfterRetry = await this.findOpenAlert(input.alertType, zoneId);
     if (openAfterRetry) {
@@ -109,6 +113,15 @@ export class AlertsService {
     throw new Error(
       `recordAlert: không thể INSERT hoặc UPDATE alert (alertType=${input.alertType}, zoneId=${String(zoneId)}) sau 1 lần retry`,
     );
+  }
+
+  /**
+   * Alert MỚI → thông báo (WS + kênh theo rule). Fire-and-forget: notifier tự NotThrow,
+   * KHÔNG chặn luồng ghi alert (cron/ingestion). Bump (isNew=false) KHÔNG gọi — chống spam.
+   */
+  private newAlert(alert: SecurityAlertEntity): RecordAlertResult {
+    void this.notifier?.notifyNewAlert(alert);
+    return { alert, isNew: true };
   }
 
   private async tryInsert(

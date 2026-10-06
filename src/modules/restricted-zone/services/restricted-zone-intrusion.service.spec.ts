@@ -584,7 +584,7 @@ describe('RestrictedZoneIntrusionService (ARZ-001 / UC-124)', () => {
       );
     });
 
-    it('DONE: sourceTable=gate_access_logs (ngoài phạm vi) → sourceEventId=null, KHÔNG query DB, giữ nguyên hành vi cũ (không có ảnh)', async () => {
+    it('DONE: sourceTable=gate_access_logs (ngoài phạm vi) → sourceEventId=null, KHÔNG tra iot_device_events, giữ nguyên hành vi cũ (không có ảnh)', async () => {
       alertRulesMock.list.mockResolvedValue({
         items: [
           rule({
@@ -601,7 +601,10 @@ describe('RestrictedZoneIntrusionService (ARZ-001 / UC-124)', () => {
         },
       ]);
       await service.evaluateIntrusions();
-      expect(dataSourceMock.manager.query).not.toHaveBeenCalled();
+      // Chỉ query tên người (findUserFullName) — KHÔNG tra iot_device_events tìm ảnh.
+      for (const [sql] of dataSourceMock.manager.query.mock.calls) {
+        expect(String(sql)).not.toContain('iot_device_events');
+      }
       expect(alertsMock.recordAlert).toHaveBeenCalledWith(
         expect.objectContaining({
           sourceEventId: null,
