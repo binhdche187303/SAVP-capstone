@@ -12,11 +12,18 @@ import { AlertsService } from '../../alerts/services/alerts.service.js';
 
 interface StrangerRow {
   device_id: string;
+  device_code: string | null;
   stranger_id: string | null;
+  first_seen: Date | string;
   last_seen: Date | string;
   hit_count: number;
   room_id: string | null;
+  room_name: string | null;
+  zone_name: string | null;
   similarity: string | null;
+  latest_event_id: string;
+  snapshot_event_id: string | null;
+  snapshot_file_id: string | null;
 }
 
 /**
@@ -84,11 +91,27 @@ export class StrangerAlertService implements StrangerAlertHook {
     try {
       // deviceCode/roomName để notifier dựng nội dung thông báo.
       const roomName = await this.resolveRoomName(evt.roomId);
+      // occurredAt + occurrences[0]: lượt đầu cũng có sourceEventId (alert mới chèn
+      // payload nguyên vẹn; các lượt sau bumpOccurrence tự nối entry).
+      const eventId = evt.eventId ?? null;
       await this.alertsService.recordAlert({
         alertType: 'stranger',
         zoneId,
         ruleId: rule?.id ?? null,
-        payloadJson: { ...meta, deviceCode: evt.deviceCode, roomName },
+        sourceEventId: eventId,
+        payloadJson: {
+          ...meta,
+          deviceCode: evt.deviceCode,
+          roomName,
+          occurredAt: meta.capturedAt,
+          occurrences: [
+            {
+              userId: null,
+              sourceEventId: eventId,
+              occurredAt: meta.capturedAt,
+            },
+          ],
+        },
       });
     } catch (e) {
       // NotThrow riêng — lỗi ghi security_alerts KHÔNG được chặn WS.
@@ -135,52 +158,150 @@ export class StrangerAlertService implements StrangerAlertHook {
   async list(query: ListStrangerAlertsQueryDto): Promise<{
     data: Array<{
       deviceId: string;
+      deviceCode: string | null;
       strangerId: string | null;
       roomId: string | null;
+      roomName: string | null;
+      zoneName: string | null;
       similarity: string | null;
+      firstSeen: Date | string;
       lastSeen: Date | string;
       hitCount: number;
+      latestEventId: string;
+      snapshotEventId: string | null;
+      snapshotFileId: string | null;
     }>;
-    meta: { page: number; limit: number };
+    meta: { page: number; limit: number; total: number };
   }> {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
-    const window =
-      query.windowMinutes ??
-      this.configService.get<number>(
-        'STRANGER_ALERT_WINDOW_MINUTES',
-        StrangerAlertService.DEFAULT_WINDOW_MINUTES,
-      );
     const offset = (page - 1) * limit;
 
-    // SEC-02: KHÔNG select payload_json/raw_payload_sample → không lộ base64/snapshot.
+    // Có from/to ⇒ lọc theo khoảng ngày giờ VN; không có ⇒ giữ hành vi cũ (cửa sổ N phút).
+    const params: unknown[] = [];
+    const conds = [`e.event_type = 'face_stranger'`];
+    if (query.from || query.to) {
+      if (query.from) {
+        params.push(query.from);
+        conds.push(
+          `e.created_at >= ($${params.length}::date)::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh'`,
+        );
+      }
+      if (query.to) {
+        params.push(query.to);
+        conds.push(
+          `e.created_at < ($${params.length}::date + 1)::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh'`,
+        );
+      }
+    } else {
+      params.push(
+        query.windowMinutes ??
+          this.configService.get<number>(
+            'STRANGER_ALERT_WINDOW_MINUTES',
+            StrangerAlertService.DEFAULT_WINDOW_MINUTES,
+          ),
+      );
+      conds.push(
+        `e.created_at >= now() - ($${params.length} * interval '1 minute')`,
+      );
+    }
+    if (query.deviceId) {
+      params.push(query.deviceId);
+      conds.push(`e.device_id = $${params.length}`);
+    }
+    const where = conds.join(' AND ');
+
+    // SEC-02: KHÔNG select payload_json/raw_payload_sample → không lộ base64/snapshot
+    // (chỉ trả id event/media để FE gọi route snapshot có phân quyền).
     const rows: StrangerRow[] = await this.dataSource.manager.query(
-      `SELECT e.device_id,
-              e.payload_json->'extracted_fields'->>'stranger_id'  AS stranger_id,
-              MAX(e.created_at)                                    AS last_seen,
-              COUNT(*)::int                                        AS hit_count,
-              (array_agg(e.room_id ORDER BY e.created_at DESC))[1] AS room_id,
-              (array_agg(e.payload_json->'extracted_fields'->>'similarity'
-                         ORDER BY e.created_at DESC))[1]           AS similarity
-         FROM iot_device_events e
-        WHERE e.event_type = 'face_stranger'
-          AND e.created_at >= now() - ($1 * interval '1 minute')
-        GROUP BY e.device_id, stranger_id
-        ORDER BY last_seen DESC
-        LIMIT $2 OFFSET $3`,
-      [window, limit, offset],
+      `SELECT g.*, d.device_code, r.room_name, z.zone_name
+         FROM (
+           SELECT e.device_id,
+                  e.payload_json->'extracted_fields'->>'stranger_id'  AS stranger_id,
+                  MIN(e.created_at)                                    AS first_seen,
+                  MAX(e.created_at)                                    AS last_seen,
+                  COUNT(*)::int                                        AS hit_count,
+                  (array_agg(e.room_id ORDER BY e.created_at DESC))[1] AS room_id,
+                  (array_agg(e.payload_json->'extracted_fields'->>'similarity'
+                             ORDER BY e.created_at DESC))[1]           AS similarity,
+                  (array_agg(e.id ORDER BY e.created_at DESC))[1]      AS latest_event_id,
+                  (array_agg(e.id ORDER BY e.created_at DESC)
+                     FILTER (WHERE e.snapshot_file_id IS NOT NULL))[1] AS snapshot_event_id,
+                  (array_agg(e.snapshot_file_id ORDER BY e.created_at DESC)
+                     FILTER (WHERE e.snapshot_file_id IS NOT NULL))[1] AS snapshot_file_id
+             FROM iot_device_events e
+            WHERE ${where}
+            GROUP BY e.device_id, stranger_id
+         ) g
+         LEFT JOIN iot_devices d ON d.id = g.device_id
+         LEFT JOIN rooms r ON r.id = g.room_id
+         LEFT JOIN zones z ON z.id = d.zone_id
+        ORDER BY g.last_seen DESC
+        LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, limit, offset],
+    );
+    const totalRows: { total: number }[] = await this.dataSource.manager.query(
+      `SELECT COUNT(*)::int AS total FROM (
+         SELECT 1 FROM iot_device_events e WHERE ${where}
+          GROUP BY e.device_id, e.payload_json->'extracted_fields'->>'stranger_id'
+       ) t`,
+      params,
     );
 
     return {
       data: rows.map((r) => ({
         deviceId: r.device_id,
+        deviceCode: r.device_code ?? null,
         strangerId: r.stranger_id,
         roomId: r.room_id,
+        roomName: r.room_name ?? null,
+        zoneName: r.zone_name ?? null,
         similarity: r.similarity,
+        firstSeen: r.first_seen,
         lastSeen: r.last_seen,
         hitCount: Number(r.hit_count),
+        latestEventId: r.latest_event_id,
+        snapshotEventId: r.snapshot_event_id ?? null,
+        snapshotFileId: r.snapshot_file_id ?? null,
       })),
-      meta: { page, limit },
+      meta: { page, limit, total: Number(totalRows[0]?.total ?? 0) },
     };
+  }
+
+  /** Các lần xuất hiện của 1 người lạ (cho modal chi tiết) — metadata + id ảnh, không payload. */
+  async listSightings(
+    deviceId: string,
+    strangerId: string | null,
+  ): Promise<
+    Array<{
+      eventId: string;
+      time: Date | string;
+      similarity: string | null;
+      hasSnapshot: boolean;
+    }>
+  > {
+    const rows: {
+      id: string;
+      created_at: Date | string;
+      similarity: string | null;
+      has_snapshot: boolean;
+    }[] = await this.dataSource.manager.query(
+      `SELECT e.id, e.created_at,
+              e.payload_json->'extracted_fields'->>'similarity' AS similarity,
+              (e.snapshot_file_id IS NOT NULL)                  AS has_snapshot
+         FROM iot_device_events e
+        WHERE e.event_type = 'face_stranger'
+          AND e.device_id = $1
+          AND (e.payload_json->'extracted_fields'->>'stranger_id') IS NOT DISTINCT FROM $2
+        ORDER BY e.created_at DESC
+        LIMIT 100`,
+      [deviceId, strangerId],
+    );
+    return rows.map((r) => ({
+      eventId: r.id,
+      time: r.created_at,
+      similarity: r.similarity,
+      hasSnapshot: r.has_snapshot,
+    }));
   }
 }

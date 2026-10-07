@@ -1,6 +1,8 @@
 import {
   Controller,
   Get,
+  Param,
+  ParseUUIDPipe,
   Query,
   UseGuards,
   UsePipes,
@@ -38,5 +40,23 @@ export class StrangerAlertController {
       data: result.data,
       meta: result.meta,
     };
+  }
+
+  @Get(':deviceId/sightings')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('face.stranger.read')
+  @ApiOperation({
+    summary:
+      'Các lần xuất hiện của 1 người lạ trên 1 thiết bị (strangerId rỗng = người lạ thiết bị không gán mã)',
+  })
+  async sightings(
+    @Param('deviceId', ParseUUIDPipe) deviceId: string,
+    @Query('strangerId') strangerId?: string,
+  ) {
+    const data = await this.strangerAlertService.listSightings(
+      deviceId,
+      strangerId || null,
+    );
+    return { success: true, message: 'Stranger sightings retrieved', data };
   }
 }

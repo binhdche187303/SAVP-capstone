@@ -12,7 +12,12 @@ import { Type, Expose } from 'class-transformer';
 import { ALERT_TYPES, type AlertType } from './create-alert-rule.dto.js';
 
 const SECURITY_ALERT_STATUSES = ['new', 'acknowledged', 'resolved'] as const;
-const SORT_FIELDS = ['triggeredAt', 'severity', 'status'] as const;
+const SORT_FIELDS = [
+  'lastSeenAt',
+  'triggeredAt',
+  'severity',
+  'status',
+] as const;
 
 /**
  * QuerySecurityAlertsDto (ASC-001 / UC-123) — query GET /api/v1/security-alerts.
@@ -56,12 +61,12 @@ export class QuerySecurityAlertsDto {
 
   @ApiPropertyOptional({
     description:
-      'Lọc theo trạng thái xử lý (bỏ trống = trả tất cả, cảnh báo không tự ẩn)',
-    enum: SECURITY_ALERT_STATUSES,
+      'Lọc theo trạng thái xử lý (bỏ trống = trả tất cả, cảnh báo không tự ẩn; open = new + acknowledged)',
+    enum: [...SECURITY_ALERT_STATUSES, 'open'],
   })
   @IsOptional()
-  @IsIn(SECURITY_ALERT_STATUSES)
-  status?: (typeof SECURITY_ALERT_STATUSES)[number];
+  @IsIn([...SECURITY_ALERT_STATUSES, 'open'])
+  status?: (typeof SECURITY_ALERT_STATUSES)[number] | 'open';
 
   @ApiPropertyOptional({ description: 'Lọc từ thời điểm (ISO date)' })
   @IsOptional()
@@ -76,12 +81,12 @@ export class QuerySecurityAlertsDto {
   @ApiPropertyOptional({
     description: 'Trường sắp xếp',
     enum: SORT_FIELDS,
-    default: 'triggeredAt',
+    default: 'lastSeenAt',
   })
   @Expose({ name: 'sort_by' })
   @IsOptional()
   @IsIn(SORT_FIELDS)
-  sortBy: (typeof SORT_FIELDS)[number] = 'triggeredAt';
+  sortBy: (typeof SORT_FIELDS)[number] = 'lastSeenAt';
 
   @ApiPropertyOptional({
     description: 'Chiều sắp xếp',

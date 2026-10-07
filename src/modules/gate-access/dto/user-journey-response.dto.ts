@@ -52,6 +52,8 @@ export interface UserJourneyResponseDto {
   userId: string;
   fullName: string | null;
   date: string;
+  /** Chỉ có khi query theo khoảng ngày: ngày cuối của khoảng (`date` = ngày đầu). */
+  to?: string;
   events: UserJourneyEventDto[];
   gateCount: number;
   /** V2: số PHIÊN có mặt phòng họp (đã gộp + lọc rác), KHÔNG phải số raw face event. */

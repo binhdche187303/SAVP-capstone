@@ -2299,8 +2299,9 @@ export class IotDevicesService {
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
+    let strangerEventId: string | null = null;
     try {
-      await this.iotDeviceEventsService.storeRawEvent(
+      const stored = await this.iotDeviceEventsService.storeRawEvent(
         {
           device,
           eventType: 'face_stranger',
@@ -2326,6 +2327,7 @@ export class IotDevicesService {
         },
         queryRunner.manager,
       );
+      strangerEventId = stored?.id ?? null;
       await queryRunner.manager.save(IoTDeviceEntity, device);
       await queryRunner.commitTransaction();
     } catch (error) {
@@ -2350,6 +2352,7 @@ export class IotDevicesService {
           strangerId: sf.stranger_id,
           similarity: sf.similarity != null ? String(sf.similarity) : null,
           capturedAt: now,
+          eventId: strangerEventId,
         });
       } catch (e) {
         this.logger.error(

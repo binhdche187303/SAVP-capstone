@@ -18,6 +18,8 @@ export interface StrangerAlertInput {
   similarity: string | null;
   /** Thời điểm phát hiện (server-received). */
   capturedAt: Date;
+  /** iot_device_events.id vừa lưu — gắn vào từng lượt của cảnh báo (ảnh + đánh dấu theo dõi). */
+  eventId?: string | null;
 }
 
 export interface StrangerAlertHook {

@@ -14,6 +14,8 @@ import { buildSecurityAlertEmail } from '../../mail/templates/builders.js';
 
 /** Event WS cho màn hình Trung tâm Cảnh báo (FE SecurityAlerts.jsx). */
 export const SECURITY_ALERT_NEW_EVENT = 'security.alert.new';
+/** Cảnh báo ĐANG MỞ có thêm lượt (x lần tăng) — chỉ WS cập nhật màn hình, KHÔNG in-app/email (chống spam). */
+export const SECURITY_ALERT_UPDATED_EVENT = 'security.alert.updated';
 
 /** Quyền "người vận hành Trung tâm cảnh báo" — UC-122 §1 câu 2: MANAGER + BA + SA. */
 const RECIPIENT_PERMISSION = 'security_alert.read';
@@ -79,6 +81,35 @@ export class SecurityAlertNotifierService {
     private readonly websocketService: WebsocketService,
     private readonly dataSource: DataSource,
   ) {}
+
+  async notifyUpdatedAlert(alert: SecurityAlertEntity): Promise<void> {
+    try {
+      const [recipients, zoneName] = await Promise.all([
+        this.resolveRecipients(),
+        this.resolveZoneName(alert.zoneId),
+      ]);
+      const payload = {
+        alertId: alert.id,
+        alertType: alert.alertType,
+        severity: alert.severity,
+        zoneId: alert.zoneId,
+        zoneName,
+        occurrenceCount: alert.occurrenceCount,
+        lastSeenAt: alert.lastSeenAt,
+      };
+      for (const r of recipients) {
+        this.websocketService.emitToUser(
+          r.id,
+          SECURITY_ALERT_UPDATED_EVENT,
+          payload,
+        );
+      }
+    } catch (e) {
+      this.logger.error(
+        `notifyUpdatedAlert ${alert.id} failed: ${e instanceof Error ? e.message : 'unknown'}`,
+      );
+    }
+  }
 
   async notifyNewAlert(alert: SecurityAlertEntity): Promise<void> {
     try {
