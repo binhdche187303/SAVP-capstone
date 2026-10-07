@@ -352,6 +352,13 @@ describe('VehicleResolveService (VRE-001 / UC5)', () => {
       alertMock.evaluate.mockRejectedValue(new Error('alert boom'));
       await expect(service.onVehicleEvent(evt())).resolves.toBeUndefined();
     });
+
+    it('Đợt 3: evaluate chạy nền — evaluate treo KHÔNG chặn onVehicleEvent', async () => {
+      wire();
+      alertMock.evaluate.mockReturnValue(new Promise(() => undefined));
+      await expect(service.onVehicleEvent(evt())).resolves.toBeUndefined();
+      expect(alertMock.evaluate).toHaveBeenCalledTimes(1);
+    });
   });
 
   // === UC-108 (FR-004, FR-008b): INSERT chạy TRƯỚC evaluate, truyền source_event_id ===

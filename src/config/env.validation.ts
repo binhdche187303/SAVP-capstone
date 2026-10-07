@@ -212,6 +212,10 @@ export const envValidationSchema = Joi.object({
   // ─── K2. Device Probe (IOT-014) ──────────────────────────────────────────────
   DEVICE_OFFLINE_DETECT_ENABLED: Joi.boolean().default(true),
   RTSP_PROBE_TIMEOUT_MS: Joi.number().integer().min(100).default(3000),
+  // Số lần probe lỗi LIÊN TIẾP mới coi camera offline (chống báo nhầm khi mạng chập chờn).
+  DEVICE_OFFLINE_FAIL_THRESHOLD: Joi.number().integer().min(1).default(3),
+  // Số camera probe song song mỗi lượt.
+  DEVICE_PROBE_CONCURRENCY: Joi.number().integer().min(1).max(500).default(50),
   // A5 (IOT-005): timeout riêng cho runtime RTSP probe (chẩn đoán đơn lẻ, chờ lâu hơn batch).
   RTSP_RUNTIME_PROBE_TIMEOUT_MS: Joi.number().integer().min(100).default(10000),
 

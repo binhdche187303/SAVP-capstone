@@ -469,4 +469,31 @@ describe('VehicleControlAlertService (VCC-001 / UC9)', () => {
       nowSpy.mockRestore();
     });
   });
+  describe('Đợt 3 perf — mỗi biển 1 alert, không thông báo lặp', () => {
+    it('recordAlert nhận dedupeKey = biển số (2 xe khác biển cùng zone KHÔNG bị gộp)', async () => {
+      controlListMock.checkControlList.mockResolvedValue(blocklistMatch);
+      await service.evaluate('30A12345', ctx);
+      await service.evaluate('51B67890', ctx);
+      expect(alertsMock.recordAlert.mock.calls[0][0].dedupeKey).toBe(
+        '30A12345',
+      );
+      expect(alertsMock.recordAlert.mock.calls[1][0].dedupeKey).toBe(
+        '51B67890',
+      );
+    });
+
+    it('alert của biển vẫn MỞ (isNew=false, chỉ bump) → KHÔNG gửi lại notification', async () => {
+      controlListMock.checkControlList.mockResolvedValue(blocklistMatch);
+      alertsMock.recordAlert.mockResolvedValue({ isNew: false });
+      await service.evaluate('30A12345', ctx);
+      expect(alertsMock.recordAlert).toHaveBeenCalledTimes(1);
+      expect(notifMock.createNotification).not.toHaveBeenCalled();
+    });
+
+    it('alert MỚI (isNew=true) → gửi notification như cũ', async () => {
+      controlListMock.checkControlList.mockResolvedValue(blocklistMatch);
+      await service.evaluate('30A12345', ctx);
+      expect(notifMock.createNotification).toHaveBeenCalledTimes(1);
+    });
+  });
 });

@@ -179,21 +179,70 @@ describe('VehicleControlListService (VCL-001 / UC8)', () => {
   });
 
   describe('checkControlList (VCC-001 / UC9)', () => {
+    beforeEach(() => {
+      repo.find = jest.fn().mockResolvedValue([]);
+    });
+
     it('không match → null', async () => {
-      repo.findOne.mockResolvedValue(null);
       expect(await service.checkControlList('30A12345')).toBeNull();
     });
 
-    it('match → trả entity; where lọc plateNumber+deletedAt IsNull+active:true, order listType ASC', async () => {
+    it('match → trả entity; nạp where deletedAt IsNull+active:true, order listType ASC', async () => {
       const e = { id: 'cl1', plateNumber: '30A12345', listType: 'blocklist' };
-      repo.findOne.mockResolvedValue(e);
+      repo.find.mockResolvedValue([e]);
       const r = await service.checkControlList('30A12345');
       expect(r).toBe(e);
-      const arg = repo.findOne.mock.calls[0][0];
-      expect(arg.where.plateNumber).toBe('30A12345');
+      const arg = repo.find.mock.calls[0][0];
       expect(arg.where.deletedAt).toBeDefined(); // IsNull()
       expect(arg.where.active).toBe(true);
       expect(arg.order).toEqual({ listType: 'ASC' });
+    });
+
+    it('biển có cả blocklist + watchlist → ưu tiên bản đầu (blocklist, theo listType ASC)', async () => {
+      const b = { id: 'b', plateNumber: '30A1', listType: 'blocklist' };
+      const w = { id: 'w', plateNumber: '30A1', listType: 'watchlist' };
+      repo.find.mockResolvedValue([b, w]);
+      expect(await service.checkControlList('30A1')).toBe(b);
+    });
+
+    it('Đợt 3: cache — nhiều xe qua cổng chỉ 1 query trong TTL', async () => {
+      await service.checkControlList('A');
+      await service.checkControlList('B');
+      await service.checkControlList('C');
+      expect(repo.find).toHaveBeenCalledTimes(1);
+    });
+
+    it('Đợt 3: create/update/softDelete → xoá cache, lần tra sau nạp lại ngay', async () => {
+      await service.checkControlList('A');
+      await service.create('u1', {
+        plateRaw: '30A-999',
+        listType: 'blocklist',
+      } as any);
+      await service.checkControlList('A');
+      expect(repo.find).toHaveBeenCalledTimes(2);
+      repo.findOne.mockResolvedValue({
+        id: 'cl1',
+        plateNumber: 'A',
+        active: true,
+      });
+      await service.update('cl1', { active: false } as any);
+      await service.checkControlList('A');
+      expect(repo.find).toHaveBeenCalledTimes(3);
+      await service.softDelete('cl1');
+      await service.checkControlList('A');
+      expect(repo.find).toHaveBeenCalledTimes(4);
+    });
+
+    it('Đợt 3: hết TTL 60s → nạp lại', async () => {
+      jest.useFakeTimers({ now: new Date('2026-10-07T00:00:00Z') });
+      try {
+        await service.checkControlList('A');
+        jest.setSystemTime(new Date('2026-10-07T00:01:01Z'));
+        await service.checkControlList('A');
+        expect(repo.find).toHaveBeenCalledTimes(2);
+      } finally {
+        jest.useRealTimers();
+      }
     });
   });
 

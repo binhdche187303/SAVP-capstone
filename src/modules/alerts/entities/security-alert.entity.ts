@@ -54,6 +54,13 @@ export class SecurityAlertEntity {
   @Column({ name: 'zone_id', type: 'uuid', nullable: true })
   zoneId: string | null;
 
+  /**
+   * Khoá gộp thêm trong unique index "đang mở" (type, zone, dedupe_key). '' = gộp theo
+   * (type, zone) như cũ; person_watchlist_match dùng userId → mỗi người 1 alert riêng.
+   */
+  @Column({ name: 'dedupe_key', type: 'varchar', length: 100, default: '' })
+  dedupeKey: string;
+
   @Column({ name: 'status', type: 'varchar', length: 30, default: 'new' })
   status: string;
 

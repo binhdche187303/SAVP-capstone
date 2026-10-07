@@ -59,8 +59,9 @@ const alertNotFound = (): NotFoundException =>
  * `security_alerts`, dùng chung cho 3d/UC-124/UC-125/UC-121 sau) + API Trung tâm cảnh
  * báo (list/detail/acknowledge/resolve/bulk).
  *
- * Dedup PHẢI qua unique partial index + bắt `23505` (KHÔNG pre-check — race window UC-121
- * EX1 gốc). Acknowledge/resolve PHẢI qua conditional UPDATE (`WHERE status = 'x'`) +
+ * Dedup PHẢI qua unique partial index + bắt `23505` (race window UC-121 EX1 gốc) — index
+ * vẫn là chốt chặn; tra alert mở trước chỉ để đường cộng dồn (phổ biến nhất) khỏi INSERT
+ * hỏng. Acknowledge/resolve PHẢI qua conditional UPDATE (`WHERE status = 'x'`) +
  * kiểm `affected` (EX1 race giữa 2 người cùng xử lý).
  */
 @Injectable()
@@ -82,19 +83,35 @@ export class AlertsService {
   }
 
   /**
-   * recordAlert (R1/R2 crux) — INSERT mới; nếu đã có alert đang mở cùng
-   * (alertType, zoneId) → bắt 23505, chuyển UPDATE tăng occurrenceCount, GIỮ NGUYÊN
-   * severity/triggeredAt gốc (§2.3/§2.4).
+   * recordAlert (R1/R2 crux) — đã có alert đang mở cùng (alertType, zoneId, dedupeKey) →
+   * UPDATE tăng occurrenceCount, GIỮ NGUYÊN severity/triggeredAt gốc (§2.3/§2.4); chưa có →
+   * INSERT mới.
+   *
+   * Tra alert mở TRƯỚC (index unique partial): trước đây luôn INSERT trước → mỗi lần cộng
+   * dồn (ca phổ biến nhất) = 1 INSERT hỏng (dòng ERROR 23505 trong log Postgres + dead
+   * tuple) + SELECT + UPDATE + đọc lại. Race 2 lần gọi cùng lúc vẫn do unique index chặn:
+   * INSERT hỏng 23505 → rơi về nhánh cũ bên dưới.
    */
   async recordAlert(input: RecordAlertInput): Promise<RecordAlertResult> {
     const zoneId = input.zoneId ?? null;
+    const dedupeKey = input.dedupeKey ?? '';
     const severity = this.resolveSeverity(input.alertType, input.severity);
     const triggeredAt = input.triggeredAt ?? new Date();
+
+    const existing = await this.findOpenAlert(
+      input.alertType,
+      zoneId,
+      dedupeKey,
+    );
+    if (existing) {
+      const reloaded = await this.bumpOccurrence(existing.id, input);
+      return { alert: reloaded, isNew: false };
+    }
 
     const inserted = await this.tryInsert(input, zoneId, severity, triggeredAt);
     if (inserted) return this.newAlert(inserted);
 
-    const open = await this.findOpenAlert(input.alertType, zoneId);
+    const open = await this.findOpenAlert(input.alertType, zoneId, dedupeKey);
     if (open) {
       const reloaded = await this.bumpOccurrence(open.id, input);
       return { alert: reloaded, isNew: false };
@@ -105,7 +122,11 @@ export class AlertsService {
     const retried = await this.tryInsert(input, zoneId, severity, triggeredAt);
     if (retried) return this.newAlert(retried);
 
-    const openAfterRetry = await this.findOpenAlert(input.alertType, zoneId);
+    const openAfterRetry = await this.findOpenAlert(
+      input.alertType,
+      zoneId,
+      dedupeKey,
+    );
     if (openAfterRetry) {
       const reloaded = await this.bumpOccurrence(openAfterRetry.id, input);
       return { alert: reloaded, isNew: false };
@@ -135,6 +156,7 @@ export class AlertsService {
         alertType: input.alertType,
         severity,
         zoneId,
+        dedupeKey: input.dedupeKey ?? '',
         status: 'new',
         triggeredAt,
         occurrenceCount: 1,
@@ -149,13 +171,27 @@ export class AlertsService {
     }
   }
 
+  /**
+   * Đã có alert ĐANG MỞ cho (type, zone, dedupeKey)? — caller dùng để bỏ việc đắt chỉ cần
+   * cho alert MỚI (VD crowd chụp ảnh camera, intrusion tra sự kiện gốc).
+   */
+  async hasOpenAlert(
+    alertType: string,
+    zoneId: string | null,
+    dedupeKey = '',
+  ): Promise<boolean> {
+    return (await this.findOpenAlert(alertType, zoneId, dedupeKey)) !== null;
+  }
+
   private async findOpenAlert(
     alertType: string,
     zoneId: string | null,
+    dedupeKey: string,
   ): Promise<SecurityAlertEntity | null> {
     const where: FindOptionsWhere<SecurityAlertEntity> = {
       alertType,
       zoneId: zoneId ?? IsNull(),
+      dedupeKey,
       status: Not('resolved'),
     };
     return this.repo.findOne({ where });

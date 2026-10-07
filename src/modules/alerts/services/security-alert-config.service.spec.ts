@@ -168,6 +168,16 @@ describe('SecurityAlertConfigService (ASC-001 auto-resolve timeout)', () => {
       expect(n).toBe(12);
     });
 
+    it('đợt 1: getDebounceSeconds cache — lần 2 không đọc DB; update() xoá cache', async () => {
+      repoMock.findOne.mockResolvedValue({ configValue: '12' });
+      await service.getDebounceSeconds();
+      await service.getDebounceSeconds();
+      expect(repoMock.findOne).toHaveBeenCalledTimes(1);
+      await service.update({ occurrenceDebounceSeconds: 9 }, 'admin1');
+      repoMock.findOne.mockResolvedValue({ configValue: '9' });
+      expect(await service.getDebounceSeconds()).toBe(9);
+    });
+
     it('update: chỉ occurrenceDebounceSeconds → upsert đúng key, KHÔNG đụng autoResolveTimeoutMinutes', async () => {
       repoMock.findOne.mockResolvedValue(null);
       await service.update({ occurrenceDebounceSeconds: 7 }, 'admin1');

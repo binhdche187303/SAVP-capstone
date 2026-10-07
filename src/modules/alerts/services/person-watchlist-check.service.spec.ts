@@ -151,14 +151,57 @@ describe('PersonWatchlistCheckService (PWL-001 / UC-125)', () => {
       expect(notifMock.createNotification).not.toHaveBeenCalled();
     });
 
-    it('bump alert đang mở của người KHÁC (cùng khu vực) → VẪN gửi notification', async () => {
+    it('đợt 1: bump (isNew=false) → KHÔNG gửi (alert đã riêng theo người, kể cả payload khác)', async () => {
       repo.findOne.mockResolvedValue(match());
       alertsMock.recordAlert.mockResolvedValue({
         isNew: false,
         alert: { payloadJson: { userId: 'user-2' } },
       });
       await service.checkPersonWatchlist('user-1');
-      expect(notifMock.createNotification).toHaveBeenCalledTimes(1);
+      expect(notifMock.createNotification).not.toHaveBeenCalled();
+    });
+
+    it('đợt 1: recordAlert nhận dedupeKey = userId (mỗi người 1 alert mở / khu vực)', async () => {
+      repo.findOne.mockResolvedValue(match());
+      await service.checkPersonWatchlist('user-1');
+      expect(alertsMock.recordAlert.mock.calls[0][0].dedupeKey).toBe('user-1');
+    });
+  });
+
+  describe('đợt 1: throttle theo người + khu vực, cache người nhận', () => {
+    const zoneOf = (zone: string) =>
+      dsMock.manager.query.mockImplementation((sql: string) =>
+        Promise.resolve(
+          sql.includes('FROM iot_devices')
+            ? [{ device_code: 'D', room_name: 'R', zone_id: zone }]
+            : adminRows,
+        ),
+      );
+
+    it('cùng người sang khu vực KHÁC trong window → vẫn báo', async () => {
+      repo.findOne.mockResolvedValue(match());
+      zoneOf('zone-A');
+      await service.checkPersonWatchlist('user-1', { deviceId: 'd1' });
+      zoneOf('zone-B');
+      await service.checkPersonWatchlist('user-1', { deviceId: 'd2' });
+      expect(alertsMock.recordAlert).toHaveBeenCalledTimes(2);
+    });
+
+    it('cùng người cùng khu vực trong window → chỉ báo 1 lần', async () => {
+      repo.findOne.mockResolvedValue(match());
+      zoneOf('zone-A');
+      await service.checkPersonWatchlist('user-1', { deviceId: 'd1' });
+      await service.checkPersonWatchlist('user-1', { deviceId: 'd1' });
+      expect(alertsMock.recordAlert).toHaveBeenCalledTimes(1);
+    });
+
+    it('2 người khác nhau → mỗi người 1 lần, người nhận chỉ query 1 lần (cache)', async () => {
+      repo.findOne.mockResolvedValue(match());
+      await service.checkPersonWatchlist('user-1');
+      repo.findOne.mockResolvedValue(match({ userId: 'user-2' }));
+      await service.checkPersonWatchlist('user-2');
+      expect(notifMock.createNotification).toHaveBeenCalledTimes(2);
+      expect(dsMock.manager.query).toHaveBeenCalledTimes(1);
     });
   });
 

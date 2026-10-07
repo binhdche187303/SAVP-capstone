@@ -34,6 +34,7 @@ describe('CrowdAlertService (ACR-001 / UC-121)', () => {
 
   const event = (over: any = {}): any => ({
     id: 'evt-1',
+    zoneId: 'zone-1',
     occupancyCount: 30,
     eventTime: new Date('2026-07-23T08:00:00Z'),
     ...over,
@@ -43,8 +44,19 @@ describe('CrowdAlertService (ACR-001 / UC-121)', () => {
     presenceRepo = { find: jest.fn().mockResolvedValue([]) };
     alertRulesMock = {
       list: jest.fn().mockResolvedValue({ items: [], meta: {} }),
+      // Đợt 2: service gọi listEnabledZoneRules (có cache) — ủy quyền về mock `list` để
+      // các test cũ giữ nguyên dữ liệu đầu vào.
+      listEnabledZoneRules: jest.fn(async () => {
+        const r = await alertRulesMock.list();
+        return (r?.items ?? []).filter(
+          (x: any) => x.enabled !== false && x.zoneId !== null,
+        );
+      }),
     };
-    alertsMock = { recordAlert: jest.fn().mockResolvedValue({ isNew: true }) };
+    alertsMock = {
+      recordAlert: jest.fn().mockResolvedValue({ isNew: true }),
+      hasOpenAlert: jest.fn().mockResolvedValue(false),
+    };
     configRepo = {
       findOne: jest.fn().mockResolvedValue(null),
       create: jest.fn((x: any) => x),
@@ -312,13 +324,8 @@ describe('CrowdAlertService (ACR-001 / UC-121)', () => {
         eventTime: new Date('2026-07-23T08:00:00Z'),
         sourceEventId: 'zpe-5',
       });
-      expect(alertRulesMock.list).toHaveBeenCalledWith(
-        expect.objectContaining({
-          alertType: 'crowd',
-          zoneId: 'zone-42',
-          enabled: true,
-        }),
-      );
+      // Đợt 2: dùng danh sách rule zone-scoped CACHE 60s (1 query/phút thay vì 1 query/event).
+      expect(alertRulesMock.listEnabledZoneRules).toHaveBeenCalledWith('crowd');
     });
 
     it('dedupe qua recordAlert() có sẵn — gọi lại cho CÙNG zone (mô phỏng cron quét lại) → recordAlert vẫn được gọi (bump occurrenceCount), KHÔNG cần cờ chống trùng riêng', async () => {
@@ -588,6 +595,84 @@ describe('CrowdAlertService (ACR-001 / UC-121)', () => {
       expect(r).toBe(false);
       expect(ivssBridgeMock.getSnapshot).not.toHaveBeenCalled();
       expect(alertsMock.recordAlert).not.toHaveBeenCalled();
+    });
+  });
+  describe('Đợt 2 — performance', () => {
+    it('đã có alert crowd MỞ cho zone → KHÔNG chụp ảnh lại, chỉ bump', async () => {
+      alertsMock.hasOpenAlert.mockResolvedValue(true);
+      alertRulesMock.list.mockResolvedValue({ items: [rule()], meta: {} });
+      await service.evaluateZoneCountNow({
+        zoneId: 'zone-1',
+        occupancyCount: 30,
+        eventTime: new Date('2026-07-23T08:00:00Z'),
+        sourceEventId: 'zpe-1',
+      });
+      expect(alertsMock.recordAlert).toHaveBeenCalledTimes(1);
+      expect(storageServiceMock.uploadFile ?? jest.fn()).not.toHaveBeenCalled();
+    });
+
+    it('cron: nhiều zone → 1 query presence (In), mỗi zone vi phạm chỉ ghi 1 lần với event ĐỈNH', async () => {
+      alertRulesMock.list.mockResolvedValue({
+        items: [rule(), rule({ id: 'rule-2', zoneId: 'zone-2' })],
+        meta: {},
+      });
+      presenceRepo.find.mockResolvedValue([
+        event({ id: 'a', occupancyCount: 26 }),
+        event({ id: 'b', occupancyCount: 40 }),
+        event({ id: 'c', occupancyCount: 31 }),
+        event({ id: 'd', zoneId: 'zone-2', occupancyCount: 5 }),
+      ]);
+      const r = await service.evaluateCrowdAlerts();
+      expect(presenceRepo.find).toHaveBeenCalledTimes(1);
+      expect(presenceRepo.find.mock.calls[0][0].where.zoneId._value).toEqual([
+        'zone-1',
+        'zone-2',
+      ]);
+      expect(alertsMock.recordAlert).toHaveBeenCalledTimes(1);
+      expect(alertsMock.recordAlert.mock.calls[0][0].payloadJson).toMatchObject(
+        {
+          occupancyCount: 40,
+          sourceEventId: 'b',
+        },
+      );
+      expect(r.violationsFound).toBe(1);
+    });
+
+    it('cron chồng lấn → lần sau bỏ qua', async () => {
+      alertRulesMock.list.mockResolvedValue({ items: [rule()], meta: {} });
+      let release!: () => void;
+      presenceRepo.find.mockImplementation(
+        () => new Promise((r) => (release = () => r([]))),
+      );
+      const first = service.evaluateCrowdAlerts();
+      await new Promise((r) => setImmediate(r));
+      const second = await service.evaluateCrowdAlerts();
+      expect(second.violationsFound).toBe(0);
+      release();
+      await first;
+      expect(presenceRepo.find).toHaveBeenCalledTimes(1);
+    });
+
+    it('zone đang xử lý dở (in-flight) → event đến cùng lúc bị bỏ qua', async () => {
+      alertRulesMock.list.mockResolvedValue({ items: [rule()], meta: {} });
+      let release!: () => void;
+      alertsMock.recordAlert.mockImplementation(
+        () => new Promise((r) => (release = () => r({ isNew: true }))),
+      );
+      const a = {
+        zoneId: 'zone-1',
+        occupancyCount: 30,
+        eventTime: new Date('2026-07-23T08:00:00Z'),
+        sourceEventId: 'zpe-1',
+      };
+      const p1 = service.evaluateZoneCountNow(a);
+      for (let i = 0; i < 5 && !release; i++)
+        await new Promise((r) => setImmediate(r));
+      const r2 = await service.evaluateZoneCountNow(a);
+      expect(r2).toBe(false);
+      release();
+      await p1;
+      expect(alertsMock.recordAlert).toHaveBeenCalledTimes(1);
     });
   });
 });

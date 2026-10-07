@@ -42,14 +42,14 @@ describe('IotDevicesService', () => {
   let auditRepoMock: any;
   let queryRunnerMock: any; // Keep as any for deep mocking
   let deviceOfflineHookMock: {
-    onDeviceOffline: jest.Mock;
-    onDeviceOnline: jest.Mock;
+    onDevicesOffline: jest.Mock;
+    onDevicesOnline: jest.Mock;
   };
 
   beforeEach(async () => {
     deviceOfflineHookMock = {
-      onDeviceOffline: jest.fn(),
-      onDeviceOnline: jest.fn(),
+      onDevicesOffline: jest.fn(),
+      onDevicesOnline: jest.fn(),
     };
     queryRunnerMock = {
       connect: jest.fn(),
@@ -923,54 +923,107 @@ describe('IotDevicesService', () => {
   describe('detectOfflineDevices', () => {
     const cam = (over: any) => ({
       id: 'c1',
+      deviceCode: 'CAM-1',
+      deviceName: 'Cam 1',
       deviceType: IoTDeviceType.IP_CAMERA,
       status: 'online',
       streamUrl: 'rtsp://10.0.0.1:554/live',
       ipAddress: null,
+      zoneId: null,
       ...over,
     });
 
-    it('online->offline: transition + audit auto_offline', async () => {
-      (dataSourceMock.manager.find as jest.Mock).mockResolvedValue([
-        cam({ id: 'c1', status: 'online' }),
-      ]);
-      probeTcpMock.mockResolvedValue('offline');
-
-      const r = await service.detectOfflineDevices('actor-1');
-
-      expect(r.checked).toBe(1);
-      expect(r.offline_count).toBe(1);
-      expect(auditRepoMock.logDeviceStatusChange).toHaveBeenCalledWith(
-        queryRunnerMock.manager,
-        expect.objectContaining({
-          action: 'auto_offline',
-          oldStatus: 'online',
-          newStatus: 'offline',
-          userId: 'actor-1',
-        }),
+    /** bulkSetStatus: trả lại đúng các id được UPDATE (mô phỏng RETURNING id). */
+    const echoUpdatedIds = () =>
+      queryRunnerMock.manager.query.mockImplementation(
+        (_sql: string, params: any[]) =>
+          Promise.resolve([
+            params[1].map((id: string) => ({ id })),
+            params[1].length,
+          ]),
       );
-      expect(r.transitions).toEqual([
-        { id: 'c1', from: 'online', to: 'offline' },
-      ]);
+
+    /** Chạy N lượt quét liên tiếp (mô phỏng cron mỗi phút). */
+    const runTimes = async (n: number) => {
+      let r:
+        | Awaited<ReturnType<typeof service.detectOfflineDevices>>
+        | undefined;
+      for (let i = 0; i < n; i++) r = await service.detectOfflineDevices(null);
+      return r!;
+    };
+
+    beforeEach(() => {
+      queryRunnerMock.manager.query = jest.fn();
+      auditRepoMock.logDeviceStatusChanges = jest.fn();
+      echoUpdatedIds();
     });
 
-    it('offline->online: audit auto_online', async () => {
-      (dataSourceMock.manager.find as jest.Mock).mockResolvedValue([
-        cam({ id: 'c1', status: 'offline' }),
-      ]);
-      probeTcpMock.mockResolvedValue('online');
+    describe('chống báo nhầm (ngưỡng 3 lần lỗi liên tiếp)', () => {
+      it('lỗi lần 1, 2 → CHƯA offline (pending), lần 3 → offline', async () => {
+        (dataSourceMock.manager.find as jest.Mock).mockResolvedValue([
+          cam({ id: 'c1', status: 'online' }),
+        ]);
+        probeTcpMock.mockResolvedValue('offline');
 
-      const r = await service.detectOfflineDevices(null);
+        const r1 = await service.detectOfflineDevices(null);
+        expect(r1.transitions).toEqual([]);
+        expect(r1.pending_offline).toBe(1);
+        const r2 = await service.detectOfflineDevices(null);
+        expect(r2.transitions).toEqual([]);
+        expect(queryRunnerMock.startTransaction).not.toHaveBeenCalled();
+        expect(deviceOfflineHookMock.onDevicesOffline).not.toHaveBeenCalled();
 
-      expect(r.online_count).toBe(1);
-      expect(auditRepoMock.logDeviceStatusChange).toHaveBeenCalledWith(
-        queryRunnerMock.manager,
-        expect.objectContaining({ action: 'auto_online', userId: null }),
-      );
-      expect(r.transitions[0]).toEqual({
-        id: 'c1',
-        from: 'offline',
-        to: 'online',
+        const r3 = await service.detectOfflineDevices('actor-1');
+        expect(r3.transitions).toEqual([
+          { id: 'c1', from: 'online', to: 'offline' },
+        ]);
+        expect(auditRepoMock.logDeviceStatusChanges).toHaveBeenCalledWith(
+          queryRunnerMock.manager,
+          [
+            expect.objectContaining({
+              deviceId: 'c1',
+              action: 'auto_offline',
+              oldStatus: 'online',
+              newStatus: 'offline',
+              userId: 'actor-1',
+            }),
+          ],
+        );
+      });
+
+      it('mạng chập chờn: lỗi → OK → lỗi → lỗi → KHÔNG offline (bộ đếm reset khi OK)', async () => {
+        (dataSourceMock.manager.find as jest.Mock).mockResolvedValue([
+          cam({ id: 'c1', status: 'online' }),
+        ]);
+        probeTcpMock
+          .mockResolvedValueOnce('offline')
+          .mockResolvedValueOnce('online')
+          .mockResolvedValueOnce('offline')
+          .mockResolvedValueOnce('offline');
+
+        const r = await runTimes(4);
+
+        expect(r.transitions).toEqual([]);
+        expect(deviceOfflineHookMock.onDevicesOffline).not.toHaveBeenCalled();
+        expect(deviceOfflineHookMock.onDevicesOnline).not.toHaveBeenCalled();
+      });
+
+      it('offline → online: chuyển NGAY ở lần probe OK đầu tiên', async () => {
+        (dataSourceMock.manager.find as jest.Mock).mockResolvedValue([
+          cam({ id: 'c1', status: 'offline' }),
+        ]);
+        probeTcpMock.mockResolvedValue('online');
+
+        const r = await service.detectOfflineDevices(null);
+
+        expect(r.online_count).toBe(1);
+        expect(r.transitions).toEqual([
+          { id: 'c1', from: 'offline', to: 'online' },
+        ]);
+        expect(auditRepoMock.logDeviceStatusChanges).toHaveBeenCalledWith(
+          queryRunnerMock.manager,
+          [expect.objectContaining({ action: 'auto_online', userId: null })],
+        );
       });
     });
 
@@ -986,7 +1039,7 @@ describe('IotDevicesService', () => {
       expect(r.online_count).toBe(1);
       expect(r.transitions).toEqual([]);
       expect(queryRunnerMock.startTransaction).not.toHaveBeenCalled();
-      expect(auditRepoMock.logDeviceStatusChange).not.toHaveBeenCalled();
+      expect(auditRepoMock.logDeviceStatusChanges).not.toHaveBeenCalled();
     });
 
     it('skip no-address camera (not counted in checked)', async () => {
@@ -1017,52 +1070,159 @@ describe('IotDevicesService', () => {
       expect(probeTcpMock).toHaveBeenCalledWith('10.0.0.9', 554, 3000);
     });
 
-    it('resilience: one transition DB error does not break the run', async () => {
-      (dataSourceMock.manager.find as jest.Mock).mockResolvedValue([
-        cam({ id: 'c1', status: 'online' }),
-        cam({ id: 'c2', status: 'online' }),
-      ]);
-      probeTcpMock.mockResolvedValue('offline');
-      // c1 save fails, c2 succeeds
-      queryRunnerMock.manager.save
-        .mockRejectedValueOnce(new Error('DB fail'))
-        .mockResolvedValueOnce({});
+    describe('ghi trạng thái theo lô', () => {
+      it('100 camera rớt → 1 transaction, 1 UPDATE offline, 1 INSERT audit', async () => {
+        const cams = Array.from({ length: 100 }, (_, i) =>
+          cam({ id: `c${i}`, deviceCode: `CAM-${i}`, status: 'online' }),
+        );
+        (dataSourceMock.manager.find as jest.Mock).mockResolvedValue(cams);
+        probeTcpMock.mockResolvedValue('offline');
 
-      const r = await service.detectOfflineDevices(null);
+        const r = await runTimes(3);
 
-      expect(r.checked).toBe(2);
-      expect(r.offline_count).toBe(2);
-      expect(queryRunnerMock.rollbackTransaction).toHaveBeenCalledTimes(1);
-      expect(r.transitions).toHaveLength(1); // chỉ c2 thành công
+        expect(r.transitions).toHaveLength(100);
+        expect(queryRunnerMock.startTransaction).toHaveBeenCalledTimes(1);
+        expect(queryRunnerMock.commitTransaction).toHaveBeenCalledTimes(1);
+        expect(queryRunnerMock.manager.query).toHaveBeenCalledTimes(1);
+        const [sql, params] = queryRunnerMock.manager.query.mock.calls[0];
+        expect(sql).toContain('UPDATE iot_devices');
+        expect(params[0]).toBe('offline');
+        expect(params[1]).toHaveLength(100);
+        expect(params[2]).toBe('online');
+        expect(auditRepoMock.logDeviceStatusChanges).toHaveBeenCalledTimes(1);
+        expect(
+          auditRepoMock.logDeviceStatusChanges.mock.calls[0][1],
+        ).toHaveLength(100);
+        expect(queryRunnerMock.manager.save).not.toHaveBeenCalled();
+      });
+
+      it('chỉ camera thật sự được UPDATE (RETURNING) mới thành transition', async () => {
+        (dataSourceMock.manager.find as jest.Mock).mockResolvedValue([
+          cam({ id: 'c1', status: 'offline' }),
+          cam({ id: 'c2', status: 'offline' }),
+        ]);
+        probeTcpMock.mockResolvedValue('online');
+        // c2 đã bị đổi status bởi luồng khác → UPDATE ... WHERE status='offline' không khớp.
+        queryRunnerMock.manager.query.mockResolvedValue([[{ id: 'c1' }], 1]);
+
+        const r = await service.detectOfflineDevices(null);
+
+        expect(r.transitions).toEqual([
+          { id: 'c1', from: 'offline', to: 'online' },
+        ]);
+      });
+
+      it('DB lỗi → rollback cả lô, không transition, không gọi hook, không throw', async () => {
+        (dataSourceMock.manager.find as jest.Mock).mockResolvedValue([
+          cam({ id: 'c1', status: 'offline' }),
+          cam({ id: 'c2', status: 'offline' }),
+        ]);
+        probeTcpMock.mockResolvedValue('online');
+        queryRunnerMock.manager.query.mockRejectedValue(new Error('DB fail'));
+
+        const r = await service.detectOfflineDevices(null);
+
+        expect(r.checked).toBe(2);
+        expect(queryRunnerMock.rollbackTransaction).toHaveBeenCalledTimes(1);
+        expect(queryRunnerMock.release).toHaveBeenCalledTimes(1);
+        expect(r.transitions).toEqual([]);
+        expect(deviceOfflineHookMock.onDevicesOnline).not.toHaveBeenCalled();
+      });
     });
 
-    describe('device offline alert hook', () => {
-      it('online->offline → gọi hook với device + zoneId', async () => {
+    describe('song song + chống chạy chồng', () => {
+      it('mặc định probe 50 camera song song', async () => {
+        const cams = Array.from({ length: 120 }, (_, i) =>
+          cam({ id: `c${i}`, status: 'online' }),
+        );
+        (dataSourceMock.manager.find as jest.Mock).mockResolvedValue(cams);
+        let inFlight = 0;
+        let maxInFlight = 0;
+        probeTcpMock.mockImplementation(async () => {
+          inFlight++;
+          maxInFlight = Math.max(maxInFlight, inFlight);
+          await new Promise((res) => setImmediate(res));
+          inFlight--;
+          return 'online';
+        });
+
+        const r = await service.detectOfflineDevices(null);
+
+        expect(r.checked).toBe(120);
+        expect(maxInFlight).toBe(50);
+      });
+
+      it('lượt trước chưa xong → lượt sau skipped, không probe lại', async () => {
+        (dataSourceMock.manager.find as jest.Mock).mockResolvedValue([
+          cam({ id: 'c1', status: 'online' }),
+        ]);
+        let release!: () => void;
+        probeTcpMock.mockImplementation(
+          () =>
+            new Promise((res) => {
+              release = () => res('online');
+            }),
+        );
+
+        const first = service.detectOfflineDevices(null);
+        await new Promise((res) => setImmediate(res));
+        const second = await service.detectOfflineDevices(null);
+        expect(second.skipped).toBe(true);
+        expect(probeTcpMock).toHaveBeenCalledTimes(1);
+
+        release();
+        const r1 = await first;
+        expect(r1.skipped).toBeUndefined();
+
+        // Khóa được nhả → lượt kế tiếp chạy bình thường.
+        probeTcpMock.mockResolvedValue('online');
+        const third = await service.detectOfflineDevices(null);
+        expect(third.skipped).toBeUndefined();
+      });
+
+      it('lượt lỗi (find throw) vẫn nhả khóa', async () => {
+        (dataSourceMock.manager.find as jest.Mock)
+          .mockRejectedValueOnce(new Error('db'))
+          .mockResolvedValue([]);
+        await expect(service.detectOfflineDevices(null)).rejects.toThrow('db');
+        const r = await service.detectOfflineDevices(null);
+        expect(r.skipped).toBeUndefined();
+      });
+    });
+
+    describe('device offline alert hook (theo lô)', () => {
+      it('online->offline (đủ ngưỡng) → gọi onDevicesOffline 1 lần với device + zoneId', async () => {
         (dataSourceMock.manager.find as jest.Mock).mockResolvedValue([
           cam({
             id: 'c1',
-            status: 'online',
             deviceCode: 'CAM-1',
             deviceName: 'Cam 1',
+            zoneId: 'z1',
+          }),
+          cam({
+            id: 'c2',
+            deviceCode: 'CAM-2',
+            deviceName: 'Cam 2',
             zoneId: 'z1',
           }),
         ]);
         probeTcpMock.mockResolvedValue('offline');
 
-        await service.detectOfflineDevices(null);
+        await runTimes(3);
 
-        expect(deviceOfflineHookMock.onDeviceOffline).toHaveBeenCalledTimes(1);
-        expect(deviceOfflineHookMock.onDeviceOffline).toHaveBeenCalledWith(
+        expect(deviceOfflineHookMock.onDevicesOffline).toHaveBeenCalledTimes(1);
+        expect(deviceOfflineHookMock.onDevicesOffline).toHaveBeenCalledWith([
           expect.objectContaining({
             deviceId: 'c1',
             deviceCode: 'CAM-1',
             deviceName: 'Cam 1',
             zoneId: 'z1',
           }),
-        );
+          expect.objectContaining({ deviceId: 'c2', zoneId: 'z1' }),
+        ]);
       });
 
-      it('offline->online → gọi onDeviceOnline, KHÔNG gọi onDeviceOffline', async () => {
+      it('offline->online → gọi onDevicesOnline, KHÔNG gọi onDevicesOffline', async () => {
         (dataSourceMock.manager.find as jest.Mock).mockResolvedValue([
           cam({ id: 'c1', status: 'offline' }),
         ]);
@@ -1070,10 +1230,10 @@ describe('IotDevicesService', () => {
 
         await service.detectOfflineDevices(null);
 
-        expect(deviceOfflineHookMock.onDeviceOffline).not.toHaveBeenCalled();
-        expect(deviceOfflineHookMock.onDeviceOnline).toHaveBeenCalledWith(
+        expect(deviceOfflineHookMock.onDevicesOffline).not.toHaveBeenCalled();
+        expect(deviceOfflineHookMock.onDevicesOnline).toHaveBeenCalledWith([
           expect.objectContaining({ deviceId: 'c1' }),
-        );
+        ]);
       });
 
       it('đã offline, vẫn offline (không transition) → KHÔNG gọi hook', async () => {
@@ -1082,39 +1242,36 @@ describe('IotDevicesService', () => {
         ]);
         probeTcpMock.mockResolvedValue('offline');
 
-        await service.detectOfflineDevices(null);
+        await runTimes(3);
 
-        expect(deviceOfflineHookMock.onDeviceOffline).not.toHaveBeenCalled();
+        expect(deviceOfflineHookMock.onDevicesOffline).not.toHaveBeenCalled();
       });
 
-      it('transition rollback → KHÔNG gọi hook', async () => {
-        (dataSourceMock.manager.find as jest.Mock).mockResolvedValue([
-          cam({ id: 'c1', status: 'online' }),
-        ]);
-        probeTcpMock.mockResolvedValue('offline');
-        queryRunnerMock.manager.save.mockRejectedValueOnce(
-          new Error('DB fail'),
+      it('hook offline throw → KHÔNG throw, hook online vẫn chạy, transition vẫn trả về', async () => {
+        // c1 (10.0.0.1) rớt, c2 (10.0.0.2) có lại.
+        probeTcpMock.mockImplementation(async (host: string) =>
+          host === '10.0.0.1' ? 'offline' : 'online',
         );
-
-        await service.detectOfflineDevices(null);
-
-        expect(deviceOfflineHookMock.onDeviceOffline).not.toHaveBeenCalled();
-      });
-
-      it('hook throw → KHÔNG throw, transition vẫn trả về', async () => {
         (dataSourceMock.manager.find as jest.Mock).mockResolvedValue([
           cam({ id: 'c1', status: 'online' }),
+          cam({
+            id: 'c2',
+            status: 'offline',
+            streamUrl: 'rtsp://10.0.0.2:554/x',
+          }),
         ]);
-        probeTcpMock.mockResolvedValue('offline');
-        deviceOfflineHookMock.onDeviceOffline.mockRejectedValueOnce(
+        deviceOfflineHookMock.onDevicesOffline.mockRejectedValue(
           new Error('alert down'),
         );
 
-        const r = await service.detectOfflineDevices(null);
+        const r = await runTimes(3);
 
-        expect(r.transitions).toEqual([
-          { id: 'c1', from: 'online', to: 'offline' },
-        ]);
+        expect(deviceOfflineHookMock.onDevicesOnline).toHaveBeenCalled();
+        expect(r.transitions).toContainEqual({
+          id: 'c1',
+          from: 'online',
+          to: 'offline',
+        });
       });
     });
   });

@@ -115,20 +115,21 @@ export class IvssOccupancyIngestService {
       // thế, cron vẫn chạy làm lưới quét bù). try/catch RIÊNG — lỗi ở đây KHÔNG
       // được làm hỏng luồng ghi occupancy chính (khác writeCountEvent ở trên,
       // vốn CỐ Ý để throw trồi lên controller ack-always).
-      try {
-        await this.crowdAlertService.evaluateZoneCountNow({
+      // Đợt 2 perf: chạy nền — webhook KHÔNG chờ (alert mới có thể chụp ảnh ≤6.5s).
+      void this.crowdAlertService
+        .evaluateZoneCountNow({
           zoneId,
           occupancyCount,
           eventTime,
           sourceEventId: presenceId,
+        })
+        .catch((e: unknown) => {
+          this.logger.error(
+            `crowd-alert check (immediate) failed (channel=${dto.channelId} zone=${zoneId}): ${
+              e instanceof Error ? e.message : 'unknown'
+            }`,
+          );
         });
-      } catch (e) {
-        this.logger.error(
-          `crowd-alert check (immediate) failed (channel=${dto.channelId} zone=${zoneId}): ${
-            e instanceof Error ? e.message : 'unknown'
-          }`,
-        );
-      }
     } else {
       this.logger.warn(
         `Occupancy channel chưa map zone (channel=${dto.channelId}) — skip crowd-alert/heatmap write.`,

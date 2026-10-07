@@ -21,9 +21,13 @@ export interface DeviceOfflineAlertInput {
 }
 
 export interface DeviceOfflineAlertHook {
-  onDeviceOffline(evt: DeviceOfflineAlertInput): Promise<void>;
-  /** Camera offline → online (có tín hiệu lại). `detectedAt` = thời điểm phát hiện online. */
-  onDeviceOnline?(evt: DeviceOfflineAlertInput): Promise<void>;
+  /**
+   * Các camera vừa online → offline trong CÙNG 1 lượt quét — gộp theo khu vực, mỗi khu vực
+   * 1 cảnh báo/1 thông báo (không phải mỗi camera 1 thông báo).
+   */
+  onDevicesOffline(evts: DeviceOfflineAlertInput[]): Promise<void>;
+  /** Các camera offline → online (có tín hiệu lại) trong cùng 1 lượt quét — gộp theo cảnh báo. */
+  onDevicesOnline?(evts: DeviceOfflineAlertInput[]): Promise<void>;
 }
 
 /** Injection token cho hook camera offline → cảnh báo. */
