@@ -27,7 +27,10 @@
     "migration:show": "npm run typeorm -- migration:show -d src/database/data-source.ts",
     "migration:run:tsx": "tsx scripts/run-migrations.ts",
     "cleanup:ivss-group1": "tsx scripts/cleanup-ivss-group1-mappings.ts",
-    "seed:demo": "tsx scripts/seed-clean-demo.ts"
+    "seed:demo": "tsx scripts/seed-clean-demo.ts",
+    "demo:camera": "tsx scripts/demo-camera-mock/demo-camera-mock.ts",
+    "demo:images": "tsx scripts/demo-camera-mock/generate-images.ts",
+    "demo:seed": "tsx scripts/demo-seed/demo-seed.ts"
   },
   "dependencies": {
     "@nestjs/bullmq": "^11.0.4",
