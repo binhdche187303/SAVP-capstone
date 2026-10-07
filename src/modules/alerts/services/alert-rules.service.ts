@@ -46,6 +46,11 @@ export class AlertRulesService {
     string,
     { value: EffectiveRuleResult; expiresAt: number }
   >();
+  /** Cache `listEnabledZoneRules` theo alertType — cron + webhook crowd/intrusion đọc mỗi sự kiện. */
+  private readonly zoneRulesCache = new Map<
+    string,
+    { value: AlertRuleEntity[]; expiresAt: number }
+  >();
 
   constructor(
     @InjectRepository(AlertRuleEntity)
@@ -80,7 +85,7 @@ export class AlertRulesService {
 
     try {
       const saved = await this.repo.save(entity);
-      this.effectiveRuleCache.clear();
+      this.clearRuleCaches();
       return saved;
     } catch (e) {
       if (this.isUniqueViolation(e)) {
@@ -176,7 +181,7 @@ export class AlertRulesService {
 
     try {
       const saved = await this.repo.save(entity);
-      this.effectiveRuleCache.clear();
+      this.clearRuleCaches();
       return saved;
     } catch (e) {
       if (this.isUniqueViolation(e)) {
@@ -190,7 +195,36 @@ export class AlertRulesService {
     await this.findOne(id);
     await this.repo.update(id, { updatedBy: actorUserId });
     await this.repo.softDelete(id);
+    this.clearRuleCaches();
+  }
+
+  /**
+   * Luật BẬT gắn khu vực cụ thể của 1 loại (crowd/intrusion) — cache EFFECTIVE_RULE_CACHE_MS,
+   * create/update/remove xoá ngay. Thay `list()` (COUNT + SELECT phân trang) ở đường nóng.
+   */
+  async listEnabledZoneRules(alertType: string): Promise<AlertRuleEntity[]> {
+    const now = Date.now();
+    const cached = this.zoneRulesCache.get(alertType);
+    if (cached && cached.expiresAt > now) return cached.value;
+    const value = await this.repo.find({
+      where: {
+        alertType,
+        enabled: true,
+        deletedAt: IsNull(),
+        zoneId: Not(IsNull()),
+      },
+      order: { createdAt: 'DESC' },
+    });
+    this.zoneRulesCache.set(alertType, {
+      value,
+      expiresAt: now + EFFECTIVE_RULE_CACHE_MS,
+    });
+    return value;
+  }
+
+  private clearRuleCaches(): void {
     this.effectiveRuleCache.clear();
+    this.zoneRulesCache.clear();
   }
 
   /**
