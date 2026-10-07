@@ -249,6 +249,13 @@ describe('FaceAttendanceService (FAT-001)', () => {
     });
   });
 
+  it('đợt 1: onVerify KHÔNG chờ watchlist (check treo vẫn trả về ngay)', async () => {
+    dsMock.manager.query.mockImplementation(router());
+    watchlistMock.checkPersonWatchlist.mockReturnValue(new Promise(() => {}));
+    await expect(service.onVerify(input())).resolves.toBeUndefined();
+    expect(watchlistMock.checkPersonWatchlist).toHaveBeenCalledTimes(1);
+  });
+
   it('PWL-001: không resolve được user → KHÔNG đối chiếu watchlist', async () => {
     dsMock.manager.query.mockImplementation(
       router({ mapping: [], mappingByCode: [] }),

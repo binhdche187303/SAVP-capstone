@@ -53,7 +53,6 @@ describe('AlertsService (ASC-001 / UC-123)', () => {
     service = module.get(AlertsService);
   });
 
-
   describe('notifier (lỗi 3: thông báo cảnh báo mới)', () => {
     let notifier: { notifyNewAlert: jest.Mock };
     let svc: AlertsService;
@@ -83,7 +82,12 @@ describe('AlertsService (ASC-001 / UC-123)', () => {
 
     it('bump alert đang mở (isNew=false) → KHÔNG gọi notifier (chống spam)', async () => {
       repo.save.mockRejectedValueOnce({ driverError: { code: '23505' } });
-      const open = { id: 'open-1', alertType: 'crowd', zoneId: 'z1', status: 'new' };
+      const open = {
+        id: 'open-1',
+        alertType: 'crowd',
+        zoneId: 'z1',
+        status: 'new',
+      };
       repo.findOne
         .mockResolvedValueOnce(open)
         .mockResolvedValueOnce({ ...open, occurrenceCount: 2 });
@@ -142,6 +146,27 @@ describe('AlertsService (ASC-001 / UC-123)', () => {
       expect(r.isNew).toBe(false);
       expect(repo.query).toHaveBeenCalledTimes(1); // bumpOccurrence() raw SQL, không còn createQueryBuilder
       expect(r.alert.occurrenceCount).toBe(2);
+    });
+
+    it('đợt 1: alert đang mở → SELECT trước rồi bump, KHÔNG thử INSERT (không lỗi 23505 vô ích)', async () => {
+      repo.findOne
+        .mockResolvedValueOnce({ id: 'open-1', status: 'new' })
+        .mockResolvedValueOnce({ id: 'open-1', occurrenceCount: 2 });
+      const r = await service.recordAlert({ alertType: 'crowd', zoneId: 'z1' });
+      expect(r.isNew).toBe(false);
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('đợt 1: dedupeKey vào điều kiện tìm alert mở + bản ghi INSERT (mặc định rỗng)', async () => {
+      await service.recordAlert({
+        alertType: 'person_watchlist_match',
+        zoneId: 'z1',
+        dedupeKey: 'user-1',
+      });
+      expect(repo.findOne.mock.calls[0][0].where.dedupeKey).toBe('user-1');
+      expect(repo.save.mock.calls[0][0].dedupeKey).toBe('user-1');
+      await service.recordAlert({ alertType: 'crowd', zoneId: 'z1' });
+      expect(repo.save.mock.calls[1][0].dedupeKey).toBe('');
     });
 
     it('zoneId NULL: findOpenAlert dùng nhánh IsNull (KHÔNG so sánh = null trực tiếp)', async () => {

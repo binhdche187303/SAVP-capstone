@@ -59,7 +59,8 @@ export class FaceAttendanceService implements FaceVerifyHook {
 
     // PWL-001: đối chiếu danh sách đối tượng theo dõi — MỌI lần nhận diện ra user,
     // kể cả khi mapping không gắn cuộc họp. NotThrow bên trong → không phá điểm danh.
-    await this.personWatchlistCheckService.checkPersonWatchlist(userId, {
+    // KHÔNG await: callback trả lời thiết bị ngay, cảnh báo chạy nền (<1s).
+    void this.personWatchlistCheckService.checkPersonWatchlist(userId, {
       deviceId,
       roomId,
     });
