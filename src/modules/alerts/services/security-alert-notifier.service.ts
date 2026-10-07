@@ -51,6 +51,9 @@ const PRIORITY_BY_SEVERITY: Record<string, NotificationPriority> = {
   critical: NotificationPriority.URGENT,
 };
 
+/** Thời gian cache danh sách người nhận. */
+const RECIPIENT_CACHE_MS = 60_000;
+
 interface Recipient {
   id: string;
   email: string | null;
@@ -66,6 +69,8 @@ interface Recipient {
 @Injectable()
 export class SecurityAlertNotifierService {
   private readonly logger = new Logger(SecurityAlertNotifierService.name);
+  private recipientCache: { value: Recipient[]; expiresAt: number } | null =
+    null;
 
   constructor(
     @InjectRepository(AlertRuleEntity)
@@ -246,7 +251,21 @@ export class SecurityAlertNotifierService {
       : ['in_app'];
   }
 
+  /**
+   * Người nhận ít thay đổi → cache RECIPIENT_CACHE_MS (tránh JOIN 4 bảng mỗi thông báo khi
+   * nhiều cảnh báo dồn dập, VD nhiều khu vực rớt camera cùng lúc).
+   */
   private async resolveRecipients(): Promise<Recipient[]> {
+    const now = Date.now();
+    if (this.recipientCache && this.recipientCache.expiresAt > now) {
+      return this.recipientCache.value;
+    }
+    const value = await this.queryRecipients();
+    this.recipientCache = { value, expiresAt: now + RECIPIENT_CACHE_MS };
+    return value;
+  }
+
+  private async queryRecipients(): Promise<Recipient[]> {
     return this.dataSource.manager.query(
       `SELECT DISTINCT u.id, u.email
          FROM users u
@@ -296,6 +315,24 @@ export class SecurityAlertNotifierService {
         };
       }
       case 'device_error': {
+        const list = Array.isArray(p.offlineDevices)
+          ? (p.offlineDevices as Array<{
+              deviceName?: string;
+              deviceCode?: string;
+            }>)
+          : [];
+        if (list.length > 1) {
+          const shown = list
+            .slice(0, 5)
+            .map((d) => `${d.deviceName ?? 'Camera'} (${d.deviceCode ?? '?'})`)
+            .join(', ');
+          const rest =
+            list.length > 5 ? ` và ${list.length - 5} camera khác` : '';
+          return {
+            title: `Cảnh báo: ${list.length} camera mất kết nối${where}`,
+            content: `${list.length} camera không còn phản hồi: ${shown}${rest}.`,
+          };
+        }
         const name = (p.deviceName as string | undefined) ?? 'Camera';
         const code = p.deviceCode as string | undefined;
         return {
