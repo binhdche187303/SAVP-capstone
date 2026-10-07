@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call */
 import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
@@ -663,6 +664,70 @@ describe('UserJourneyService (UJN-001)', () => {
       expect(sqlOf('FROM zone_presence_events').sql).toContain(
         `p.metadata_json->>'sourceEventId' AS source_event_id`,
       );
+    });
+  });
+
+  describe('getUserJourneyRange — khoảng ngày', () => {
+    const day = (date: string, n: number, name: string | null = 'A') => ({
+      userId: 'u1',
+      fullName: name,
+      date,
+      events: Array.from({ length: n }, (_, i) => ({
+        time: `${date}T0${i}:00:00.000Z`,
+      })),
+      gateCount: n,
+      meetingCount: 1,
+      zoneCount: 0,
+    });
+
+    it('ghép từng ngày trong [from, to] (tính cả 2 đầu) và cộng dồn số đếm', async () => {
+      const spy = jest
+        .spyOn(service, 'getUserJourney')
+        .mockImplementation(
+          async (_u, d) =>
+            day(d as string, d === '2026-10-02' ? 2 : 1) as never,
+        );
+      const r = await service.getUserJourneyRange(
+        'u1',
+        '2026-10-01',
+        '2026-10-03',
+      );
+      expect(spy.mock.calls.map((c) => c[1])).toEqual([
+        '2026-10-01',
+        '2026-10-02',
+        '2026-10-03',
+      ]);
+      expect(r.date).toBe('2026-10-01');
+      expect(r.to).toBe('2026-10-03');
+      expect(r.fullName).toBe('A');
+      expect(r.events).toHaveLength(4);
+      expect(r.gateCount).toBe(4);
+      expect(r.meetingCount).toBe(3);
+    });
+
+    it('qua ranh tháng vẫn đúng ngày', async () => {
+      const spy = jest
+        .spyOn(service, 'getUserJourney')
+        .mockImplementation(async (_u, d) => day(d as string, 0) as never);
+      await service.getUserJourneyRange('u1', '2026-09-30', '2026-10-01');
+      expect(spy.mock.calls.map((c) => c[1])).toEqual([
+        '2026-09-30',
+        '2026-10-01',
+      ]);
+    });
+
+    it('to < from → BadRequest', async () => {
+      await expect(
+        service.getUserJourneyRange('u1', '2026-10-05', '2026-10-01'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('quá 31 ngày → BadRequest, không query DB', async () => {
+      const spy = jest.spyOn(service, 'getUserJourney');
+      await expect(
+        service.getUserJourneyRange('u1', '2026-01-01', '2026-02-01'),
+      ).rejects.toThrow(BadRequestException);
+      expect(spy).not.toHaveBeenCalled();
     });
   });
 });

@@ -3,6 +3,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Reflector } from '@nestjs/core';
 import { IotDevicesController } from './iot-devices.controller.js';
 import { IotDevicesService } from '../services/iot-devices.service.js';
+import { DeviceConnectionHistoryService } from '../services/device-connection-history.service.js';
+import { CameraSettingsService } from '../services/camera-settings.service.js';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard.js';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard.js';
 import { PERMISSIONS_KEY } from '../../auth/decorators/require-permissions.decorator.js';
@@ -53,7 +55,11 @@ describe('IotDevicesController — check-availability (A5)', () => {
     };
     const module: TestingModule = await Test.createTestingModule({
       controllers: [IotDevicesController],
-      providers: [{ provide: IotDevicesService, useValue: service }],
+      providers: [
+        { provide: IotDevicesService, useValue: service },
+        { provide: DeviceConnectionHistoryService, useValue: {} },
+        { provide: CameraSettingsService, useValue: {} },
+      ],
     })
       .overrideGuard(JwtAuthGuard)
       .useValue({ canActivate: () => true })

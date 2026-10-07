@@ -54,11 +54,17 @@ describe('AlertsService (ASC-001 / UC-123)', () => {
   });
 
   describe('notifier (lỗi 3: thông báo cảnh báo mới)', () => {
-    let notifier: { notifyNewAlert: jest.Mock };
+    let notifier: {
+      notifyNewAlert: jest.Mock;
+      notifyUpdatedAlert: jest.Mock;
+    };
     let svc: AlertsService;
 
     beforeEach(async () => {
-      notifier = { notifyNewAlert: jest.fn().mockResolvedValue(undefined) };
+      notifier = {
+        notifyNewAlert: jest.fn().mockResolvedValue(undefined),
+        notifyUpdatedAlert: jest.fn().mockResolvedValue(undefined),
+      };
       const m = await Test.createTestingModule({
         providers: [
           AlertsService,
@@ -80,7 +86,7 @@ describe('AlertsService (ASC-001 / UC-123)', () => {
       expect(notifier.notifyNewAlert).toHaveBeenCalledWith(r.alert);
     });
 
-    it('bump alert đang mở (isNew=false) → KHÔNG gọi notifier (chống spam)', async () => {
+    it('bump alert đang mở (isNew=false) → KHÔNG notifyNewAlert (chống spam), CÓ notifyUpdatedAlert (WS cập nhật)', async () => {
       repo.save.mockRejectedValueOnce({ driverError: { code: '23505' } });
       const open = {
         id: 'open-1',
@@ -94,6 +100,9 @@ describe('AlertsService (ASC-001 / UC-123)', () => {
       const r = await svc.recordAlert({ alertType: 'crowd', zoneId: 'z1' });
       expect(r.isNew).toBe(false);
       expect(notifier.notifyNewAlert).not.toHaveBeenCalled();
+      expect(notifier.notifyUpdatedAlert).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'open-1', occurrenceCount: 2 }),
+      );
     });
 
     it('notifier treo → recordAlert KHÔNG chờ (fire-and-forget)', async () => {
@@ -945,10 +954,10 @@ describe('AlertsService (ASC-001 / UC-123)', () => {
       expect(repo.findAndCount.mock.calls[0][0].where.status).toBe('new');
     });
 
-    it('sort mặc định triggeredAt DESC', async () => {
+    it('sort mặc định lastSeenAt DESC (lượt mới nhất nổi lên đầu)', async () => {
       await service.list({ page: 1, limit: 20 } as any);
       expect(repo.findAndCount.mock.calls[0][0].order).toEqual({
-        triggeredAt: 'DESC',
+        lastSeenAt: 'DESC',
       });
     });
   });

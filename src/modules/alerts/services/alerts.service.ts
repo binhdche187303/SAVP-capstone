@@ -105,7 +105,7 @@ export class AlertsService {
     );
     if (existing) {
       const reloaded = await this.bumpOccurrence(existing.id, input);
-      return { alert: reloaded, isNew: false };
+      return this.updatedAlert(reloaded);
     }
 
     const inserted = await this.tryInsert(input, zoneId, severity, triggeredAt);
@@ -114,7 +114,7 @@ export class AlertsService {
     const open = await this.findOpenAlert(input.alertType, zoneId, dedupeKey);
     if (open) {
       const reloaded = await this.bumpOccurrence(open.id, input);
-      return { alert: reloaded, isNew: false };
+      return this.updatedAlert(reloaded);
     }
 
     // Race hiếm: 23505 báo có alert mở nhưng SELECT lại không thấy (vừa resolved giữa
@@ -129,7 +129,7 @@ export class AlertsService {
     );
     if (openAfterRetry) {
       const reloaded = await this.bumpOccurrence(openAfterRetry.id, input);
-      return { alert: reloaded, isNew: false };
+      return this.updatedAlert(reloaded);
     }
     throw new Error(
       `recordAlert: không thể INSERT hoặc UPDATE alert (alertType=${input.alertType}, zoneId=${String(zoneId)}) sau 1 lần retry`,
@@ -143,6 +143,12 @@ export class AlertsService {
   private newAlert(alert: SecurityAlertEntity): RecordAlertResult {
     void this.notifier?.notifyNewAlert(alert);
     return { alert, isNew: true };
+  }
+
+  /** Alert đang mở thêm lượt → WS cập nhật màn hình (dòng nổi lên đầu, "+1"). */
+  private updatedAlert(alert: SecurityAlertEntity): RecordAlertResult {
+    void this.notifier?.notifyUpdatedAlert(alert);
+    return { alert, isNew: false };
   }
 
   private async tryInsert(
@@ -159,6 +165,7 @@ export class AlertsService {
         dedupeKey: input.dedupeKey ?? '',
         status: 'new',
         triggeredAt,
+        lastSeenAt: triggeredAt,
         occurrenceCount: 1,
         sourceEventId: input.sourceEventId ?? null,
         ruleId: input.ruleId ?? null,
@@ -373,12 +380,14 @@ export class AlertsService {
     const where: FindOptionsWhere<SecurityAlertEntity> = {};
     if (query.alertType) where.alertType = query.alertType;
     if (query.zoneId) where.zoneId = query.zoneId;
-    if (query.status) where.status = query.status;
+    // 'open' = chưa đóng (new + acknowledged) — ô "Đang mở" trên trang Cảnh báo.
+    if (query.status === 'open') where.status = Not('resolved');
+    else if (query.status) where.status = query.status;
     if (query.from && query.to) {
       where.triggeredAt = Between(new Date(query.from), new Date(query.to));
     }
 
-    const sortBy = query.sortBy ?? 'triggeredAt';
+    const sortBy = query.sortBy ?? 'lastSeenAt';
     const sortOrder = (query.sortOrder ?? 'desc').toUpperCase() as
       | 'ASC'
       | 'DESC';

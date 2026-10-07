@@ -173,18 +173,28 @@ describe('StrangerAlertService (SAL-001)', () => {
   it('list: query face_stranger + window; KHÔNG select payload base64; map field', async () => {
     let captured = '';
     dsMock.manager.query.mockImplementation((sql: string) => {
-      if (sql.includes('face_stranger')) {
+      if (sql.includes('face_stranger') && sql.includes('LIMIT')) {
         captured = sql;
         return Promise.resolve([
           {
             device_id: 'dev1',
+            device_code: 'CAM-1',
             stranger_id: 's1',
+            first_seen: '2026-06-19T08:00:00Z',
             last_seen: '2026-06-19T09:00:00Z',
             hit_count: 4,
             room_id: 'room1',
+            room_name: 'Phòng 1',
+            zone_name: 'Khu A',
             similarity: '88',
+            latest_event_id: 'ev2',
+            snapshot_event_id: 'ev1',
+            snapshot_file_id: 'mf1',
           },
         ]);
+      }
+      if (sql.includes('COUNT(*)::int AS total')) {
+        return Promise.resolve([{ total: 1 }]);
       }
       return Promise.resolve([]);
     });
@@ -192,13 +202,21 @@ describe('StrangerAlertService (SAL-001)', () => {
     expect(r.data).toEqual([
       {
         deviceId: 'dev1',
+        deviceCode: 'CAM-1',
         strangerId: 's1',
         roomId: 'room1',
+        roomName: 'Phòng 1',
+        zoneName: 'Khu A',
         similarity: '88',
+        firstSeen: '2026-06-19T08:00:00Z',
         lastSeen: '2026-06-19T09:00:00Z',
         hitCount: 4,
+        latestEventId: 'ev2',
+        snapshotEventId: 'ev1',
+        snapshotFileId: 'mf1',
       },
     ]);
+    expect(r.meta).toEqual({ page: 1, limit: 20, total: 1 });
     expect(captured).toContain("event_type = 'face_stranger'");
     expect(captured).toContain('created_at >= now() - ($1');
     // SEC-02: KHÔNG select raw payload / SanpPic
@@ -209,13 +227,54 @@ describe('StrangerAlertService (SAL-001)', () => {
   it('list: phân trang → LIMIT/OFFSET param đúng', async () => {
     let p: any[] = [];
     dsMock.manager.query.mockImplementation((sql: string, params?: any[]) => {
-      if (sql.includes('face_stranger')) {
+      if (sql.includes('face_stranger') && sql.includes('LIMIT')) {
         p = params ?? [];
-        return Promise.resolve([]);
       }
       return Promise.resolve([]);
     });
     await service.list({ page: 3, limit: 10 });
     expect(p).toEqual([1440, 10, 20]);
+  });
+
+  it('list: from/to/deviceId → lọc khoảng ngày giờ VN thay cho window', async () => {
+    let captured = '';
+    let p: any[] = [];
+    dsMock.manager.query.mockImplementation((sql: string, params?: any[]) => {
+      if (sql.includes('face_stranger') && sql.includes('LIMIT')) {
+        captured = sql;
+        p = params ?? [];
+      }
+      return Promise.resolve([]);
+    });
+    await service.list({
+      page: 1,
+      limit: 20,
+      from: '2026-10-01',
+      to: '2026-10-07',
+      deviceId: 'dev1',
+    });
+    expect(p).toEqual(['2026-10-01', '2026-10-07', 'dev1', 20, 0]);
+    expect(captured).toContain("AT TIME ZONE 'Asia/Ho_Chi_Minh'");
+    expect(captured).toContain('e.device_id = $3');
+    expect(captured).not.toContain('now() -');
+  });
+
+  it('listSightings: lọc device + strangerId (null-safe), không lộ payload', async () => {
+    let captured = '';
+    let p: any[] = [];
+    dsMock.manager.query.mockImplementation((sql: string, params?: any[]) => {
+      captured = sql;
+      p = params ?? [];
+      return Promise.resolve([
+        { id: 'ev1', created_at: 't', similarity: '70', has_snapshot: true },
+      ]);
+    });
+    const r = await service.listSightings('dev1', null);
+    expect(p).toEqual(['dev1', null]);
+    expect(captured).toContain('IS NOT DISTINCT FROM $2');
+    expect(captured).not.toContain('raw_payload_sample');
+    expect(r).toEqual([
+      { eventId: 'ev1', time: 't', similarity: '70', hasSnapshot: true },
+    ]);
   });
 });

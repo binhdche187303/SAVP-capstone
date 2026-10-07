@@ -46,7 +46,10 @@ import {
 import { ConfigureFaceServerDto } from '../dto/configure-face-server.dto.js';
 import { RevokeFaceServerTokenDto } from '../dto/revoke-face-server-token.dto.js';
 import { ConfigureRtspDto } from '../dto/configure-rtsp.dto.js';
-import { ConfigureAiConfigDto } from '../dto/configure-ai-config.dto.js';
+import {
+  AI_CONFIG_KEYS,
+  ConfigureAiConfigDto,
+} from '../dto/configure-ai-config.dto.js';
 import { AI_CONFIGURABLE_DEVICE_TYPES } from '../constants/ai-configurable-device-types.constant.js';
 import { IotAuditRepository } from '../repositories/iot-audit.repository.js';
 import { maskSensitiveMetadata } from '../../../common/utils/masking.util.js';
@@ -1554,14 +1557,14 @@ export class IotDevicesService {
     // MERGE từng cờ — chỉ khoá gửi (!== undefined) mới ghi đè; CHƯA đụng configured_at.
     const mergedFlags: Record<string, unknown> = { ...currentAiConfig };
     delete mergedFlags.configured_at;
-    if (dto.faceRecognition !== undefined) {
-      mergedFlags.face_recognition = dto.faceRecognition;
-    }
-    if (dto.plateRecognition !== undefined) {
-      mergedFlags.plate_recognition = dto.plateRecognition;
-    }
-    if (dto.peopleCounting !== undefined) {
-      mergedFlags.people_counting = dto.peopleCounting;
+    // 3 cờ bật/tắt + cấu hình nâng cao 2.2.6 (ngưỡng, vùng, khung giờ, liveness...).
+    for (const [field, key] of Object.entries(AI_CONFIG_KEYS)) {
+      const value = dto[field as keyof ConfigureAiConfigDto];
+      if (value === undefined) continue;
+      mergedFlags[key] =
+        value !== null && typeof value === 'object' && !Array.isArray(value)
+          ? { ...value }
+          : value;
     }
 
     // SO SÁNH GIÁ TRỊ THẬT (bỏ qua configured_at): giống ⇒ NO-OP, trả device nguyên trạng.
@@ -2296,8 +2299,9 @@ export class IotDevicesService {
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
+    let strangerEventId: string | null = null;
     try {
-      await this.iotDeviceEventsService.storeRawEvent(
+      const stored = await this.iotDeviceEventsService.storeRawEvent(
         {
           device,
           eventType: 'face_stranger',
@@ -2323,6 +2327,7 @@ export class IotDevicesService {
         },
         queryRunner.manager,
       );
+      strangerEventId = stored?.id ?? null;
       await queryRunner.manager.save(IoTDeviceEntity, device);
       await queryRunner.commitTransaction();
     } catch (error) {
@@ -2347,6 +2352,7 @@ export class IotDevicesService {
           strangerId: sf.stranger_id,
           similarity: sf.similarity != null ? String(sf.similarity) : null,
           capturedAt: now,
+          eventId: strangerEventId,
         });
       } catch (e) {
         this.logger.error(
