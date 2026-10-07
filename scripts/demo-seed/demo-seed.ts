@@ -17,6 +17,7 @@ import { seedPart4 } from './part4-security';
 import { seedPart5 } from './part5-meetings';
 import { seedPart6 } from './part6-misc';
 import { seedPart7 } from './part7-images';
+import { seedPart8 } from './part8-cameras';
 import { DEMO_FOLDER, deleteDemoFile, removeDemoFolder } from './storage';
 
 /**
@@ -67,6 +68,11 @@ const PARTS: Record<
     needs: 'part6',
     run: () => seedPart7(log),
   },
+  part8: {
+    desc: 'Camera AI: camera biển số, lịch sử kết nối 30 ngày, cảnh báo mất kết nối (cần part1)',
+    needs: 'part1',
+    run: () => seedPart8(log),
+  },
 };
 
 /** Thứ tự chạy `all` (theo phụ thuộc). */
@@ -78,6 +84,7 @@ const ALL_ORDER = [
   'part4',
   'part6',
   'part7',
+  'part8',
 ];
 
 async function runPart(name: string) {
@@ -168,6 +175,13 @@ async function purge(skipConfirm: boolean) {
     );
     for (const m of media) await deleteDemoFile(m.storage_key);
     removeDemoFolder();
+    // Audit hệ thống tự ghi lên thiết bị demo (probe offline, thao tác thủ công) — không có cờ demo
+    const logs: Array<{ id: string }> = await db.query(
+      `DELETE FROM audit_logs WHERE entity_type = 'iot_devices'
+         AND entity_id = ANY($1::uuid[]) RETURNING id`,
+      [await trackedIds('iot_devices')],
+    );
+    if (logs.length) log(`  ✖ audit thiết bị demo: ${logs.length}`);
     if (media.length) log(`  ✖ file ảnh trong storage: ${media.length}`);
     // Xoá theo thứ tự NGƯỢC lúc thêm (bảng con trước bảng cha)
     const tables: Array<{ table_name: string }> = await db.query(

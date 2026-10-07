@@ -60,3 +60,26 @@ Muốn làm mới dữ liệu (ví dụ seed từ hôm trước, sáng nay muố
 - Ảnh của `part7` được lưu vào storage của BE, dưới thư mục `demo-seed-snapshots/` (theo `STORAGE_DRIVER` local hoặc s3). `purge` xoá cả file lẫn bản ghi `media_files`. Đừng nhầm với thư mục `demo-seed/` có sẵn từ seed migration cũ: thư mục đó không thuộc script này.
 - `purge` **không** xoá bản ghi `media_files` và file ảnh upload mà mock camera đã gửi lên BE. Nếu đã chạy mock camera, hãy khôi phục từ backup hoặc tự xoá các file đó. Thư mục `images/` đã chép lên server cũng tự xoá tay nếu không cần nữa.
 - Không chạy `purge` khi BE đang ghi sự kiện mock camera vào cùng zone demo.
+
+## Gỡ bỏ hoàn toàn sau khi demo xong
+
+Làm theo thứ tự, trên **từng máy/server** đã chạy seed:
+
+1. **Xoá dữ liệu trong DB + file ảnh trong storage:**
+   ```bash
+   npm run demo:seed -- purge     # gõ "yes"; phải thấy "✔ Sạch: không còn dữ liệu demo."
+   ```
+   Lệnh này xoá mọi dòng demo, file ảnh `demo-seed-snapshots/` (local hoặc s3), dữ liệu mock camera, và DROP luôn bảng `demo_seed_rows`. Không đụng dữ liệu thật hay seed migration cũ (`demo-seed/`, `@meetingsys.vn`).
+2. **Kiểm tra lại:** `npm run demo:seed -- status` báo không còn gì.
+3. **Nếu đã chạy mock camera:** ảnh mà mock camera upload qua BE không được purge xoá. Khôi phục DB từ backup (mục Deploy, bước 4) hoặc bỏ qua nếu không quan tâm.
+4. **Xoá ảnh nguồn trên máy** (không có trong git, chỉ tốn dung lượng):
+   ```bash
+   rm -rf scripts/demo-camera-mock/images/faces/*.* scripts/demo-camera-mock/images/plates/*.* scripts/demo-camera-mock/images/crowd
+   ```
+5. **(Tuỳ chọn) Gỡ code demo khỏi máy:** chạy purge **trước**, vì xoá code rồi thì không còn lệnh purge.
+   ```bash
+   git checkout main
+   git branch -D feature/demo-seed                # xoá nhánh local
+   git push origin --delete feature/demo-seed     # xoá nhánh trên GitHub (chỉ 1 người làm)
+   ```
+   Nếu nhánh đã merge vào main thì thay vào đó tạo commit xoá thư mục `scripts/demo-seed`, `scripts/demo-camera-mock` và 3 lệnh `demo:*` trong `package.json`.
