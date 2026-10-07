@@ -746,4 +746,50 @@ describe('RestrictedZoneIntrusionService (ARZ-001 / UC-124)', () => {
       ]);
     });
   });
+  describe('Tách alert theo người + chống lặp chỉ khi ghi thành công', () => {
+    const args = (over: any = {}) => ({
+      zoneId: 'zone-1',
+      userId: 'user-a',
+      eventTime: new Date('2026-07-23T22:00:00'),
+      sourceTable: 'zone_presence_events' as const,
+      sourceRowId: 'zpe-1',
+      ...over,
+    });
+
+    beforeEach(() => {
+      alertRulesMock.list.mockResolvedValue({
+        items: [rule({ restrictedHoursJson: null })],
+      });
+    });
+
+    it('2 người cùng zone → recordAlert/hasOpenAlert với dedupeKey = userId riêng', async () => {
+      await service.evaluateZoneEventNow(args());
+      await service.evaluateZoneEventNow(args({ userId: 'user-b' }));
+      expect(alertsMock.recordAlert.mock.calls[0][0].dedupeKey).toBe('user-a');
+      expect(alertsMock.recordAlert.mock.calls[1][0].dedupeKey).toBe('user-b');
+      expect(alertsMock.hasOpenAlert).toHaveBeenCalledWith(
+        'intrusion',
+        'zone-1',
+        'user-b',
+      );
+    });
+
+    it('người chưa định danh (userId null) → dedupeKey rỗng (gộp chung)', async () => {
+      await service.evaluateZoneEventNow(args({ userId: null }));
+      expect(alertsMock.recordAlert.mock.calls[0][0].dedupeKey).toBe('');
+    });
+
+    it('recordAlert lỗi → KHÔNG đánh dấu chống lặp, lần sau vẫn ghi lại', async () => {
+      alertsMock.recordAlert.mockRejectedValueOnce(new Error('db timeout'));
+      await service.evaluateZoneEventNow(args()).catch(() => undefined);
+      await service.evaluateZoneEventNow(args());
+      expect(alertsMock.recordAlert).toHaveBeenCalledTimes(2);
+    });
+
+    it('ghi thành công → lần lặp trong 30s vẫn bị chặn', async () => {
+      await service.evaluateZoneEventNow(args());
+      await service.evaluateZoneEventNow(args());
+      expect(alertsMock.recordAlert).toHaveBeenCalledTimes(1);
+    });
+  });
 });

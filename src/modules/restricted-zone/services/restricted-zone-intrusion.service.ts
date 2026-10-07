@@ -235,8 +235,8 @@ export class RestrictedZoneIntrusionService {
       this.logger.debug(`[INTRUSION] ${repeatKey} vừa ghi → bỏ qua lần lặp`);
       return;
     }
-    this.lastRecordedAt.set(repeatKey, now);
-    this.pruneRepeatMap(now);
+    // Mỗi người 1 alert riêng trong cùng zone; người chưa định danh gộp chung key ''.
+    const dedupeKey = userId ?? '';
     const sourceTable = payloadJson.sourceTable as string | undefined;
     const sourceRowId = payloadJson.sourceRowId as string | undefined;
 
@@ -248,6 +248,7 @@ export class RestrictedZoneIntrusionService {
     const isOpen = await this.alertsService.hasOpenAlert(
       'intrusion',
       rule.zoneId,
+      dedupeKey,
     );
     const sourceEventId =
       !isOpen && sourceTable === 'zone_presence_events' && sourceRowId
@@ -269,7 +270,12 @@ export class RestrictedZoneIntrusionService {
         isKnownPerson: userId !== null,
         fullName,
       },
+      dedupeKey,
     });
+    // Chỉ đánh dấu chống lặp khi ghi THÀNH CÔNG — recordAlert lỗi (throw) thì lần sau
+    // (webhook kế tiếp/cron) vẫn được ghi lại, không bị chặn oan 30s.
+    this.lastRecordedAt.set(repeatKey, Date.now());
+    this.pruneRepeatMap(Date.now());
   }
 
   private pruneRepeatMap(now: number): void {
