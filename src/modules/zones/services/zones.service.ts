@@ -40,6 +40,7 @@ const ZONE_ASSIGNABLE_DEVICE_TYPES: readonly IoTDeviceType[] = [
   IoTDeviceType.IP_CAMERA,
   IoTDeviceType.DOOR_CAMERA,
   IoTDeviceType.ROOM_CAMERA,
+  IoTDeviceType.ANPR_CAMERA,
   IoTDeviceType.OCCUPANCY_SENSOR,
   IoTDeviceType.FACE_SERVER,
 ];

@@ -16,11 +16,12 @@ const errOn = (
 ) => errors.find((e) => e.property === property)?.constraints;
 
 describe('AI_CONFIGURABLE_DEVICE_TYPES (UC-96)', () => {
-  it('đúng 5 loại (= allowlist UC-94), không MICROPHONE/CAPTURE_AGENT/DISPLAY', () => {
+  it('đúng 6 loại (+ ANPR_CAMERA 2.2.1) (= allowlist UC-94), không MICROPHONE/CAPTURE_AGENT/DISPLAY', () => {
     expect([...AI_CONFIGURABLE_DEVICE_TYPES]).toEqual([
       IoTDeviceType.IP_CAMERA,
       IoTDeviceType.DOOR_CAMERA,
       IoTDeviceType.ROOM_CAMERA,
+      IoTDeviceType.ANPR_CAMERA,
       IoTDeviceType.OCCUPANCY_SENSOR,
       IoTDeviceType.FACE_SERVER,
     ]);

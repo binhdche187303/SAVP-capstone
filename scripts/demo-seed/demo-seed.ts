@@ -18,6 +18,7 @@ import { seedPart5 } from './part5-meetings';
 import { seedPart6 } from './part6-misc';
 import { seedPart7 } from './part7-images';
 import { seedPart8 } from './part8-cameras';
+import { seedPart9 } from './part9-camera-stats';
 import { DEMO_FOLDER, deleteDemoFile, removeDemoFolder } from './storage';
 
 /**
@@ -73,6 +74,11 @@ const PARTS: Record<
     needs: 'part1',
     run: () => seedPart8(log),
   },
+  part9: {
+    desc: 'Số liệu camera: lượt xe theo camera biển số, dung lượng ghi hình (cần part8)',
+    needs: 'part8',
+    run: () => seedPart9(log),
+  },
 };
 
 /** Thứ tự chạy `all` (theo phụ thuộc). */
@@ -85,6 +91,7 @@ const ALL_ORDER = [
   'part6',
   'part7',
   'part8',
+  'part9',
 ];
 
 async function runPart(name: string) {

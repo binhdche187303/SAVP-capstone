@@ -7,6 +7,7 @@ export class IotDeviceResponseDto {
   device_code: string;
   device_type: string;
   room_id: string | null;
+  zone_id: string | null;
   ip_address: string | null;
   mac_address: string | null;
   status: string;
@@ -27,6 +28,7 @@ export function toIotDeviceResponse(
     device_code: entity.deviceCode,
     device_type: entity.deviceType,
     room_id: entity.roomId || null,
+    zone_id: entity.zoneId || null,
     ip_address: entity.ipAddress,
     mac_address: entity.macAddress,
     status: entity.status,

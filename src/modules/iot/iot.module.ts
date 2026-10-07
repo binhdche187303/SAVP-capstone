@@ -15,6 +15,8 @@ import { VerifyShortDeviceCallbacksController } from './controllers/verify-short
 import { StrangerShortDeviceCallbacksController } from './controllers/stranger-short-device-callbacks.controller.js';
 import { IotDevicesService } from './services/iot-devices.service.js';
 import { IotDeviceEventsService } from './services/iot-device-events.service.js';
+import { DeviceConnectionHistoryService } from './services/device-connection-history.service.js';
+import { CameraSettingsService } from './services/camera-settings.service.js';
 import { IotAuditRepository } from './repositories/iot-audit.repository.js';
 
 @Module({
@@ -37,7 +39,13 @@ import { IotAuditRepository } from './repositories/iot-audit.repository.js';
     VerifyShortDeviceCallbacksController,
     StrangerShortDeviceCallbacksController,
   ],
-  providers: [IotDevicesService, IotDeviceEventsService, IotAuditRepository],
+  providers: [
+    IotDevicesService,
+    IotDeviceEventsService,
+    IotAuditRepository,
+    DeviceConnectionHistoryService,
+    CameraSettingsService,
+  ],
   exports: [TypeOrmModule, IotDevicesService, IotDeviceEventsService],
 })
 export class IotModule {}
