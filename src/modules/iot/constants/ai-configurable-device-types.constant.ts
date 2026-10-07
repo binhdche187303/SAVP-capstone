@@ -13,6 +13,7 @@ export const AI_CONFIGURABLE_DEVICE_TYPES = [
   IoTDeviceType.IP_CAMERA,
   IoTDeviceType.DOOR_CAMERA,
   IoTDeviceType.ROOM_CAMERA,
+  IoTDeviceType.ANPR_CAMERA,
   IoTDeviceType.OCCUPANCY_SENSOR,
   IoTDeviceType.FACE_SERVER,
 ] as const;

@@ -14,6 +14,7 @@ export enum IoTDeviceType {
   IP_CAMERA = 'ip_camera',
   DOOR_CAMERA = 'door_camera',
   ROOM_CAMERA = 'room_camera',
+  ANPR_CAMERA = 'anpr_camera',
   FACE_SERVER = 'face_server',
   MICROPHONE = 'microphone',
   CAPTURE_AGENT = 'capture_agent',
