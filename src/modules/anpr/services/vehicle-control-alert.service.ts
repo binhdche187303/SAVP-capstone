@@ -139,8 +139,7 @@ export class VehicleControlAlertService {
           if (regRows.length === 0) {
             alertType = 'unknown_vehicle';
             severity = 'medium';
-            subject =
-              'Cảnh báo: biển số không xác định';
+            subject = 'Cảnh báo: biển số không xác định';
             notificationType = NotificationType.UNKNOWN_VEHICLE_ALERT;
           } else if (
             regRows[0].status === 'pending' ||
@@ -148,8 +147,7 @@ export class VehicleControlAlertService {
           ) {
             alertType = 'vehicle_unauthorized';
             severity = 'low';
-            subject =
-              'Thông báo: xe đang chờ duyệt/bị từ chối';
+            subject = 'Thông báo: xe đang chờ duyệt/bị từ chối';
             notificationType = NotificationType.VEHICLE_UNAUTHORIZED_ALERT;
           }
         } catch (e) {
@@ -186,19 +184,32 @@ export class VehicleControlAlertService {
       }
 
       // --- Step 5: recordAlert ---
+      // Đợt 3: dedupeKey = biển số → 2 xe KHÁC biển cùng zone là 2 alert riêng (trước đây
+      // gộp chung 1 alert theo (alertType, zoneId) → mất biển của xe thứ 2).
+      let isNew = true;
       try {
-        await this.alertsService.recordAlert({
+        const res = await this.alertsService.recordAlert({
           alertType,
           zoneId,
           severity,
           ruleId,
           sourceEventId: eventId ?? null,
           payloadJson: payload,
+          dedupeKey: plateNumber,
         });
+        isNew = res?.isNew !== false;
       } catch (e) {
         this.logger.error(
           `recordAlert failed (plate=${plateNumber}): ${e instanceof Error ? e.message : 'unknown'}`,
         );
+      }
+      // Đợt 3: alert của biển này vẫn đang MỞ (chỉ bump) → KHÔNG gửi lại thông báo.
+      // recordAlert lỗi → vẫn gửi (giữ đảm bảo cũ: lỗi ghi alert không chặn notification).
+      if (!isNew) {
+        this.logger.debug(
+          `Alert still open (type=${alertType} plate=${plateNumber}) — bump only, skip notification.`,
+        );
+        return;
       }
 
       // --- Step 6: createNotification ---

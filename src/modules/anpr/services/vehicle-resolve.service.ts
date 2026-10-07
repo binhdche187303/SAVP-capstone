@@ -239,13 +239,22 @@ export class VehicleResolveService implements VehicleEventHandlerPort {
 
       // ĐIỂM CHÈN 1 (dời) — UC9/UC-108 (VCC-001): đối chiếu control-list. FR-004: gọi SAU
       // INSERT kèm source_event_id. Tự NotThrow (evaluate() nằm trong outer try/catch).
-      await this.vehicleControlAlertService.evaluate(
-        evt.plateNumber,
-        { channelId: evt.channelId, direction },
-        eventId ?? undefined,
-        // STT 20 (perf): matched = đăng ký active đã resolve ở trên → evaluate bỏ query đăng ký.
-        { registeredActive: userId !== null },
-      );
+      // Đợt 3: fire-and-forget — đánh giá cảnh báo KHÔNG chặn luồng xử lý xe qua cổng.
+      void this.vehicleControlAlertService
+        .evaluate(
+          evt.plateNumber,
+          { channelId: evt.channelId, direction },
+          eventId ?? undefined,
+          // STT 20 (perf): matched = đăng ký active đã resolve ở trên → evaluate bỏ query đăng ký.
+          { registeredActive: userId !== null },
+        )
+        .catch((e: unknown) =>
+          this.logger.error(
+            `Vehicle control alert failed (plate=${evt.plateNumber}): ${
+              e instanceof Error ? e.message : 'unknown'
+            }`,
+          ),
+        );
 
       if (matchState !== 'matched') {
         // OQ-4: biển lạ — vẫn persist row unmatched (UC6/UC7 đọc).
@@ -541,20 +550,28 @@ export class VehicleResolveService implements VehicleEventHandlerPort {
   private dirMapCache?: { at: number; value: Record<string, Direction> };
 
   private async getChannelZoneMap(): Promise<Record<string, string>> {
-    if (this.zoneMapCache && Date.now() - this.zoneMapCache.at < CHANNEL_MAP_CACHE_MS) {
+    if (
+      this.zoneMapCache &&
+      Date.now() - this.zoneMapCache.at < CHANNEL_MAP_CACHE_MS
+    ) {
       return this.zoneMapCache.value;
     }
     const value = await this.loadChannelZoneMap();
-    if (Object.keys(value).length > 0) this.zoneMapCache = { at: Date.now(), value };
+    if (Object.keys(value).length > 0)
+      this.zoneMapCache = { at: Date.now(), value };
     return value;
   }
 
   private async getChannelDirectionMap(): Promise<Record<string, Direction>> {
-    if (this.dirMapCache && Date.now() - this.dirMapCache.at < CHANNEL_MAP_CACHE_MS) {
+    if (
+      this.dirMapCache &&
+      Date.now() - this.dirMapCache.at < CHANNEL_MAP_CACHE_MS
+    ) {
       return this.dirMapCache.value;
     }
     const value = await this.loadChannelDirectionMap();
-    if (Object.keys(value).length > 0) this.dirMapCache = { at: Date.now(), value };
+    if (Object.keys(value).length > 0)
+      this.dirMapCache = { at: Date.now(), value };
     return value;
   }
 
