@@ -7,6 +7,8 @@ import {
   IsUUID,
   IsBoolean,
   MaxLength,
+  IsArray,
+  ArrayMaxSize,
 } from 'class-validator';
 import { Expose } from 'class-transformer';
 
@@ -97,4 +99,16 @@ export class CreatePersonControlListDto {
   @IsOptional()
   @IsBoolean()
   active?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Các lượt người lạ (iot_device_events.id) bảo vệ xác nhận là người này — cảnh báo "Người lạ" chứa các lượt đó được đánh dấu chuyển theo dõi',
+    type: [String],
+  })
+  @Expose({ name: 'source_event_ids' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsUUID('all', { each: true })
+  sourceEventIds?: string[];
 }

@@ -4,6 +4,7 @@
 | Ngày cập nhật | Tóm tắt thay đổi | Các dòng thay đổi |
 | :--- | :--- | :--- |
 | 2026-10-05 | Tạo mới: quét 3 tài liệu trong `Downloads/CAM_AI` (tài liệu chức năng Smart AI Vision Platform, Mô tả màn hình, KeHoachTrienKhai_SCMPTS_Fix.xlsx) đối chiếu với `capstone-be`, `FE_SmarTracking`, `ivss-bridge`. Bổ sung phân tích tải 300 camera, các điểm nghẽn ngoài kế hoạch, và chuẩn bị tích hợp API camera của nhà cung cấp. | Toàn bộ file |
+| 2026-10-05 | #10 KPI-001 hoàn thành giai đoạn 1 (LamNH tiếp quản): bảng tổng hợp theo giờ zone/xe, cron hourly + reconcile 01:00, đọc lai, bucket xe theo giờ VN. Ghi nhận lỗi FE dashboard đọc sai field vehicle stats. | Bảng 3.1 #10, mục 5.8 |
 
 > **Nguồn đối chiếu**
 > - `HẦN MỀM QUẢN LÝ CAMERA AI THÔNG MINH (1).docx` — 12 phân hệ (2.2 → 2.13)
@@ -22,7 +23,7 @@
 | :--- | :-: | :-: | :-: | :-: |
 | Xlsx — Tối ưu (1–10) | 10 | 2 | 6 | 2 |
 | Xlsx — Nâng cấp (11–21) | 11 | 0 | 6 | 5 |
-| Xlsx — Xây mới (22–33) | 12 | 0 | 4 | 8 |
+| Xlsx — Xây mới (22–33) | 12 | 1 | 4 | 7 |
 
 **Kết luận chính:**
 
@@ -68,7 +69,7 @@ Giả định (cần xác nhận lại khi có API nhà cung cấp):
 | 7 | ANPR bất đồng bộ + batch insert | ❌ | `vehicle-webhook.controller` → `vehicle-resolve.service` insert từng dòng trong transaction có `pg_advisory_xact_lock` theo channel. | Gộp vào queue `camera-events` (#2); worker batch insert `gate_access_logs` (ví dụ 200 dòng / 500ms). Giữ advisory lock theo channel trong worker. |
 | 8 | Composite index gate logs | ✅ | Đã có `(zone_id, access_time DESC)`, `(user_id, access_time DESC)`, `plate_number`, unique nội dung (`20260721000004`, `20260725000001`). | Thêm partition theo tháng khi bảng > vài chục triệu dòng (5.6). |
 | 9 | Tách service xử lý rule cảnh báo | 🟡 | Rule engine đã tách module (`alerts`, `crowd-alert`, `restricted-zone`) nhưng chạy bằng **cron polling** trong cùng process API (`crowd-alert` 1 phút, `restricted-zone-intrusion` 5 phút). | Chuyển sang **event-driven**: worker `camera-events` sau khi persist → publish `alert-evaluate` job. Độ trễ cảnh báo xâm nhập từ ≤5 phút xuống < 5s. |
-| 10 | Cronjob tổng hợp KPI ban đêm | 🔧🟡 | BinhDC đang làm. Hiện dashboard overview cache Redis TTL 60s ([dashboard-overview.service.ts:28](../src/modules/analytics/services/dashboard-overview.service.ts#L28)). Chưa có bảng tổng hợp / materialized view. | Bảng `kpi_daily_*` hoặc MV + `REFRESH MATERIALIZED VIEW CONCURRENTLY` lúc 01:00. Áp dụng thêm cho campus dashboard / zone traffic (đang query raw events). |
+| 10 | Cronjob tổng hợp KPI ban đêm | ✅ (GĐ1) | KPI-001 (LamNH): kpi_zone_hourly, kpi_vehicle_hourly, kpi_vehicle_plate_hourly + watermark; cron kpi-rollup-hourly / kpi-rollup-reconcile; zone traffic & vehicle stats đọc lai. Spec: spec/features/analytics/feat-kpi-rollup/. | GĐ2: kpi_meeting_daily cho analytics/*, security alert daily. |
 
 ### 3.2. Nhóm Nâng cấp (11–21)
 
@@ -90,7 +91,7 @@ Giả định (cần xác nhận lại khi có API nhà cung cấp):
 
 | # | Công việc | Trạng thái | Ghi chú |
 | :-: | :--- | :-: | :--- |
-| 22 | DB schema Học vụ | 🔧❌ | LamNH đang làm, chưa thấy migration/entity (`classroom/semester/student` không có trong `src`). |
+| 22 | DB schema Học vụ | ✅ | ACD-001: 7 bảng `semesters`, `subjects`, `study_shifts`, `students`, `class_sections`, `class_enrollments`, `class_sessions` + seed 6 ca + script demo (`scripts/seed-academic-demo.ts`). Spec: `spec/features/academic/feat-academic-db-schema/`. |
 | 23 | Mapping điểm danh theo ca học | ❌ | Có thể tái dùng logic attendance + `ivss.channel_room_map` (camera phòng → phòng → ca học). |
 | 24 | Đồng bộ SIS/LMS | ❌ | Chờ API của trường. |
 | 25 | Đồng bộ HRM/eOffice | ❌ | Hiện chỉ import Excel tài khoản. |
@@ -116,7 +117,7 @@ Giả định (cần xác nhận lại khi có API nhà cung cấp):
 | 2.4 Biển số | Đăng ký xe, webhook ANPR, resolve, biển lạ, blocklist/watchlist, lịch sử, thống kê lưu lượng (UC-114), export | Phân loại loại phương tiện từ camera (cần field từ API nhà cung cấp) |
 | 2.5 Điểm danh cổng | Gate log + pairing vào/ra, lịch sử, cảnh báo không quyền | Đối chiếu lịch làm việc/lịch học (thiếu dữ liệu HRM/SIS) |
 | 2.6 Hành lang/khu công cộng | Zone presence, occupancy, timeline, heatmap theo zone, crowd/restricted alert | Heatmap trên mặt bằng |
-| 2.7 Phòng học | — | Toàn bộ (#22–24) |
+| 2.7 Phòng học | Schema Học vụ (#22): học kỳ, môn, ca, SV, lớp học phần, danh sách lớp, buổi học | Điểm danh theo ca (#23), đồng bộ SIS (#24), báo cáo chuyên cần SV |
 | 2.8 Phòng họp | **Đầy đủ** (booking, duyệt, check-in/out tự động, thời lượng, tỉ lệ, PDF điểm danh) | Đồng bộ lịch từ eOffice |
 | 2.9 Tích hợp eOffice/HRM/SIS/IOC | — | Toàn bộ |
 | 2.10 Khách | Guest live meeting (khác nghiệp vụ) | Toàn bộ Visitor |
@@ -189,6 +190,7 @@ Chưa cấu hình `extra.max` cho TypeORM (mặc định pg = 10). Đặt theo p
 - `DeviceManagement.jsx`: chuyển sang phân trang/tìm kiếm phía server (đã có `ListIotDevicesQueryDto`).
 - 36 chỗ `setInterval` polling → thay bằng WebSocket ở các màn realtime, hoặc tăng chu kỳ + dừng khi tab ẩn (`document.visibilityState`).
 - Danh sách/bảng lớn (log quét, cây camera 300 node): virtualization (`react-window`).
+- `systemAdmin/dashBoard.jsx:561` & `bussinessAdmin/dashBoard.jsx:416` đọc `data.buckets[].period/total_enter` trong khi BE trả `series[].bucket/enter/leave` ⇒ biểu đồ lưu lượng xe luôn rỗng.
 
 ### 5.9. 🟡 ivss-bridge
 - Chỉ giữ **1 phiên login IVSS** (`ServerInstance`) — 300 camera thường trải nhiều NVR ⇒ cần multi-device (Map deviceId → session) hoặc chạy nhiều bridge.

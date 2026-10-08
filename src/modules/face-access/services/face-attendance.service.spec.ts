@@ -4,6 +4,7 @@ import { DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { FaceAttendanceService } from './face-attendance.service.js';
 import { WebsocketService } from '../../websocket/websocket.service.js';
+import { PersonWatchlistCheckService } from '../../alerts/services/person-watchlist-check.service.js';
 
 const START = '2026-06-17T09:00:00.000Z';
 const END = '2026-06-17T10:00:00.000Z';
@@ -33,6 +34,7 @@ describe('FaceAttendanceService (FAT-001)', () => {
   let service: FaceAttendanceService;
   let dsMock: any;
   let wsMock: any;
+  let watchlistMock: { checkPersonWatchlist: jest.Mock };
 
   // router mặc định: mapping khớp person_id, meeting tồn tại, chưa có record
   const router =
@@ -72,6 +74,9 @@ describe('FaceAttendanceService (FAT-001)', () => {
   beforeEach(async () => {
     dsMock = { manager: { query: jest.fn() } };
     wsMock = { emitToRoom: jest.fn() };
+    watchlistMock = {
+      checkPersonWatchlist: jest.fn().mockResolvedValue(undefined),
+    };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         FaceAttendanceService,
@@ -81,6 +86,7 @@ describe('FaceAttendanceService (FAT-001)', () => {
           useValue: { get: (_k: string, d?: unknown) => d },
         },
         { provide: WebsocketService, useValue: wsMock },
+        { provide: PersonWatchlistCheckService, useValue: watchlistMock },
       ],
     }).compile();
     service = module.get(FaceAttendanceService);
@@ -225,6 +231,37 @@ describe('FaceAttendanceService (FAT-001)', () => {
     );
     await service.onVerify(input());
     expect(calls(dsMock.manager.query, 'FROM meetings').length).toBe(0);
+    // PWL-001: vẫn đối chiếu watchlist dù không gắn cuộc họp.
+    expect(watchlistMock.checkPersonWatchlist).toHaveBeenCalledWith(
+      'u1',
+      expect.objectContaining({ deviceId: expect.any(String) }),
+    );
+  });
+
+  it('PWL-001: nhận diện ra user → gọi checkPersonWatchlist kèm device/room', async () => {
+    dsMock.manager.query.mockImplementation(router());
+    const evt = input();
+    await service.onVerify(evt);
+    expect(watchlistMock.checkPersonWatchlist).toHaveBeenCalledTimes(1);
+    expect(watchlistMock.checkPersonWatchlist.mock.calls[0][1]).toEqual({
+      deviceId: evt.deviceId,
+      roomId: evt.roomId,
+    });
+  });
+
+  it('đợt 1: onVerify KHÔNG chờ watchlist (check treo vẫn trả về ngay)', async () => {
+    dsMock.manager.query.mockImplementation(router());
+    watchlistMock.checkPersonWatchlist.mockReturnValue(new Promise(() => {}));
+    await expect(service.onVerify(input())).resolves.toBeUndefined();
+    expect(watchlistMock.checkPersonWatchlist).toHaveBeenCalledTimes(1);
+  });
+
+  it('PWL-001: không resolve được user → KHÔNG đối chiếu watchlist', async () => {
+    dsMock.manager.query.mockImplementation(
+      router({ mapping: [], mappingByCode: [] }),
+    );
+    await service.onVerify(input());
+    expect(watchlistMock.checkPersonWatchlist).not.toHaveBeenCalled();
   });
 
   it('fallback theo person_name khi person_id không khớp', async () => {

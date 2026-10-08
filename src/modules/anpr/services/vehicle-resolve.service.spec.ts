@@ -329,6 +329,7 @@ describe('VehicleResolveService (VRE-001 / UC5)', () => {
         '30A12345',
         { channelId: 5, direction: 'enter' },
         expect.any(String),
+        { registeredActive: true },
       );
     });
 
@@ -338,10 +339,25 @@ describe('VehicleResolveService (VRE-001 / UC5)', () => {
       expect(alertMock.evaluate).toHaveBeenCalledTimes(1);
     });
 
+    it('STT 20: unmatched → registeredActive=false (evaluate vẫn tra đăng ký xe)', async () => {
+      wire({ user: [] });
+      await service.onVehicleEvent(evt());
+      expect(alertMock.evaluate.mock.calls[0]?.[3]).toEqual({
+        registeredActive: false,
+      });
+    });
+
     it('NotThrow: alertMock.evaluate reject → onVehicleEvent KHÔNG throw', async () => {
       wire();
       alertMock.evaluate.mockRejectedValue(new Error('alert boom'));
       await expect(service.onVehicleEvent(evt())).resolves.toBeUndefined();
+    });
+
+    it('Đợt 3: evaluate chạy nền — evaluate treo KHÔNG chặn onVehicleEvent', async () => {
+      wire();
+      alertMock.evaluate.mockReturnValue(new Promise(() => undefined));
+      await expect(service.onVehicleEvent(evt())).resolves.toBeUndefined();
+      expect(alertMock.evaluate).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -373,6 +389,7 @@ describe('VehicleResolveService (VRE-001 / UC5)', () => {
         '30A12345',
         { channelId: 5, direction: 'enter' },
         'evt1',
+        expect.any(Object),
       );
     });
 
@@ -383,6 +400,7 @@ describe('VehicleResolveService (VRE-001 / UC5)', () => {
         '30A12345',
         { channelId: 5, direction: 'enter' },
         undefined,
+        expect.any(Object),
       );
     });
 

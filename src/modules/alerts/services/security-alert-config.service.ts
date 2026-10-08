@@ -26,6 +26,9 @@ const DEBOUNCE_CONFIG_ENV = 'SECURITY_ALERT_OCCURRENCE_DEBOUNCE_SECONDS';
 const DEBOUNCE_CONFIG_DEFAULT = 5;
 const DEBOUNCE_CONFIG_MIN = 0;
 
+/** getDebounceSeconds() bị gọi ở MỖI lần cộng dồn alert → cache; update() xoá ngay. */
+const DEBOUNCE_CACHE_MS = 60_000;
+
 export interface UpdateSecurityAlertConfigInput {
   autoResolveTimeoutMinutes?: number;
   occurrenceDebounceSeconds?: number;
@@ -42,6 +45,7 @@ export interface UpdateSecurityAlertConfigInput {
 @Injectable()
 export class SecurityAlertConfigService {
   private readonly logger = new Logger(SecurityAlertConfigService.name);
+  private debounceCache: { value: number; expiresAt: number } | null = null;
 
   constructor(
     private readonly dataSource: DataSource,
@@ -118,7 +122,12 @@ export class SecurityAlertConfigService {
 
   /** Đọc gọn dạng number (AlertsService.bumpOccurrence() dùng). */
   async getDebounceSeconds(): Promise<number> {
+    const now = Date.now();
+    if (this.debounceCache && this.debounceCache.expiresAt > now) {
+      return this.debounceCache.value;
+    }
     const { value } = await this.getEffectiveDebounceSeconds();
+    this.debounceCache = { value, expiresAt: now + DEBOUNCE_CACHE_MS };
     return value;
   }
 
@@ -165,6 +174,7 @@ export class SecurityAlertConfigService {
         });
       }
       await this.upsertConfig(repo, DEBOUNCE_CONFIG_KEY, val, adminId);
+      this.debounceCache = null;
       changed[DEBOUNCE_CONFIG_KEY] = val;
     }
 

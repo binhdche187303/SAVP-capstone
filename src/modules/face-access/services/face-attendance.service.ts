@@ -6,6 +6,7 @@ import {
   FaceVerifyInput,
 } from '../../../common/ports/face-verify-hook.js';
 import { WebsocketService } from '../../websocket/websocket.service.js';
+import { PersonWatchlistCheckService } from '../../alerts/services/person-watchlist-check.service.js';
 import { getAttendanceLateGraceMinutes } from '../../attendance/utils/get-late-grace-minutes.util.js';
 
 interface MappingRow {
@@ -39,6 +40,7 @@ export class FaceAttendanceService implements FaceVerifyHook {
     private readonly dataSource: DataSource,
     private readonly configService: ConfigService,
     private readonly websocketService: WebsocketService,
+    private readonly personWatchlistCheckService: PersonWatchlistCheckService,
   ) {}
 
   async onVerify(input: FaceVerifyInput): Promise<void> {
@@ -54,6 +56,21 @@ export class FaceAttendanceService implements FaceVerifyHook {
       return;
     }
     const { userId, meetingId } = resolved;
+
+    // PWL-001: đối chiếu danh sách đối tượng theo dõi — MỌI lần nhận diện ra user,
+    // kể cả khi mapping không gắn cuộc họp. NotThrow bên trong → không phá điểm danh.
+    // KHÔNG await: callback trả lời thiết bị ngay, cảnh báo chạy nền (<1s).
+    void this.personWatchlistCheckService.checkPersonWatchlist(userId, {
+      deviceId,
+      roomId,
+    });
+
+    if (!meetingId) {
+      this.logger.warn(
+        `verify no-booking: user=${userId} device=${deviceId} — mapping không có bookingId, no record.`,
+      );
+      return;
+    }
 
     // Load meeting. Không thấy → anomaly.
     const meetings: MeetingRow[] = await this.dataSource.manager.query(
@@ -279,7 +296,7 @@ export class FaceAttendanceService implements FaceVerifyHook {
     deviceId: string,
     personId: string | null,
     personName: string | null,
-  ): Promise<{ userId: string; meetingId: string } | null> {
+  ): Promise<{ userId: string; meetingId: string | null } | null> {
     // Chỉ match mapping ĐANG hiệu lực: sync_status='synced' + chưa soft-delete.
     // Mapping đã 'deleted' (sau deprovision) KHÔNG resolve → không ghi điểm danh
     // dù còn mặt sót trên cam.
@@ -306,7 +323,9 @@ export class FaceAttendanceService implements FaceVerifyHook {
     if (!row) return null;
 
     const bookingId = row.metadata_json?.['bookingId'];
-    if (typeof bookingId !== 'string' || !bookingId) return null;
-    return { userId: row.user_id, meetingId: bookingId };
+    return {
+      userId: row.user_id,
+      meetingId: typeof bookingId === 'string' && bookingId ? bookingId : null,
+    };
   }
 }

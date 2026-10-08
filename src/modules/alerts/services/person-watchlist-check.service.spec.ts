@@ -139,6 +139,72 @@ describe('PersonWatchlistCheckService (PWL-001 / UC-125)', () => {
     expect(notifMock.createNotification).not.toHaveBeenCalled();
   });
 
+  describe('chống spam thông báo khi bump', () => {
+    it('bump alert đang mở của CHÍNH người này → KHÔNG gửi lại notification', async () => {
+      repo.findOne.mockResolvedValue(match());
+      alertsMock.recordAlert.mockResolvedValue({
+        isNew: false,
+        alert: { payloadJson: { userId: 'user-1' } },
+      });
+      await service.checkPersonWatchlist('user-1');
+      expect(alertsMock.recordAlert).toHaveBeenCalledTimes(1);
+      expect(notifMock.createNotification).not.toHaveBeenCalled();
+    });
+
+    it('đợt 1: bump (isNew=false) → KHÔNG gửi (alert đã riêng theo người, kể cả payload khác)', async () => {
+      repo.findOne.mockResolvedValue(match());
+      alertsMock.recordAlert.mockResolvedValue({
+        isNew: false,
+        alert: { payloadJson: { userId: 'user-2' } },
+      });
+      await service.checkPersonWatchlist('user-1');
+      expect(notifMock.createNotification).not.toHaveBeenCalled();
+    });
+
+    it('đợt 1: recordAlert nhận dedupeKey = userId (mỗi người 1 alert mở / khu vực)', async () => {
+      repo.findOne.mockResolvedValue(match());
+      await service.checkPersonWatchlist('user-1');
+      expect(alertsMock.recordAlert.mock.calls[0][0].dedupeKey).toBe('user-1');
+    });
+  });
+
+  describe('đợt 1: throttle theo người + khu vực, cache người nhận', () => {
+    const zoneOf = (zone: string) =>
+      dsMock.manager.query.mockImplementation((sql: string) =>
+        Promise.resolve(
+          sql.includes('FROM iot_devices')
+            ? [{ device_code: 'D', room_name: 'R', zone_id: zone }]
+            : adminRows,
+        ),
+      );
+
+    it('cùng người sang khu vực KHÁC trong window → vẫn báo', async () => {
+      repo.findOne.mockResolvedValue(match());
+      zoneOf('zone-A');
+      await service.checkPersonWatchlist('user-1', { deviceId: 'd1' });
+      zoneOf('zone-B');
+      await service.checkPersonWatchlist('user-1', { deviceId: 'd2' });
+      expect(alertsMock.recordAlert).toHaveBeenCalledTimes(2);
+    });
+
+    it('cùng người cùng khu vực trong window → chỉ báo 1 lần', async () => {
+      repo.findOne.mockResolvedValue(match());
+      zoneOf('zone-A');
+      await service.checkPersonWatchlist('user-1', { deviceId: 'd1' });
+      await service.checkPersonWatchlist('user-1', { deviceId: 'd1' });
+      expect(alertsMock.recordAlert).toHaveBeenCalledTimes(1);
+    });
+
+    it('2 người khác nhau → mỗi người 1 lần, người nhận chỉ query 1 lần (cache)', async () => {
+      repo.findOne.mockResolvedValue(match());
+      await service.checkPersonWatchlist('user-1');
+      repo.findOne.mockResolvedValue(match({ userId: 'user-2' }));
+      await service.checkPersonWatchlist('user-2');
+      expect(notifMock.createNotification).toHaveBeenCalledTimes(2);
+      expect(dsMock.manager.query).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('R7 crux — NotThrow toàn bộ', () => {
     it('lookup (repo.findOne) reject → KHÔNG throw', async () => {
       repo.findOne.mockRejectedValue(new Error('db boom'));
@@ -162,6 +228,67 @@ describe('PersonWatchlistCheckService (PWL-001 / UC-125)', () => {
       await expect(
         service.checkPersonWatchlist('user-1'),
       ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('vị trí nhận diện (device/room)', () => {
+    const withLocationRows = () =>
+      dsMock.manager.query.mockImplementation((sql: string) =>
+        Promise.resolve(
+          sql.includes('FROM iot_devices')
+            ? [{ device_code: 'IOT-FACE-A101', room_name: 'A101' }]
+            : adminRows,
+        ),
+      );
+
+    it('có location → payload + nội dung thông báo kèm phòng', async () => {
+      repo.findOne.mockResolvedValue(match());
+      withLocationRows();
+      await service.checkPersonWatchlist('user-1', {
+        deviceId: 'dev1',
+        roomId: 'room1',
+      });
+      expect(alertsMock.recordAlert.mock.calls[0][0].payloadJson).toMatchObject(
+        {
+          deviceId: 'dev1',
+          deviceCode: 'IOT-FACE-A101',
+          roomId: 'room1',
+          roomName: 'A101',
+        },
+      );
+      const notif = notifMock.createNotification.mock.calls[0][0];
+      expect(notif.content).toContain('vừa được nhận diện tại phòng A101.');
+    });
+
+    it('thiết bị có khu vực → zoneId theo khu vực cho rule lẫn recordAlert', async () => {
+      repo.findOne.mockResolvedValue(match());
+      dsMock.manager.query.mockImplementation((sql: string) =>
+        Promise.resolve(
+          sql.includes('FROM iot_devices')
+            ? [{ device_code: 'D1', room_name: 'A101', zone_id: 'zone-A' }]
+            : adminRows,
+        ),
+      );
+      await service.checkPersonWatchlist('user-1', {
+        deviceId: 'dev1',
+        roomId: null,
+      });
+      expect(alertRulesMock.findEffectiveRule).toHaveBeenCalledWith(
+        'person_watchlist_match',
+        'zone-A',
+      );
+      expect(alertsMock.recordAlert.mock.calls[0][0].zoneId).toBe('zone-A');
+    });
+
+    it('không có location → không tra iot_devices, nội dung không kèm vị trí', async () => {
+      repo.findOne.mockResolvedValue(match());
+      await service.checkPersonWatchlist('user-1');
+      const sqls = dsMock.manager.query.mock.calls.map((c: any[]) => c[0]);
+      expect(sqls.some((s: string) => s.includes('FROM iot_devices'))).toBe(
+        false,
+      );
+      const notif = notifMock.createNotification.mock.calls[0][0];
+      expect(notif.content).toContain('vừa được nhận diện.');
     });
   });
 });

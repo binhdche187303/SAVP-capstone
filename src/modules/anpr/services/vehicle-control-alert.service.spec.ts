@@ -68,6 +68,11 @@ describe('VehicleControlAlertService (VCC-001 / UC9)', () => {
     expect(dto.priority).toBe('high');
     expect(dto.channel).toBe('in_app');
     expect(dto.recipientUserIds).toEqual(['admin1', 'admin2']);
+    // Tiếng Việt thật, không phải chuỗi escape literal "ả" (lộ ra ở WS realtime)
+    expect(dto.subject).toBe('Cảnh báo: xe trong danh sách chặn');
+    expect(dto.content).toContain('Biển số 30A12345 vừa qua cổng');
+    expect(dto.content).toContain('Lý do: stolen.');
+    expect(`${dto.subject}${dto.content}`).not.toMatch(/\\u[0-9a-fA-F]{4}/);
     expect(dto.payloadJson).toMatchObject({
       plateNumber: '30A12345',
       listType: 'blocklist',
@@ -360,6 +365,135 @@ describe('VehicleControlAlertService (VCC-001 / UC9)', () => {
       await service.evaluate('EVID02', ctx);
       const input = alertsMock.recordAlert.mock.calls[0]?.[0];
       expect(input.sourceEventId).toBeNull();
+    });
+  });
+
+  // STT 20 (perf 2026-10-08): giảm query trên luồng ingest xe.
+  describe('STT 20 perf — giảm query mỗi lượt xe', () => {
+    const ZONE_UUID = '22222222-2222-2222-2222-222222222222';
+    const sqlCalls = (needle: string): number =>
+      (dsMock.manager.query.mock.calls as [string][]).filter(([sql]) =>
+        sql.includes(needle),
+      ).length;
+
+    beforeEach(() => {
+      dsMock.manager.query.mockImplementation((sql: string) => {
+        if (sql.includes('FROM system_configs'))
+          return Promise.resolve([{ config_json: { '5': ZONE_UUID } }]);
+        if (sql.includes('FROM vehicle_registrations'))
+          return Promise.resolve([]);
+        return Promise.resolve(adminRows);
+      });
+    });
+
+    afterEach(() => jest.restoreAllMocks());
+
+    it('registeredActive=true → KHÔNG query vehicle_registrations, không cảnh báo', async () => {
+      await service.evaluate('30A11111', ctx, 'ev1', {
+        registeredActive: true,
+      });
+      expect(sqlCalls('FROM vehicle_registrations')).toBe(0);
+      expect(alertsMock.recordAlert).not.toHaveBeenCalled();
+    });
+
+    it('registeredActive=true nhưng trong blocklist → VẪN cảnh báo vehicle_control_match', async () => {
+      controlListMock.checkControlList.mockResolvedValue(blocklistMatch);
+      await service.evaluate('30A12345', ctx, 'ev1', {
+        registeredActive: true,
+      });
+      expect(alertsMock.recordAlert.mock.calls[0]?.[0].alertType).toBe(
+        'vehicle_control_match',
+      );
+    });
+
+    it('không có cảnh báo → KHÔNG đọc system_configs (zone map)', async () => {
+      await service.evaluate('30A11111', ctx, 'ev1', {
+        registeredActive: true,
+      });
+      expect(sqlCalls('FROM system_configs')).toBe(0);
+    });
+
+    it('2 cảnh báo trong 30s → zone map + recipients chỉ query 1 lần; quá 30s → query lại', async () => {
+      controlListMock.checkControlList.mockResolvedValue(blocklistMatch);
+      const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(5_000_000);
+      await service.evaluate('30A00001', ctx);
+      await service.evaluate('30A00002', ctx);
+      expect(sqlCalls('FROM system_configs')).toBe(1);
+      expect(sqlCalls('FROM users')).toBe(1);
+      expect(alertsMock.recordAlert.mock.calls[1]?.[0].zoneId).toBe(ZONE_UUID);
+
+      nowSpy.mockReturnValue(5_000_000 + 31_000);
+      await service.evaluate('30A00003', ctx);
+      expect(sqlCalls('FROM system_configs')).toBe(2);
+      expect(sqlCalls('FROM users')).toBe(2);
+    });
+
+    it('recipients rỗng KHÔNG bị cache — lần sau có recipient vẫn gửi notification', async () => {
+      controlListMock.checkControlList.mockResolvedValue(blocklistMatch);
+      let usersCall = 0;
+      dsMock.manager.query.mockImplementation((sql: string) => {
+        if (sql.includes('FROM users'))
+          return Promise.resolve(usersCall++ === 0 ? [] : adminRows);
+        return Promise.resolve([]);
+      });
+      await service.evaluate('30A00001', ctx);
+      await service.evaluate('30A00002', ctx);
+      expect(notifMock.createNotification).toHaveBeenCalledTimes(1);
+    });
+
+    it('đọc zone map lỗi KHÔNG bị cache — lần sau đọc lại được zoneId', async () => {
+      controlListMock.checkControlList.mockResolvedValue(blocklistMatch);
+      let cfgCall = 0;
+      dsMock.manager.query.mockImplementation((sql: string) => {
+        if (sql.includes('FROM system_configs')) {
+          if (cfgCall++ === 0) return Promise.reject(new Error('timeout'));
+          return Promise.resolve([{ config_json: { '5': ZONE_UUID } }]);
+        }
+        return Promise.resolve(adminRows);
+      });
+      await service.evaluate('30A00001', ctx);
+      await service.evaluate('30A00002', ctx);
+      expect(alertsMock.recordAlert.mock.calls[0]?.[0].zoneId).toBeNull();
+      expect(alertsMock.recordAlert.mock.calls[1]?.[0].zoneId).toBe(ZONE_UUID);
+    });
+
+    it('map throttle vượt trần → dọn các mục đã hết hạn (chống rò bộ nhớ)', async () => {
+      const throttle: Map<string, number> = (service as any).lastAlertAt;
+      const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(10_000_000);
+      for (let i = 0; i < 5000; i++) throttle.set(`OLD${i}`, 0); // đã hết hạn từ lâu
+      throttle.set('FRESH', 10_000_000 - 1000); // còn trong cửa sổ 300s
+      await service.evaluate('NEW00001', ctx);
+      expect(throttle.has('OLD0')).toBe(false);
+      expect(throttle.has('FRESH')).toBe(true);
+      expect(throttle.has('NEW00001')).toBe(true);
+      nowSpy.mockRestore();
+    });
+  });
+  describe('Đợt 3 perf — mỗi biển 1 alert, không thông báo lặp', () => {
+    it('recordAlert nhận dedupeKey = biển số (2 xe khác biển cùng zone KHÔNG bị gộp)', async () => {
+      controlListMock.checkControlList.mockResolvedValue(blocklistMatch);
+      await service.evaluate('30A12345', ctx);
+      await service.evaluate('51B67890', ctx);
+      expect(alertsMock.recordAlert.mock.calls[0][0].dedupeKey).toBe(
+        '30A12345',
+      );
+      expect(alertsMock.recordAlert.mock.calls[1][0].dedupeKey).toBe(
+        '51B67890',
+      );
+    });
+
+    it('alert của biển vẫn MỞ (isNew=false, chỉ bump) → KHÔNG gửi lại notification', async () => {
+      controlListMock.checkControlList.mockResolvedValue(blocklistMatch);
+      alertsMock.recordAlert.mockResolvedValue({ isNew: false });
+      await service.evaluate('30A12345', ctx);
+      expect(alertsMock.recordAlert).toHaveBeenCalledTimes(1);
+      expect(notifMock.createNotification).not.toHaveBeenCalled();
+    });
+
+    it('alert MỚI (isNew=true) → gửi notification như cũ', async () => {
+      controlListMock.checkControlList.mockResolvedValue(blocklistMatch);
+      await service.evaluate('30A12345', ctx);
+      expect(notifMock.createNotification).toHaveBeenCalledTimes(1);
     });
   });
 });

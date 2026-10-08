@@ -2,6 +2,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
@@ -13,6 +14,7 @@ import {
 } from 'typeorm';
 import { SecurityAlertEntity } from '../entities/security-alert.entity.js';
 import { SecurityAlertConfigService } from './security-alert-config.service.js';
+import { SecurityAlertNotifierService } from './security-alert-notifier.service.js';
 import type { ZoneEntity } from '../../zones/entities/zone.entity.js';
 import type {
   AlertSeverity,
@@ -57,8 +59,9 @@ const alertNotFound = (): NotFoundException =>
  * `security_alerts`, dùng chung cho 3d/UC-124/UC-125/UC-121 sau) + API Trung tâm cảnh
  * báo (list/detail/acknowledge/resolve/bulk).
  *
- * Dedup PHẢI qua unique partial index + bắt `23505` (KHÔNG pre-check — race window UC-121
- * EX1 gốc). Acknowledge/resolve PHẢI qua conditional UPDATE (`WHERE status = 'x'`) +
+ * Dedup PHẢI qua unique partial index + bắt `23505` (race window UC-121 EX1 gốc) — index
+ * vẫn là chốt chặn; tra alert mở trước chỉ để đường cộng dồn (phổ biến nhất) khỏi INSERT
+ * hỏng. Acknowledge/resolve PHẢI qua conditional UPDATE (`WHERE status = 'x'`) +
  * kiểm `affected` (EX1 race giữa 2 người cùng xử lý).
  */
 @Injectable()
@@ -67,6 +70,8 @@ export class AlertsService {
     @InjectRepository(SecurityAlertEntity)
     private readonly repo: Repository<SecurityAlertEntity>,
     private readonly securityAlertConfigService: SecurityAlertConfigService,
+    @Optional()
+    private readonly notifier?: SecurityAlertNotifierService,
   ) {}
 
   private resolveSeverity(
@@ -78,37 +83,72 @@ export class AlertsService {
   }
 
   /**
-   * recordAlert (R1/R2 crux) — INSERT mới; nếu đã có alert đang mở cùng
-   * (alertType, zoneId) → bắt 23505, chuyển UPDATE tăng occurrenceCount, GIỮ NGUYÊN
-   * severity/triggeredAt gốc (§2.3/§2.4).
+   * recordAlert (R1/R2 crux) — đã có alert đang mở cùng (alertType, zoneId, dedupeKey) →
+   * UPDATE tăng occurrenceCount, GIỮ NGUYÊN severity/triggeredAt gốc (§2.3/§2.4); chưa có →
+   * INSERT mới.
+   *
+   * Tra alert mở TRƯỚC (index unique partial): trước đây luôn INSERT trước → mỗi lần cộng
+   * dồn (ca phổ biến nhất) = 1 INSERT hỏng (dòng ERROR 23505 trong log Postgres + dead
+   * tuple) + SELECT + UPDATE + đọc lại. Race 2 lần gọi cùng lúc vẫn do unique index chặn:
+   * INSERT hỏng 23505 → rơi về nhánh cũ bên dưới.
    */
   async recordAlert(input: RecordAlertInput): Promise<RecordAlertResult> {
     const zoneId = input.zoneId ?? null;
+    const dedupeKey = input.dedupeKey ?? '';
     const severity = this.resolveSeverity(input.alertType, input.severity);
     const triggeredAt = input.triggeredAt ?? new Date();
 
-    const inserted = await this.tryInsert(input, zoneId, severity, triggeredAt);
-    if (inserted) return { alert: inserted, isNew: true };
+    const existing = await this.findOpenAlert(
+      input.alertType,
+      zoneId,
+      dedupeKey,
+    );
+    if (existing) {
+      const reloaded = await this.bumpOccurrence(existing.id, input);
+      return this.updatedAlert(reloaded);
+    }
 
-    const open = await this.findOpenAlert(input.alertType, zoneId);
+    const inserted = await this.tryInsert(input, zoneId, severity, triggeredAt);
+    if (inserted) return this.newAlert(inserted);
+
+    const open = await this.findOpenAlert(input.alertType, zoneId, dedupeKey);
     if (open) {
       const reloaded = await this.bumpOccurrence(open.id, input);
-      return { alert: reloaded, isNew: false };
+      return this.updatedAlert(reloaded);
     }
 
     // Race hiếm: 23505 báo có alert mở nhưng SELECT lại không thấy (vừa resolved giữa
     // 2 bước) — retry INSERT đúng 1 lần, KHÔNG lặp vô hạn.
     const retried = await this.tryInsert(input, zoneId, severity, triggeredAt);
-    if (retried) return { alert: retried, isNew: true };
+    if (retried) return this.newAlert(retried);
 
-    const openAfterRetry = await this.findOpenAlert(input.alertType, zoneId);
+    const openAfterRetry = await this.findOpenAlert(
+      input.alertType,
+      zoneId,
+      dedupeKey,
+    );
     if (openAfterRetry) {
       const reloaded = await this.bumpOccurrence(openAfterRetry.id, input);
-      return { alert: reloaded, isNew: false };
+      return this.updatedAlert(reloaded);
     }
     throw new Error(
       `recordAlert: không thể INSERT hoặc UPDATE alert (alertType=${input.alertType}, zoneId=${String(zoneId)}) sau 1 lần retry`,
     );
+  }
+
+  /**
+   * Alert MỚI → thông báo (WS + kênh theo rule). Fire-and-forget: notifier tự NotThrow,
+   * KHÔNG chặn luồng ghi alert (cron/ingestion). Bump (isNew=false) KHÔNG gọi — chống spam.
+   */
+  private newAlert(alert: SecurityAlertEntity): RecordAlertResult {
+    void this.notifier?.notifyNewAlert(alert);
+    return { alert, isNew: true };
+  }
+
+  /** Alert đang mở thêm lượt → WS cập nhật màn hình (dòng nổi lên đầu, "+1"). */
+  private updatedAlert(alert: SecurityAlertEntity): RecordAlertResult {
+    void this.notifier?.notifyUpdatedAlert(alert);
+    return { alert, isNew: false };
   }
 
   private async tryInsert(
@@ -122,8 +162,10 @@ export class AlertsService {
         alertType: input.alertType,
         severity,
         zoneId,
+        dedupeKey: input.dedupeKey ?? '',
         status: 'new',
         triggeredAt,
+        lastSeenAt: triggeredAt,
         occurrenceCount: 1,
         sourceEventId: input.sourceEventId ?? null,
         ruleId: input.ruleId ?? null,
@@ -136,13 +178,27 @@ export class AlertsService {
     }
   }
 
+  /**
+   * Đã có alert ĐANG MỞ cho (type, zone, dedupeKey)? — caller dùng để bỏ việc đắt chỉ cần
+   * cho alert MỚI (VD crowd chụp ảnh camera, intrusion tra sự kiện gốc).
+   */
+  async hasOpenAlert(
+    alertType: string,
+    zoneId: string | null,
+    dedupeKey = '',
+  ): Promise<boolean> {
+    return (await this.findOpenAlert(alertType, zoneId, dedupeKey)) !== null;
+  }
+
   private async findOpenAlert(
     alertType: string,
     zoneId: string | null,
+    dedupeKey: string,
   ): Promise<SecurityAlertEntity | null> {
     const where: FindOptionsWhere<SecurityAlertEntity> = {
       alertType,
       zoneId: zoneId ?? IsNull(),
+      dedupeKey,
       status: Not('resolved'),
     };
     return this.repo.findOne({ where });
@@ -324,12 +380,14 @@ export class AlertsService {
     const where: FindOptionsWhere<SecurityAlertEntity> = {};
     if (query.alertType) where.alertType = query.alertType;
     if (query.zoneId) where.zoneId = query.zoneId;
-    if (query.status) where.status = query.status;
+    // 'open' = chưa đóng (new + acknowledged) — ô "Đang mở" trên trang Cảnh báo.
+    if (query.status === 'open') where.status = Not('resolved');
+    else if (query.status) where.status = query.status;
     if (query.from && query.to) {
       where.triggeredAt = Between(new Date(query.from), new Date(query.to));
     }
 
-    const sortBy = query.sortBy ?? 'triggeredAt';
+    const sortBy = query.sortBy ?? 'lastSeenAt';
     const sortOrder = (query.sortOrder ?? 'desc').toUpperCase() as
       | 'ASC'
       | 'DESC';

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import type {
   UserJourneyEventDto,
@@ -48,6 +48,10 @@ interface UserRow {
 }
 
 const FACE_EVENT_TYPE = 'ivss_face_event';
+
+/** Khoảng ngày tối đa cho {@link UserJourneyService.getUserJourneyRange}. */
+const MAX_RANGE_DAYS = 31;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * V3 — ngưỡng tách phiên RIÊNG của journey. KHÔNG dùng chung với luồng hiện diện họp.
@@ -369,5 +373,54 @@ export class UserJourneyService {
       meetingCount: meetingEvents.length,
       zoneCount: zoneEvents.length,
     };
+  }
+
+  /**
+   * Hành trình theo KHOẢNG ngày [from, to] (tính cả 2 đầu, giờ VN) — tái dùng nguyên
+   * {@link getUserJourney} cho từng ngày rồi ghép, để gộp phiên/biên ngày giữ đúng như bản 1 ngày.
+   * Chạy tuần tự từng ngày (tối đa 31) để không chiếm hết connection pool.
+   */
+  async getUserJourneyRange(
+    userId: string,
+    from: string,
+    to: string,
+  ): Promise<UserJourneyResponseDto> {
+    const start = Date.parse(`${from}T00:00:00Z`);
+    const end = Date.parse(`${to}T00:00:00Z`);
+    if (Number.isNaN(start) || Number.isNaN(end)) {
+      throw new BadRequestException('Ngày không hợp lệ');
+    }
+    if (end < start) {
+      throw new BadRequestException(
+        'Ngày kết thúc phải sau hoặc bằng ngày bắt đầu',
+      );
+    }
+    const dayCount = Math.round((end - start) / DAY_MS) + 1;
+    if (dayCount > MAX_RANGE_DAYS) {
+      throw new BadRequestException(
+        `Khoảng ngày tối đa ${MAX_RANGE_DAYS} ngày`,
+      );
+    }
+
+    const result: UserJourneyResponseDto = {
+      userId,
+      fullName: null,
+      date: from,
+      to,
+      events: [],
+      gateCount: 0,
+      meetingCount: 0,
+      zoneCount: 0,
+    };
+    for (let i = 0; i < dayCount; i++) {
+      const day = new Date(start + i * DAY_MS).toISOString().slice(0, 10);
+      const dayJourney = await this.getUserJourney(userId, day);
+      result.fullName ??= dayJourney.fullName;
+      result.events.push(...dayJourney.events);
+      result.gateCount += dayJourney.gateCount;
+      result.meetingCount += dayJourney.meetingCount;
+      result.zoneCount += dayJourney.zoneCount;
+    }
+    return result;
   }
 }

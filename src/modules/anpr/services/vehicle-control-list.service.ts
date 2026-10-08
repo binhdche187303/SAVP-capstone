@@ -19,6 +19,9 @@ const controlListConflict = (): ConflictException =>
     message: 'Biển số này đã có trong danh sách kiểm soát',
   });
 
+/** Đợt 3 (perf): TTL cache toàn bộ danh sách kiểm soát đang hiệu lực (bảng nhỏ, admin quản lý). */
+const CONTROL_LIST_CACHE_MS = 60_000;
+
 /**
  * VehicleControlListService (VCL-001 / UC8) — CRUD danh sách kiểm soát phương tiện
  * (blocklist/watchlist). Khác `VehicleRegistrationService` (xe hợp lệ của user) — bảng
@@ -33,6 +36,11 @@ export class VehicleControlListService {
     @InjectRepository(VehicleControlListEntity)
     private readonly repo: Repository<VehicleControlListEntity>,
   ) {}
+
+  private activeCache?: {
+    at: number;
+    byPlate: Map<string, VehicleControlListEntity>;
+  };
 
   async create(
     currentUserId: string,
@@ -58,7 +66,9 @@ export class VehicleControlListService {
     });
 
     try {
-      return await this.repo.save(entity);
+      const saved = await this.repo.save(entity);
+      this.activeCache = undefined;
+      return saved;
     } catch (e) {
       // safety-net: partial-unique race → 23505 → 409 sạch, KHÔNG để lỗi DB phọt client.
       if (this.isUniqueViolation(e)) {
@@ -109,13 +119,29 @@ export class VehicleControlListService {
    * (blocklist + watchlist) — `order: {listType:'ASC'}` ưu tiên trả 'blocklist' (severity cao
    * hơn) vì 'blocklist' < 'watchlist' theo alphabet, KHÔNG phải may rủi ngầm định.
    */
+  /**
+   * Đợt 3 (perf): mỗi xe qua cổng KHÔNG còn 1 query — tra Map in-memory nạp lại mỗi
+   * CONTROL_LIST_CACHE_MS (hoặc ngay khi create/update/softDelete). Thứ tự listType ASC
+   * giữ nguyên ưu tiên cũ (blocklist trước watchlist).
+   */
   async checkControlList(
     plateNumber: string,
   ): Promise<VehicleControlListEntity | null> {
-    return this.repo.findOne({
-      where: { plateNumber, deletedAt: IsNull(), active: true },
-      order: { listType: 'ASC' },
-    });
+    if (
+      !this.activeCache ||
+      Date.now() - this.activeCache.at >= CONTROL_LIST_CACHE_MS
+    ) {
+      const rows = await this.repo.find({
+        where: { deletedAt: IsNull(), active: true },
+        order: { listType: 'ASC' },
+      });
+      const byPlate = new Map<string, VehicleControlListEntity>();
+      for (const row of rows) {
+        if (!byPlate.has(row.plateNumber)) byPlate.set(row.plateNumber, row);
+      }
+      this.activeCache = { at: Date.now(), byPlate };
+    }
+    return this.activeCache.byPlate.get(plateNumber) ?? null;
   }
 
   async getDetail(id: string): Promise<VehicleControlListEntity> {
@@ -148,12 +174,15 @@ export class VehicleControlListService {
     if (!changed) {
       return entity; // no-op
     }
-    return this.repo.save(entity);
+    const saved = await this.repo.save(entity);
+    this.activeCache = undefined;
+    return saved;
   }
 
   async softDelete(id: string): Promise<void> {
     await this.getDetail(id);
     await this.repo.softDelete(id);
+    this.activeCache = undefined;
   }
 
   /** Postgres unique_violation = 23505 (TypeORM QueryFailedError.driverError.code). */

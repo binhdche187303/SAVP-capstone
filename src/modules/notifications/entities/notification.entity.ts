@@ -54,6 +54,11 @@ export enum NotificationType {
   // bi tat trong khi thiet bi loai do van dang gan phong -> he thong tu go va
   // bao BUSINESS_ADMIN.
   EQUIPMENT_AUTO_UNASSIGNED = 'equipment_auto_unassigned',
+  // Camera IP chuyen online -> offline (cron device-offline-detect) -> bao SA/BA.
+  DEVICE_OFFLINE_ALERT = 'device_offline_alert',
+  // Canh bao an ninh moi (security_alerts, recordAlert isNew) -> bao nguoi co quyen
+  // security_alert.read (SecurityAlertNotifierService).
+  SECURITY_ALERT = 'security_alert',
 }
 
 export enum NotificationChannel {

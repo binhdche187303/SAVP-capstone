@@ -49,10 +49,13 @@ export class UserJourneyController {
     @CurrentUser() user: { userId: string },
     @Query() query: UserJourneyOwnQueryDto,
   ) {
-    const data = await this.userJourneyService.getUserJourney(
-      user.userId,
-      query.date,
-    );
+    const data = query.to
+      ? await this.userJourneyService.getUserJourneyRange(
+          user.userId,
+          query.date ?? query.to,
+          query.to,
+        )
+      : await this.userJourneyService.getUserJourney(user.userId, query.date);
     return { success: true, message: 'User journey retrieved', data };
   }
 
@@ -61,10 +64,13 @@ export class UserJourneyController {
   @RequirePermissions('zones.gate_log.read')
   @UsePipes(JOURNEY_PIPE)
   async userJourney(@Query() query: UserJourneyQueryDto) {
-    const data = await this.userJourneyService.getUserJourney(
-      query.userId,
-      query.date,
-    );
+    const data = query.to
+      ? await this.userJourneyService.getUserJourneyRange(
+          query.userId,
+          query.date ?? query.to,
+          query.to,
+        )
+      : await this.userJourneyService.getUserJourney(query.userId, query.date);
     return { success: true, message: 'User journey retrieved', data };
   }
 }

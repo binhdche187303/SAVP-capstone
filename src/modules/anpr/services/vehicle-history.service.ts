@@ -2,6 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { normalizePlate } from '../utils/normalize-plate.js';
 import type { ListVehicleHistoryQueryDto } from '../dto/list-vehicle-history-query.dto.js';
+import {
+  CONTROL_LIST_FLAG_COLUMNS,
+  CONTROL_LIST_FLAG_JOIN,
+} from '../utils/control-list-flag.sql.js';
 
 interface HistoryRow {
   id: string;
@@ -47,14 +51,11 @@ export interface VehicleHistoryItem {
   eventTime: Date;
   utc: string | null;
   /**
-   * true nếu event này có 1 security_alerts.alert_type='vehicle_control_match' gắn qua
-   * source_event_id (recon 2026-08-08, R1-R3). GIỚI HẠN ĐÃ BIẾT: evaluate() throttle
-   * 300s/plate (vehicle-control-alert.service.ts) — sự kiện bị throttle trong cùng cửa
-   * sổ sẽ có isBlacklisted=false dù xe thực sự đang trong control-list (không có alert
-   * riêng gắn với event_id của chính nó). KHÔNG cố sửa throttle ở đây.
+   * STT 19: true nếu biển nằm trong vehicle_control_list (active) TẠI thời điểm xe qua —
+   * xem utils/control-list-flag.sql.ts (thay JOIN security_alerts cũ, vốn sai cho lượt sau).
    */
   isBlacklisted: boolean;
-  /** security_alerts.payload_json->>'listType' ('blocklist'|'watchlist'); null nếu isBlacklisted=false. */
+  /** vehicle_control_list.list_type ('blocklist' ưu tiên | 'watchlist'); null nếu isBlacklisted=false. */
   listType: string | null;
   userId?: string | null; // CHỈ admin (listAll)
   /**
@@ -88,22 +89,18 @@ const VEHICLE_EVENT_TYPE_SQL = VEHICLE_EVENT_TYPES.map(
  * Ràng buộc: plateNumber filter qua normalizePlate (UC1) TRƯỚC khi so (DB lưu đã normalize).
  * SEC-03 bind tham số. KHÔNG dùng VehicleRegistrationService.
  *
- * isBlacklisted/listType (recon 2026-08-08, R1-R3): LEFT JOIN security_alerts qua FK
- * source_event_id → iot_device_events.id (KHÔNG match theo plateNumber+thời gian).
- * KHÔNG đụng luồng ghi (onVehicleEvent()/evaluate() — vehicle-control-alert.service.ts)
- * — chỉ sửa tầng đọc. Giới hạn ĐÃ BIẾT, KHÔNG cố sửa ở đây: evaluate() throttle 300s/plate
- * → sự kiện bị throttle trong cùng cửa sổ có isBlacklisted=false dù xe đang trong
- * control-list (alert gắn với event_id của lần match GẦN NHẤT trước đó, không phải event
- * này). `security_alerts` JOIN chỉ có ở rows query (KHÔNG cần ở COUNT — isBlacklisted
- * không phải filter, chỉ hiển thị).
+ * isBlacklisted/listType (STT 19, 2026-10-08): LATERAL vehicle_control_list theo biển +
+ * thời điểm (utils/control-list-flag.sql.ts) — thay LEFT JOIN security_alerts cũ (chỉ đúng
+ * cho lượt ĐẦU của mỗi alert mở, do bumpOccurrence gộp lượt sau). KHÔNG đụng luồng ghi.
+ * LATERAL chỉ có ở rows query (KHÔNG cần ở COUNT — isBlacklisted không phải filter).
  *
  * owner/ownerName (yêu cầu FE 2026-08-08): LEFT JOIN users/departments qua
  * payload_json->>'userId', CHỈ khi includeUserId=true (listAll — mirror lý do privacy
- * của userId, xem VehicleHistoryItem.owner). KHÁC security_alerts — JOIN users PHẢI có ở
+ * của userId, xem VehicleHistoryItem.owner). KHÁC control-list — JOIN users PHẢI có ở
  * CẢ COUNT lẫn rows, vì `where` có thể tham chiếu u.full_name (filter ownerName).
  *
  * `iot_device_events.` prefix BẮT BUỘC trên MỌI cột (KHÔNG chỉ để rõ ràng) — sau khi
- * JOIN, cả security_alerts lẫn users ĐỀU có cột `id` trùng tên; để trần sẽ ném lỗi
+ * JOIN, users CÓ cột `id` trùng tên; để trần sẽ ném lỗi
  * Postgres "column reference is ambiguous". `where` dùng chung cho COUNT lẫn rows nên
  * PHẢI qualify nhất quán ở mọi nơi build `where` (kể cả event_type/event_time, dù 2 cột
  * đó hiện chưa trùng tên với bảng nào khác — giữ prefix để an toàn nếu JOIN thêm sau này).
@@ -207,11 +204,9 @@ export class VehicleHistoryService {
     const total = countRows[0]?.total ?? 0;
 
     // rows: limit/offset SAU filter params → bind index liên tục.
-    // recon 2026-08-08 (R1-R3): LEFT JOIN security_alerts qua FK source_event_id →
-    // iot_device_events.id (KHÔNG match theo plateNumber+thời gian — FK sẵn có, chính
-    // xác hơn). `iot_device_events.` prefix BẮT BUỘC trên id/payload_json (KHÔNG chỉ
-    // để rõ ràng) — security_alerts CŨNG có cột id + payload_json, để trần sẽ ném lỗi
-    // "column reference is ambiguous" khi đã JOIN (users CŨNG có cột id — u.id BẮT BUỘC).
+    // STT 19: cờ danh sách đen qua CONTROL_LIST_FLAG_JOIN (LATERAL vehicle_control_list).
+    // `iot_device_events.` prefix BẮT BUỘC trên id/payload_json — users CŨNG có cột id,
+    // để trần sẽ ném lỗi "column reference is ambiguous" khi đã JOIN (u.id BẮT BUỘC).
     const userIdCol = includeUserId
       ? `, iot_device_events.payload_json->>'userId' AS user_id`
       : '';
@@ -241,12 +236,9 @@ export class VehicleHistoryService {
               iot_device_events.payload_json->>'matchState'         AS match_state,
               iot_device_events.event_time,
               iot_device_events.payload_json->>'utc'                AS utc,
-              sa.id IS NOT NULL                                     AS is_blacklisted,
-              sa.payload_json->>'listType'                          AS list_type${userIdCol}${ownerCols}
+              ${CONTROL_LIST_FLAG_COLUMNS}${userIdCol}${ownerCols}
          FROM iot_device_events
-         LEFT JOIN security_alerts sa
-                ON sa.source_event_id = iot_device_events.id
-               AND sa.alert_type = 'vehicle_control_match'
+         ${CONTROL_LIST_FLAG_JOIN}
          ${vehicleRegistrationJoin}
          ${ownerJoin}
          ${departmentJoin}

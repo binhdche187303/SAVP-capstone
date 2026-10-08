@@ -216,6 +216,10 @@ export const envValidationSchema = Joi.object({
   // ─── K2. Device Probe (IOT-014) ──────────────────────────────────────────────
   DEVICE_OFFLINE_DETECT_ENABLED: Joi.boolean().default(true),
   RTSP_PROBE_TIMEOUT_MS: Joi.number().integer().min(100).default(3000),
+  // Số lần probe lỗi LIÊN TIẾP mới coi camera offline (chống báo nhầm khi mạng chập chờn).
+  DEVICE_OFFLINE_FAIL_THRESHOLD: Joi.number().integer().min(1).default(3),
+  // Số camera probe song song mỗi lượt.
+  DEVICE_PROBE_CONCURRENCY: Joi.number().integer().min(1).max(500).default(50),
   // A5 (IOT-005): timeout riêng cho runtime RTSP probe (chẩn đoán đơn lẻ, chờ lâu hơn batch).
   RTSP_RUNTIME_PROBE_TIMEOUT_MS: Joi.number().integer().min(100).default(10000),
 
@@ -266,6 +270,10 @@ export const envValidationSchema = Joi.object({
     .default(8000),
   // IPS-001 (#37): cron đồng bộ person IVSS (gated default OFF) + lead/grace (phút).
   SCHEDULER_IVSS_SYNC_ENABLED: Joi.boolean().default(false),
+  // KPI-001 (#10): cron rollup KPI theo giờ + đối soát 01:00 (gated default OFF).
+  SCHEDULER_KPI_ROLLUP_ENABLED: Joi.boolean().default(false),
+  // KPI-001: đọc bảng tổng hợp ở API zone traffic / vehicle stats. false ⇒ quay về 100% raw.
+  KPI_ROLLUP_READ_ENABLED: Joi.boolean().default(true),
   IVSS_SYNC_LEAD_MINUTES: Joi.number().integer().min(1).default(5),
   IVSS_SYNC_GRACE_MINUTES: Joi.number().integer().min(0).default(5),
   // IRP-001 (#40): broadcast realtime presence qua WS (gated default OFF).

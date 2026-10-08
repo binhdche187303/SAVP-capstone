@@ -21,6 +21,20 @@ export interface VehicleControlAlertContext {
   direction: string;
 }
 
+export interface VehicleControlAlertOptions {
+  /**
+   * STT 20 (perf): caller đã resolve biển → đăng ký `active` (VehicleResolveService
+   * resolveUserByPlate). Xe active KHÔNG BAO GIỜ sinh unknown_vehicle/vehicle_unauthorized
+   * → bỏ query vehicle_registrations. Control-list VẪN kiểm tra như cũ.
+   */
+  registeredActive?: boolean;
+}
+
+/** STT 20 (perf): TTL cache zone map + recipients (mirror CHANNEL_MAP_CACHE_MS của VehicleResolveService). */
+const CONFIG_CACHE_MS = 30_000;
+/** STT 20 (perf): trần map throttle — vượt thì dọn các plate đã hết cửa sổ throttle. */
+const THROTTLE_MAP_MAX = 5000;
+
 /**
  * VehicleControlAlertService (VCC-001 / UC9) — "đích cảnh báo" khi biển số khớp
  * `vehicle_control_list`. Tách biệt khỏi `checkControlList` (pure lookup) theo chủ đích.
@@ -47,6 +61,8 @@ export class VehicleControlAlertService {
   private readonly logger = new Logger(VehicleControlAlertService.name);
   private static readonly DEFAULT_THROTTLE_SECONDS = 300;
   private readonly lastAlertAt = new Map<string, number>();
+  private zoneMapCache?: { at: number; value: Record<string, string> };
+  private recipientsCache?: { at: number; value: string[] };
 
   constructor(
     private readonly vehicleControlListService: VehicleControlListService,
@@ -61,6 +77,7 @@ export class VehicleControlAlertService {
     plateNumber: string,
     context: VehicleControlAlertContext,
     eventId?: string,
+    options: VehicleControlAlertOptions = {},
   ): Promise<void> {
     try {
       // --- Step 1: Throttle check ---
@@ -75,11 +92,7 @@ export class VehicleControlAlertService {
         return;
       }
       this.lastAlertAt.set(plateNumber, now);
-
-      // --- Step 2: Resolve zone_id from channelId (FR-020) ---
-      // F6: qua channel_presence_zone_map — KHÔNG map → zoneId=null, KHÔNG throw
-      // (AC-BACKCOMPAT, mirror pattern presence/occupancy).
-      const zoneId = await this.resolveZone(context.channelId);
+      this.pruneThrottle(now, throttleMs);
 
       // --- Step 3: Priority chain (B>C>A>D) ---
       let alertType: string | null = null;
@@ -106,17 +119,17 @@ export class VehicleControlAlertService {
         if (controlListMatch.listType === 'blocklist') {
           alertType = 'vehicle_control_match';
           severity = 'high';
-          subject = 'C\\u1ea3nh b\\u00e1o: xe trong danh s\\u00e1ch ch\\u1eb7n';
+          subject = 'Cảnh báo: xe trong danh sách chặn';
           notificationType = NotificationType.VEHICLE_CONTROL_LIST_MATCH;
         } else {
           alertType = 'vehicle_control_match';
           severity = 'medium';
-          subject = 'C\\u1ea3nh b\\u00e1o: xe c\\u1ea7n theo d\\u00f5i';
+          subject = 'Cảnh báo: xe cần theo dõi';
           notificationType = NotificationType.VEHICLE_CONTROL_LIST_MATCH;
         }
       }
 
-      if (!alertType) {
+      if (!alertType && !options.registeredActive) {
         try {
           const regRows: Array<{ status: string }> =
             await this.dataSource.manager.query(
@@ -126,8 +139,7 @@ export class VehicleControlAlertService {
           if (regRows.length === 0) {
             alertType = 'unknown_vehicle';
             severity = 'medium';
-            subject =
-              'C\\u1ea3nh b\\u00e1o: bi\\u1ec3n s\\u1ed1 kh\\u00f4ng x\\u00e1c \\u0111\\u1ecbnh';
+            subject = 'Cảnh báo: biển số không xác định';
             notificationType = NotificationType.UNKNOWN_VEHICLE_ALERT;
           } else if (
             regRows[0].status === 'pending' ||
@@ -135,8 +147,7 @@ export class VehicleControlAlertService {
           ) {
             alertType = 'vehicle_unauthorized';
             severity = 'low';
-            subject =
-              'Th\\u00f4ng b\\u00e1o: xe \\u0111ang ch\\u1edd duy\\u1ec7t/b\\u1ecb t\\u1eeb ch\\u1ed1i';
+            subject = 'Thông báo: xe đang chờ duyệt/bị từ chối';
             notificationType = NotificationType.VEHICLE_UNAUTHORIZED_ALERT;
           }
         } catch (e) {
@@ -148,6 +159,12 @@ export class VehicleControlAlertService {
       }
 
       if (!alertType) return;
+
+      // --- Step 2: Resolve zone_id from channelId (FR-020) ---
+      // F6: qua channel_presence_zone_map — KHÔNG map → zoneId=null, KHÔNG throw
+      // (AC-BACKCOMPAT, mirror pattern presence/occupancy).
+      // STT 20 (perf): dời xuống SAU khi biết có alertType — xe không cảnh báo không đọc map.
+      const zoneId = await this.resolveZone(context.channelId);
 
       // --- Step 4: Check alert_rules ---
       try {
@@ -167,19 +184,32 @@ export class VehicleControlAlertService {
       }
 
       // --- Step 5: recordAlert ---
+      // Đợt 3: dedupeKey = biển số → 2 xe KHÁC biển cùng zone là 2 alert riêng (trước đây
+      // gộp chung 1 alert theo (alertType, zoneId) → mất biển của xe thứ 2).
+      let isNew = true;
       try {
-        await this.alertsService.recordAlert({
+        const res = await this.alertsService.recordAlert({
           alertType,
           zoneId,
           severity,
           ruleId,
           sourceEventId: eventId ?? null,
           payloadJson: payload,
+          dedupeKey: plateNumber,
         });
+        isNew = res?.isNew !== false;
       } catch (e) {
         this.logger.error(
           `recordAlert failed (plate=${plateNumber}): ${e instanceof Error ? e.message : 'unknown'}`,
         );
+      }
+      // Đợt 3: alert của biển này vẫn đang MỞ (chỉ bump) → KHÔNG gửi lại thông báo.
+      // recordAlert lỗi → vẫn gửi (giữ đảm bảo cũ: lỗi ghi alert không chặn notification).
+      if (!isNew) {
+        this.logger.debug(
+          `Alert still open (type=${alertType} plate=${plateNumber}) — bump only, skip notification.`,
+        );
+        return;
       }
 
       // --- Step 6: createNotification ---
@@ -191,10 +221,10 @@ export class VehicleControlAlertService {
         return;
       }
       const alertContent =
-        `Bi\\u1ec3n s\\u1ed1 ${plateNumber} v\\u1eeba qua c\\u1ed5ng ` +
+        `Biển số ${plateNumber} vừa qua cổng ` +
         `(channel ${context.channelId}, direction ${context.direction}).` +
-        (payload.listType ? ` Lo\\u1ea1i: ${payload.listType}.` : '') +
-        (payload.reason ? ` L\\u00fd do: ${payload.reason}.` : '');
+        (payload.listType ? ` Loại: ${payload.listType}.` : '') +
+        (payload.reason ? ` Lý do: ${payload.reason}.` : '');
       await this.notificationsService.createNotification({
         notificationType,
         channel: NotificationChannel.IN_APP,
@@ -221,13 +251,28 @@ export class VehicleControlAlertService {
     return map[String(channelId)] ?? null;
   }
 
+  /** STT 20 (perf): map vượt trần → xoá plate đã quá cửa sổ throttle (không đổi hành vi throttle). */
+  private pruneThrottle(now: number, throttleMs: number): void {
+    if (this.lastAlertAt.size <= THROTTLE_MAP_MAX) return;
+    for (const [plate, at] of this.lastAlertAt) {
+      if (now - at >= throttleMs) this.lastAlertAt.delete(plate);
+    }
+  }
+
   /**
    * F6 (recon R1/R2): system_configs['ivss.channel_presence_zone_map'] {channelId: zone_uuid};
-   * validate uuid. Không cache. Đọc lỗi/không map → {} (KHÔNG throw): map-miss = zoneId=null,
+   * validate uuid. STT 20: cache CONFIG_CACHE_MS khi đọc THÀNH CÔNG (kể cả map rỗng); đọc
+   * lỗi KHÔNG cache. Đọc lỗi/không map → {} (KHÔNG throw): map-miss = zoneId=null,
    * alert vẫn bắn (AC-BACKCOMPAT). Mirror ivss-occupancy-ingest.service.ts/
    * ivss-presence-ingestion.service.ts — KHÔNG có hàm dùng chung (TD-ZPW-1).
    */
   private async getChannelPresenceZoneMap(): Promise<Record<string, string>> {
+    if (
+      this.zoneMapCache &&
+      Date.now() - this.zoneMapCache.at < CONFIG_CACHE_MS
+    ) {
+      return this.zoneMapCache.value;
+    }
     const out: Record<string, string> = {};
     try {
       const rows: Array<{ config_json: Record<string, unknown> | null }> =
@@ -242,6 +287,7 @@ export class VehicleControlAlertService {
           if (typeof v === 'string' && UUID_RE.test(v)) out[k] = v;
         }
       }
+      this.zoneMapCache = { at: Date.now(), value: out };
     } catch (e) {
       this.logger.warn(
         `channel_presence_zone_map read failed (→ zoneId null): ${e instanceof Error ? e.message : 'unknown'}`,
@@ -250,8 +296,17 @@ export class VehicleControlAlertService {
     return out;
   }
 
-  /** Recipient = đúng bộ role đã gán quyền `vehicle_control.read` (UC8 migration 20260722000001). */
+  /**
+   * Recipient = đúng bộ role đã gán quyền `vehicle_control.read` (UC8 migration 20260722000001).
+   * STT 20: cache CONFIG_CACHE_MS khi có recipient; rỗng/lỗi KHÔNG cache.
+   */
   private async resolveRecipients(): Promise<string[]> {
+    if (
+      this.recipientsCache &&
+      Date.now() - this.recipientsCache.at < CONFIG_CACHE_MS
+    ) {
+      return this.recipientsCache.value;
+    }
     const rows: Array<{ id: string }> = await this.dataSource.manager.query(
       `SELECT DISTINCT u.id
          FROM users u
@@ -260,6 +315,8 @@ export class VehicleControlAlertService {
         WHERE r.role_code IN ('MANAGER','BUSINESS_ADMIN','SYSTEM_ADMIN')
           AND u.deleted_at IS NULL`,
     );
-    return rows.map((r) => r.id);
+    const ids = rows.map((r) => r.id);
+    if (ids.length > 0) this.recipientsCache = { at: Date.now(), value: ids };
+    return ids;
   }
 }

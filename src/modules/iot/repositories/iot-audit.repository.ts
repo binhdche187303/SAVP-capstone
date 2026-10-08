@@ -102,6 +102,41 @@ export class IotAuditRepository {
     );
   }
 
+  /** Như `logDeviceStatusChange` nhưng ghi cả lô bằng 1 câu INSERT (probe offline/online). */
+  async logDeviceStatusChanges(
+    entityManager: EntityManager,
+    rows: Array<{
+      userId: string | null;
+      deviceId: string;
+      action: 'auto_offline' | 'auto_online';
+      oldStatus: string;
+      newStatus: string;
+    }>,
+  ): Promise<void> {
+    if (rows.length === 0) return;
+    await entityManager.query(
+      `
+        INSERT INTO audit_logs (user_id, action_type, entity_type, entity_id, severity, metadata_json)
+        SELECT (r->>'userId')::uuid, r->>'action', 'iot_devices', (r->>'deviceId')::uuid, 'info', r->'meta'
+          FROM jsonb_array_elements($1::jsonb) r
+      `,
+      [
+        JSON.stringify(
+          rows.map((p) => ({
+            userId: p.userId,
+            action: p.action,
+            deviceId: p.deviceId,
+            meta: {
+              changed_fields: {
+                status: { old: p.oldStatus, new: p.newStatus },
+              },
+            },
+          })),
+        ),
+      ],
+    );
+  }
+
   async logConfigureFaceServer(
     entityManager: EntityManager,
     params: {

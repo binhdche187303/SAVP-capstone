@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, MoreThan, Repository } from 'typeorm';
+import { DataSource, In, MoreThan, Repository } from 'typeorm';
 import { ZonePresenceEventEntity } from '../../zones/entities/zone-presence-event.entity.js';
 import { SystemConfigEntity } from '../../administration/entities/system-config.entity.js';
 import { AlertRuleEntity } from '../../alerts/entities/alert-rule.entity.js';
@@ -35,6 +35,7 @@ const CROWD_SNAPSHOT_RELATED_ENTITY_TYPE = 'crowd_alert_snapshot';
 const CROWD_SNAPSHOT_EVENT_TYPE = 'crowd_alert_snapshot';
 const BRIDGE_DEVICE_CODE = 'IVSS-BRIDGE';
 const BRIDGE_DEVICE_TYPE = 'ivss_bridge';
+const CHANNEL_MAP_CACHE_MS = 60_000;
 
 export interface EvaluateCrowdAlertsResult {
   zonesScanned: number;
@@ -55,6 +56,15 @@ export interface EvaluateCrowdAlertsResult {
 @Injectable()
 export class CrowdAlertService {
   private readonly logger = new Logger(CrowdAlertService.name);
+  /** Cron đang chạy → lượt sau bỏ qua (cron EVERY_MINUTE, lượt chậm có thể > 1 phút). */
+  private cronRunning = false;
+  /** Zone đang xử lý ở đường tức thời → webhook trùng zone bỏ qua (chống chụp ảnh chồng). */
+  private readonly zonesInFlight = new Set<string>();
+  private channelMapCache: {
+    value: Record<string, unknown>;
+    expiresAt: number;
+  } | null = null;
+  private bridgeDeviceId: string | null = null;
 
   constructor(
     @InjectRepository(ZonePresenceEventEntity)
@@ -67,49 +77,73 @@ export class CrowdAlertService {
   ) {}
 
   async evaluateCrowdAlerts(): Promise<EvaluateCrowdAlertsResult> {
+    if (this.cronRunning) {
+      this.logger.warn('[CROWD] cron lượt trước chưa xong → bỏ qua lượt này');
+      return { zonesScanned: 0, eventsChecked: 0, violationsFound: 0 };
+    }
+    this.cronRunning = true;
+    try {
+      return await this.runCrowdScan();
+    } finally {
+      this.cronRunning = false;
+    }
+  }
+
+  /**
+   * Đợt 2 perf: 1 truy vấn cho MỌI zone (trước: 1 truy vấn/zone), mỗi zone chỉ đánh giá
+   * count-event ĐỈNH kể từ watermark (trước: từng event → mỗi event 1 recordAlert + 1 ảnh
+   * chụp). Đường tức thời đã cộng dồn từng event; cron chỉ là lưới quét bù.
+   */
+  private async runCrowdScan(): Promise<EvaluateCrowdAlertsResult> {
     const rules = await this.loadZoneScopedCrowdRules();
     const watermark = await this.loadWatermark(COUNT_EVENT_WATERMARK_KEY);
-
-    let eventsChecked = 0;
     let violationsFound = 0;
     let maxTime = watermark;
 
-    for (const rule of rules) {
-      const zoneId = rule.zoneId as string; // đã filter zoneId !== null ở loadZoneScopedCrowdRules
-      const threshold = rule.threshold as number; // đã filter threshold !== null
-
-      const events = await this.presenceRepo.find({
-        where: {
-          zoneId,
-          eventType: ZONE_PRESENCE_EVENT_TYPES[2],
-          eventTime: MoreThan(watermark),
-        },
-      });
-
-      for (const event of events) {
-        eventsChecked++;
-        if (this.isThresholdExceeded(rule, event.occupancyCount ?? 0)) {
-          violationsFound++;
-          await this.recordCrowdAlert(rule, {
-            occupancyCount: event.occupancyCount,
-            threshold,
-            sourceEventId: event.id,
-            occurredAt: event.eventTime.toISOString(),
+    const zoneIds = [...new Set(rules.map((r) => r.zoneId as string))];
+    const events =
+      zoneIds.length === 0
+        ? []
+        : await this.presenceRepo.find({
+            where: {
+              zoneId: In(zoneIds),
+              eventType: ZONE_PRESENCE_EVENT_TYPES[2],
+              eventTime: MoreThan(watermark),
+            },
           });
-        }
-        if (event.eventTime > maxTime) maxTime = event.eventTime;
+
+    const peakByZone = new Map<string, ZonePresenceEventEntity>();
+    for (const event of events) {
+      if (event.eventTime > maxTime) maxTime = event.eventTime;
+      const peak = peakByZone.get(event.zoneId);
+      const n = event.occupancyCount ?? 0;
+      const p = peak?.occupancyCount ?? 0;
+      if (!peak || n > p || (n === p && event.eventTime > peak.eventTime)) {
+        peakByZone.set(event.zoneId, event);
+      }
+    }
+
+    for (const rule of rules) {
+      const peak = peakByZone.get(rule.zoneId as string);
+      if (!peak) continue;
+      if (this.isThresholdExceeded(rule, peak.occupancyCount ?? 0)) {
+        violationsFound++;
+        await this.recordCrowdAlert(rule, {
+          occupancyCount: peak.occupancyCount,
+          threshold: rule.threshold,
+          sourceEventId: peak.id,
+          occurredAt: peak.eventTime.toISOString(),
+        });
       }
     }
 
     await this.saveWatermark(COUNT_EVENT_WATERMARK_KEY, maxTime);
-
     this.logger.debug(
-      `evaluateCrowdAlerts: zones=${rules.length} events=${eventsChecked} violations=${violationsFound}`,
+      `[CROWD] cron: zones=${rules.length} events=${events.length} violations=${violationsFound}`,
     );
-
     return {
       zonesScanned: rules.length,
-      eventsChecked,
+      eventsChecked: events.length,
       violationsFound,
     };
   }
@@ -136,16 +170,26 @@ export class CrowdAlertService {
     eventTime: Date;
     sourceEventId: string;
   }): Promise<boolean> {
-    const { items: rules } = await this.alertRulesService.list({
-      alertType: 'crowd',
-      zoneId: args.zoneId,
-      enabled: true,
-      page: 1,
-      limit: 50,
-      sortBy: 'createdAt',
-      sortOrder: 'desc',
-    });
+    const rules = (
+      await this.alertRulesService.listEnabledZoneRules('crowd')
+    ).filter((r) => r.zoneId === args.zoneId);
+    if (rules.length === 0) return false;
+    if (this.zonesInFlight.has(args.zoneId)) {
+      this.logger.debug(`[CROWD] zone ${args.zoneId} đang xử lý → bỏ qua`);
+      return false;
+    }
+    this.zonesInFlight.add(args.zoneId);
+    try {
+      return await this.evaluateRules(rules, args);
+    } finally {
+      this.zonesInFlight.delete(args.zoneId);
+    }
+  }
 
+  private async evaluateRules(
+    rules: AlertRuleEntity[],
+    args: { occupancyCount: number; eventTime: Date; sourceEventId: string },
+  ): Promise<boolean> {
     let violated = false;
     for (const rule of rules) {
       if (rule.threshold === null) continue; // mirror loadZoneScopedCrowdRules
@@ -168,7 +212,7 @@ export class CrowdAlertService {
     occupancyCount: number,
   ): boolean {
     const threshold = rule.threshold as number; // caller đảm bảo threshold !== null
-    return occupancyCount >= threshold;
+    return occupancyCount > threshold; // spec UC-121 §2.3: "vượt quá", bằng ngưỡng chưa tính
   }
 
   /**
@@ -184,7 +228,17 @@ export class CrowdAlertService {
     rule: AlertRuleEntity,
     payloadJson: Record<string, unknown>,
   ): Promise<void> {
-    const sourceEventId = await this.captureSnapshotForZone(rule.zoneId);
+    // Đợt 2 perf: alert đang mở → chỉ cộng dồn, KHÔNG chụp ảnh (trước: mỗi lần vượt
+    // ngưỡng = 1 lần gọi bridge ≤6.5s + 1 file + 1 dòng iot_device_events).
+    const isOpen = await this.alertsService.hasOpenAlert('crowd', rule.zoneId);
+    const sourceEventId = isOpen
+      ? null
+      : await this.captureSnapshotForZone(rule.zoneId);
+    if (!isOpen) {
+      this.logger.log(
+        `[CROWD] zone ${rule.zoneId}: ${String(payloadJson.occupancyCount)} người > ngưỡng ${String(payloadJson.threshold)} → cảnh báo MỚI (chụp ảnh)`,
+      );
+    }
 
     await this.alertsService.recordAlert({
       alertType: 'crowd',
@@ -301,11 +355,34 @@ export class CrowdAlertService {
 
   /** Mirror resolveBridgeDeviceId() ở vehicle-resolve.service.ts/ivss-occupancy-ingest.service.ts. */
   private async resolveBridgeDeviceId(): Promise<string | null> {
+    if (this.bridgeDeviceId) return this.bridgeDeviceId;
     const rows: Array<{ id: string }> = await this.dataSource.manager.query(
       `SELECT id FROM iot_devices WHERE device_code = $1 AND device_type = $2 LIMIT 1`,
       [BRIDGE_DEVICE_CODE, BRIDGE_DEVICE_TYPE],
     );
-    return rows[0]?.id ?? null;
+    this.bridgeDeviceId = rows[0]?.id ?? null;
+    return this.bridgeDeviceId;
+  }
+
+  /** channel_presence_zone_map — cache CHANNEL_MAP_CACHE_MS (ít đổi, đọc mỗi lần chụp ảnh). */
+  private async getChannelZoneMap(): Promise<Record<string, unknown> | null> {
+    const now = Date.now();
+    if (this.channelMapCache && this.channelMapCache.expiresAt > now) {
+      return this.channelMapCache.value;
+    }
+    const rows: Array<{ config_json: Record<string, unknown> | null }> =
+      await this.dataSource.manager.query(
+        `SELECT config_json FROM system_configs
+         WHERE config_key = $1 AND is_active = true LIMIT 1`,
+        [IVSS_CHANNEL_PRESENCE_ZONE_MAP_KEY],
+      );
+    const raw = rows[0]?.config_json;
+    if (!raw || typeof raw !== 'object') return null;
+    this.channelMapCache = {
+      value: raw,
+      expiresAt: now + CHANNEL_MAP_CACHE_MS,
+    };
+    return raw;
   }
 
   /**
@@ -318,14 +395,8 @@ export class CrowdAlertService {
     zoneId: string,
   ): Promise<number | null> {
     try {
-      const rows: Array<{ config_json: Record<string, unknown> | null }> =
-        await this.dataSource.manager.query(
-          `SELECT config_json FROM system_configs
-           WHERE config_key = $1 AND is_active = true LIMIT 1`,
-          [IVSS_CHANNEL_PRESENCE_ZONE_MAP_KEY],
-        );
-      const raw = rows[0]?.config_json;
-      if (!raw || typeof raw !== 'object') return null;
+      const raw = await this.getChannelZoneMap();
+      if (!raw) return null;
 
       const entry = Object.entries(raw).find(([, v]) => v === zoneId);
       if (!entry) return null;
@@ -344,14 +415,7 @@ export class CrowdAlertService {
 
   /** Chỉ rule crowd GẮN ZONE CỤ THỂ VÀ đã cấu hình threshold (spec §2.1/§2.4). */
   private async loadZoneScopedCrowdRules(): Promise<AlertRuleEntity[]> {
-    const { items } = await this.alertRulesService.list({
-      alertType: 'crowd',
-      enabled: true,
-      page: 1,
-      limit: 500,
-      sortBy: 'createdAt',
-      sortOrder: 'desc',
-    });
+    const items = await this.alertRulesService.listEnabledZoneRules('crowd');
     return items.filter((r) => r.zoneId !== null && r.threshold !== null);
   }
 

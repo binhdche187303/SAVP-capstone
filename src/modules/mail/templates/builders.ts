@@ -476,6 +476,29 @@ export function buildStrangerAlertEmail(params: {
   return renderEmailLayout({ heading: 'Cảnh báo khuôn mặt lạ', bodyHtml });
 }
 
+export function buildSecurityAlertEmail(params: {
+  title: string;
+  content: string;
+  severityLabel: string;
+  zoneName?: string | null;
+  triggeredAt: Date | string;
+}): string {
+  const rows: InfoRow[] = [
+    { label: 'Mức độ', value: escapeHtml(params.severityLabel) },
+    { label: 'Thời điểm', value: escapeHtml(formatDateTimeVN(params.triggeredAt)) },
+  ];
+  if (params.zoneName) {
+    rows.push({ label: 'Khu vực', value: escapeHtml(params.zoneName) });
+  }
+  const bodyHtml =
+    renderCallout(escapeHtml(params.content), 'danger') +
+    renderInfoTable(rows) +
+    renderParagraph(
+      'Vui lòng mở Trung tâm Cảnh báo An ninh để xác nhận và xử lý cảnh báo.',
+    );
+  return renderEmailLayout({ heading: params.title, bodyHtml });
+}
+
 // ── Guest Access (feat-external-guest-live-meeting-access, GLA-001) ───────
 //
 // LƯU Ý QUAN TRỌNG: 2 hàm dưới đây được gửi qua GuestEmailService.sendMail()

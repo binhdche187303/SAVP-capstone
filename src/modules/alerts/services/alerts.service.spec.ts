@@ -5,6 +5,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { SecurityAlertEntity } from '../entities/security-alert.entity.js';
 import { AlertsService } from './alerts.service.js';
 import { SecurityAlertConfigService } from './security-alert-config.service.js';
+import { SecurityAlertNotifierService } from './security-alert-notifier.service.js';
 
 describe('AlertsService (ASC-001 / UC-123)', () => {
   let service: AlertsService;
@@ -52,6 +53,66 @@ describe('AlertsService (ASC-001 / UC-123)', () => {
     service = module.get(AlertsService);
   });
 
+  describe('notifier (lỗi 3: thông báo cảnh báo mới)', () => {
+    let notifier: {
+      notifyNewAlert: jest.Mock;
+      notifyUpdatedAlert: jest.Mock;
+    };
+    let svc: AlertsService;
+
+    beforeEach(async () => {
+      notifier = {
+        notifyNewAlert: jest.fn().mockResolvedValue(undefined),
+        notifyUpdatedAlert: jest.fn().mockResolvedValue(undefined),
+      };
+      const m = await Test.createTestingModule({
+        providers: [
+          AlertsService,
+          { provide: getRepositoryToken(SecurityAlertEntity), useValue: repo },
+          {
+            provide: SecurityAlertConfigService,
+            useValue: securityAlertConfigService,
+          },
+          { provide: SecurityAlertNotifierService, useValue: notifier },
+        ],
+      }).compile();
+      svc = m.get(AlertsService);
+    });
+
+    it('alert MỚI → gọi notifyNewAlert đúng 1 lần với alert vừa tạo', async () => {
+      const r = await svc.recordAlert({ alertType: 'crowd', zoneId: 'z1' });
+      expect(r.isNew).toBe(true);
+      expect(notifier.notifyNewAlert).toHaveBeenCalledTimes(1);
+      expect(notifier.notifyNewAlert).toHaveBeenCalledWith(r.alert);
+    });
+
+    it('bump alert đang mở (isNew=false) → KHÔNG notifyNewAlert (chống spam), CÓ notifyUpdatedAlert (WS cập nhật)', async () => {
+      repo.save.mockRejectedValueOnce({ driverError: { code: '23505' } });
+      const open = {
+        id: 'open-1',
+        alertType: 'crowd',
+        zoneId: 'z1',
+        status: 'new',
+      };
+      repo.findOne
+        .mockResolvedValueOnce(open)
+        .mockResolvedValueOnce({ ...open, occurrenceCount: 2 });
+      const r = await svc.recordAlert({ alertType: 'crowd', zoneId: 'z1' });
+      expect(r.isNew).toBe(false);
+      expect(notifier.notifyNewAlert).not.toHaveBeenCalled();
+      expect(notifier.notifyUpdatedAlert).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'open-1', occurrenceCount: 2 }),
+      );
+    });
+
+    it('notifier treo → recordAlert KHÔNG chờ (fire-and-forget)', async () => {
+      notifier.notifyNewAlert.mockReturnValue(new Promise(() => undefined));
+      await expect(
+        svc.recordAlert({ alertType: 'crowd', zoneId: 'z1' }),
+      ).resolves.toMatchObject({ isNew: true });
+    });
+  });
+
   describe('recordAlert', () => {
     it('R1 crux: KHÔNG có alert đang mở → INSERT mới, isNew=true, severity theo bảng mặc định', async () => {
       const r = await service.recordAlert({ alertType: 'intrusion' });
@@ -94,6 +155,27 @@ describe('AlertsService (ASC-001 / UC-123)', () => {
       expect(r.isNew).toBe(false);
       expect(repo.query).toHaveBeenCalledTimes(1); // bumpOccurrence() raw SQL, không còn createQueryBuilder
       expect(r.alert.occurrenceCount).toBe(2);
+    });
+
+    it('đợt 1: alert đang mở → SELECT trước rồi bump, KHÔNG thử INSERT (không lỗi 23505 vô ích)', async () => {
+      repo.findOne
+        .mockResolvedValueOnce({ id: 'open-1', status: 'new' })
+        .mockResolvedValueOnce({ id: 'open-1', occurrenceCount: 2 });
+      const r = await service.recordAlert({ alertType: 'crowd', zoneId: 'z1' });
+      expect(r.isNew).toBe(false);
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('đợt 1: dedupeKey vào điều kiện tìm alert mở + bản ghi INSERT (mặc định rỗng)', async () => {
+      await service.recordAlert({
+        alertType: 'person_watchlist_match',
+        zoneId: 'z1',
+        dedupeKey: 'user-1',
+      });
+      expect(repo.findOne.mock.calls[0][0].where.dedupeKey).toBe('user-1');
+      expect(repo.save.mock.calls[0][0].dedupeKey).toBe('user-1');
+      await service.recordAlert({ alertType: 'crowd', zoneId: 'z1' });
+      expect(repo.save.mock.calls[1][0].dedupeKey).toBe('');
     });
 
     it('zoneId NULL: findOpenAlert dùng nhánh IsNull (KHÔNG so sánh = null trực tiếp)', async () => {
@@ -872,10 +954,10 @@ describe('AlertsService (ASC-001 / UC-123)', () => {
       expect(repo.findAndCount.mock.calls[0][0].where.status).toBe('new');
     });
 
-    it('sort mặc định triggeredAt DESC', async () => {
+    it('sort mặc định lastSeenAt DESC (lượt mới nhất nổi lên đầu)', async () => {
       await service.list({ page: 1, limit: 20 } as any);
       expect(repo.findAndCount.mock.calls[0][0].order).toEqual({
-        triggeredAt: 'DESC',
+        lastSeenAt: 'DESC',
       });
     });
   });

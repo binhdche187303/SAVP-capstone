@@ -4,7 +4,6 @@ import { DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { StrangerAlertService } from './stranger-alert.service.js';
 import { WebsocketService } from '../../websocket/websocket.service.js';
-import { NotificationsService } from '../../notifications/notifications.service.js';
 import { AlertRulesService } from '../../alerts/services/alert-rules.service.js';
 import { AlertsService } from '../../alerts/services/alerts.service.js';
 
@@ -22,28 +21,21 @@ describe('StrangerAlertService (SAL-001)', () => {
   let service: StrangerAlertService;
   let dsMock: any;
   let wsMock: any;
-  let notifMock: any;
   let alertRulesMock: any;
   let alertsMock: any;
   let cfg: Record<string, unknown>;
-
-  const adminRows = [{ id: 'a1', email: 'a1@x.com' }];
 
   const build = async () => {
     dsMock = {
       manager: {
         query: jest.fn((sql: string) => {
-          if (sql.includes('FROM users')) return Promise.resolve(adminRows);
-          if (sql.includes('face_stranger')) return Promise.resolve([]);
+          if (sql.includes('FROM rooms'))
+            return Promise.resolve([{ room_name: 'Phòng A' }]);
           return Promise.resolve([]);
         }),
       },
     };
     wsMock = { emitToRoom: jest.fn() };
-    notifMock = {
-      createNotification: jest.fn().mockResolvedValue({}),
-      enqueueEmailNotification: jest.fn().mockResolvedValue({}),
-    };
     alertRulesMock = {
       findEffectiveRule: jest
         .fn()
@@ -59,7 +51,6 @@ describe('StrangerAlertService (SAL-001)', () => {
           useValue: { get: (k: string, d?: unknown) => cfg[k] ?? d },
         },
         { provide: WebsocketService, useValue: wsMock },
-        { provide: NotificationsService, useValue: notifMock },
         { provide: AlertRulesService, useValue: alertRulesMock },
         { provide: AlertsService, useValue: alertsMock },
       ],
@@ -73,79 +64,13 @@ describe('StrangerAlertService (SAL-001)', () => {
   });
 
   // ── onStranger ──
-  it('throttle MISS (lần đầu): WS emit + createNotification 1 lần', async () => {
+  it('lần đầu: recordAlert + WS room, payload metadata-only kèm deviceCode/roomName', async () => {
     await service.onStranger(evt());
-    expect(wsMock.emitToRoom).toHaveBeenCalledTimes(1);
     expect(wsMock.emitToRoom).toHaveBeenCalledWith(
       'room:room1',
       'face.stranger.alert',
       expect.objectContaining({ deviceId: 'dev1', roomId: 'room1' }),
     );
-    expect(notifMock.createNotification).toHaveBeenCalledTimes(1);
-    const dto = notifMock.createNotification.mock.calls[0][0];
-    expect(dto.notificationType).toBe('unknown_face_alert');
-    expect(dto.recipientUserIds).toEqual(['a1']);
-    // metadata-only: KHÔNG base64/SanpPic
-    expect(JSON.stringify(dto.payloadJson)).not.toContain('SanpPic');
-    expect(JSON.stringify(dto.payloadJson)).not.toContain('base64');
-  });
-
-  it('throttle HIT (cùng device trong window): lần 2 KHÔNG WS/notification', async () => {
-    await service.onStranger(evt());
-    await service.onStranger(evt());
-    expect(wsMock.emitToRoom).toHaveBeenCalledTimes(1);
-    expect(notifMock.createNotification).toHaveBeenCalledTimes(1);
-  });
-
-  it('device khác → KHÔNG throttle (mỗi device riêng)', async () => {
-    await service.onStranger(evt({ deviceId: 'dev1' }));
-    await service.onStranger(evt({ deviceId: 'dev2' }));
-    expect(notifMock.createNotification).toHaveBeenCalledTimes(2);
-  });
-
-  it('room null → KHÔNG emitToRoom nhưng vẫn createNotification', async () => {
-    await service.onStranger(evt({ roomId: null }));
-    expect(wsMock.emitToRoom).not.toHaveBeenCalled();
-    expect(notifMock.createNotification).toHaveBeenCalledTimes(1);
-  });
-
-  it('email OFF (default) → KHÔNG enqueueEmailNotification', async () => {
-    await service.onStranger(evt());
-    expect(notifMock.enqueueEmailNotification).not.toHaveBeenCalled();
-  });
-
-  it('email ON → enqueueEmailNotification (metadata-only)', async () => {
-    cfg = { STRANGER_ALERT_EMAIL_ENABLED: true };
-    await build();
-    await service.onStranger(evt());
-    expect(notifMock.enqueueEmailNotification).toHaveBeenCalledTimes(1);
-    const dto = notifMock.enqueueEmailNotification.mock.calls[0][0];
-    expect(dto.toEmails).toEqual(['a1@x.com']);
-    expect(JSON.stringify(dto.payloadJson)).not.toContain('SanpPic');
-  });
-
-  it('không có admin → skip notification (không throw)', async () => {
-    dsMock.manager.query.mockImplementation((sql: string) =>
-      sql.includes('FROM users') ? Promise.resolve([]) : Promise.resolve([]),
-    );
-    await expect(service.onStranger(evt())).resolves.toBeUndefined();
-    expect(notifMock.createNotification).not.toHaveBeenCalled();
-  });
-
-  // ── ASM-001 (Bước 3 / 3d) — recordAlert wiring ──
-  it('suppressed=true → KHÔNG WS, KHÔNG recordAlert, KHÔNG notification (AF1)', async () => {
-    alertRulesMock.findEffectiveRule.mockResolvedValue({
-      rule: null,
-      suppressed: true,
-    });
-    await service.onStranger(evt());
-    expect(wsMock.emitToRoom).not.toHaveBeenCalled();
-    expect(alertsMock.recordAlert).not.toHaveBeenCalled();
-    expect(notifMock.createNotification).not.toHaveBeenCalled();
-  });
-
-  it('không suppressed → recordAlert gọi với alertType=stranger, zoneId=null, payload=meta', async () => {
-    await service.onStranger(evt());
     expect(alertsMock.recordAlert).toHaveBeenCalledTimes(1);
     const input = alertsMock.recordAlert.mock.calls[0][0];
     expect(input.alertType).toBe('stranger');
@@ -153,14 +78,60 @@ describe('StrangerAlertService (SAL-001)', () => {
     expect(input.payloadJson).toMatchObject({
       deviceId: 'dev1',
       roomId: 'room1',
+      deviceCode: 'FACE-1',
+      roomName: 'Phòng A',
     });
+    expect(JSON.stringify(input.payloadJson)).not.toContain('SanpPic');
+    expect(JSON.stringify(input.payloadJson)).not.toContain('base64');
   });
 
-  it('recordAlert lỗi → NotThrow riêng, WS/notification VẪN chạy như cũ', async () => {
+  it('lỗi 1.1/1.2/1.3: KHÔNG tự gửi notification/email — giao cho notifier (inject không có NotificationsService)', async () => {
+    cfg = { STRANGER_ALERT_EMAIL_ENABLED: true };
+    await build(); // compile được dù KHÔNG provide NotificationsService
+    await service.onStranger(evt());
+    const sqls = (dsMock.manager.query.mock.calls as Array<[string]>).map(
+      (c) => c[0],
+    );
+    expect(sqls.some((s) => s.includes('FROM users'))).toBe(false);
+  });
+
+  it('throttle HIT (cùng device trong window): lần 2 KHÔNG recordAlert/WS', async () => {
+    await service.onStranger(evt());
+    await service.onStranger(evt());
+    expect(wsMock.emitToRoom).toHaveBeenCalledTimes(1);
+    expect(alertsMock.recordAlert).toHaveBeenCalledTimes(1);
+  });
+
+  it('device khác → KHÔNG throttle (mỗi device riêng)', async () => {
+    await service.onStranger(evt({ deviceId: 'dev1' }));
+    await service.onStranger(evt({ deviceId: 'dev2' }));
+    expect(alertsMock.recordAlert).toHaveBeenCalledTimes(2);
+  });
+
+  it('room null → KHÔNG emitToRoom, KHÔNG query rooms, vẫn recordAlert (roomName=null)', async () => {
+    await service.onStranger(evt({ roomId: null }));
+    expect(wsMock.emitToRoom).not.toHaveBeenCalled();
+    const sqls = dsMock.manager.query.mock.calls.map((c: any[]) => c[0]);
+    expect(sqls.some((q: string) => q.includes('FROM rooms'))).toBe(false);
+    expect(
+      alertsMock.recordAlert.mock.calls[0][0].payloadJson.roomName,
+    ).toBeNull();
+  });
+
+  it('suppressed=true → KHÔNG WS, KHÔNG recordAlert (AF1)', async () => {
+    alertRulesMock.findEffectiveRule.mockResolvedValue({
+      rule: null,
+      suppressed: true,
+    });
+    await service.onStranger(evt());
+    expect(wsMock.emitToRoom).not.toHaveBeenCalled();
+    expect(alertsMock.recordAlert).not.toHaveBeenCalled();
+  });
+
+  it('recordAlert lỗi → NotThrow, WS VẪN chạy', async () => {
     alertsMock.recordAlert.mockRejectedValue(new Error('db down'));
     await expect(service.onStranger(evt())).resolves.toBeUndefined();
     expect(wsMock.emitToRoom).toHaveBeenCalledTimes(1);
-    expect(notifMock.createNotification).toHaveBeenCalledTimes(1);
   });
 
   it('ruleId truyền từ findEffectiveRule khi có rule', async () => {
@@ -172,42 +143,58 @@ describe('StrangerAlertService (SAL-001)', () => {
     expect(alertsMock.recordAlert.mock.calls[0][0].ruleId).toBe('rule-9');
   });
 
-  // FIX: role_code cũ là 'admin' (chữ thường) — KHÔNG khớp role nào trong 4 role thật
-  // (SYSTEM_ADMIN/BUSINESS_ADMIN/MANAGER/EMPLOYEE) ⇒ cảnh báo không gửi cho ai.
-  it('resolveAdmins lọc SYSTEM_ADMIN + BUSINESS_ADMIN, KHÔNG dùng literal chữ thường', async () => {
+  it('thiết bị có khu vực → zoneId = iot_devices.zone_id cho cả rule lẫn recordAlert', async () => {
+    dsMock.manager.query.mockImplementation((sql: string) => {
+      if (sql.includes('FROM iot_devices'))
+        return Promise.resolve([{ zone_id: 'zone-A' }]);
+      if (sql.includes('FROM rooms'))
+        return Promise.resolve([{ room_name: 'Phòng A' }]);
+      return Promise.resolve([]);
+    });
     await service.onStranger(evt());
+    expect(alertRulesMock.findEffectiveRule).toHaveBeenCalledWith(
+      'stranger',
+      'zone-A',
+    );
+    expect(alertsMock.recordAlert.mock.calls[0][0].zoneId).toBe('zone-A');
+  });
 
-    const adminSql = (dsMock.manager.query.mock.calls as Array<[string]>)
-      .map((c) => c[0])
-      .find((sql) => sql.includes('FROM users'));
-
-    expect(adminSql).toBeDefined();
-    expect(adminSql).toContain('SYSTEM_ADMIN');
-    expect(adminSql).toContain('BUSINESS_ADMIN');
-    // literal cũ gây bug phải biến mất hoàn toàn
-    expect(adminSql).not.toContain("'admin'");
-    // MANAGER CHƯA được thêm (chờ chốt với phần cảnh báo an ninh)
-    expect(adminSql).not.toContain('MANAGER');
-    // giữ nguyên điều kiện soft-delete
-    expect(adminSql).toContain('u.deleted_at IS NULL');
+  it('tra khu vực lỗi → fallback zoneId null, vẫn recordAlert', async () => {
+    dsMock.manager.query.mockImplementation((sql: string) =>
+      sql.includes('FROM iot_devices')
+        ? Promise.reject(new Error('db boom'))
+        : Promise.resolve([]),
+    );
+    await service.onStranger(evt());
+    expect(alertsMock.recordAlert.mock.calls[0][0].zoneId).toBeNull();
   });
 
   // ── list ──
   it('list: query face_stranger + window; KHÔNG select payload base64; map field', async () => {
     let captured = '';
     dsMock.manager.query.mockImplementation((sql: string) => {
-      if (sql.includes('face_stranger')) {
+      if (sql.includes('face_stranger') && sql.includes('LIMIT')) {
         captured = sql;
         return Promise.resolve([
           {
             device_id: 'dev1',
+            device_code: 'CAM-1',
             stranger_id: 's1',
+            first_seen: '2026-06-19T08:00:00Z',
             last_seen: '2026-06-19T09:00:00Z',
             hit_count: 4,
             room_id: 'room1',
+            room_name: 'Phòng 1',
+            zone_name: 'Khu A',
             similarity: '88',
+            latest_event_id: 'ev2',
+            snapshot_event_id: 'ev1',
+            snapshot_file_id: 'mf1',
           },
         ]);
+      }
+      if (sql.includes('COUNT(*)::int AS total')) {
+        return Promise.resolve([{ total: 1 }]);
       }
       return Promise.resolve([]);
     });
@@ -215,13 +202,21 @@ describe('StrangerAlertService (SAL-001)', () => {
     expect(r.data).toEqual([
       {
         deviceId: 'dev1',
+        deviceCode: 'CAM-1',
         strangerId: 's1',
         roomId: 'room1',
+        roomName: 'Phòng 1',
+        zoneName: 'Khu A',
         similarity: '88',
+        firstSeen: '2026-06-19T08:00:00Z',
         lastSeen: '2026-06-19T09:00:00Z',
         hitCount: 4,
+        latestEventId: 'ev2',
+        snapshotEventId: 'ev1',
+        snapshotFileId: 'mf1',
       },
     ]);
+    expect(r.meta).toEqual({ page: 1, limit: 20, total: 1 });
     expect(captured).toContain("event_type = 'face_stranger'");
     expect(captured).toContain('created_at >= now() - ($1');
     // SEC-02: KHÔNG select raw payload / SanpPic
@@ -232,13 +227,54 @@ describe('StrangerAlertService (SAL-001)', () => {
   it('list: phân trang → LIMIT/OFFSET param đúng', async () => {
     let p: any[] = [];
     dsMock.manager.query.mockImplementation((sql: string, params?: any[]) => {
-      if (sql.includes('face_stranger')) {
+      if (sql.includes('face_stranger') && sql.includes('LIMIT')) {
         p = params ?? [];
-        return Promise.resolve([]);
       }
       return Promise.resolve([]);
     });
     await service.list({ page: 3, limit: 10 });
     expect(p).toEqual([1440, 10, 20]);
+  });
+
+  it('list: from/to/deviceId → lọc khoảng ngày giờ VN thay cho window', async () => {
+    let captured = '';
+    let p: any[] = [];
+    dsMock.manager.query.mockImplementation((sql: string, params?: any[]) => {
+      if (sql.includes('face_stranger') && sql.includes('LIMIT')) {
+        captured = sql;
+        p = params ?? [];
+      }
+      return Promise.resolve([]);
+    });
+    await service.list({
+      page: 1,
+      limit: 20,
+      from: '2026-10-01',
+      to: '2026-10-07',
+      deviceId: 'dev1',
+    });
+    expect(p).toEqual(['2026-10-01', '2026-10-07', 'dev1', 20, 0]);
+    expect(captured).toContain("AT TIME ZONE 'Asia/Ho_Chi_Minh'");
+    expect(captured).toContain('e.device_id = $3');
+    expect(captured).not.toContain('now() -');
+  });
+
+  it('listSightings: lọc device + strangerId (null-safe), không lộ payload', async () => {
+    let captured = '';
+    let p: any[] = [];
+    dsMock.manager.query.mockImplementation((sql: string, params?: any[]) => {
+      captured = sql;
+      p = params ?? [];
+      return Promise.resolve([
+        { id: 'ev1', created_at: 't', similarity: '70', has_snapshot: true },
+      ]);
+    });
+    const r = await service.listSightings('dev1', null);
+    expect(p).toEqual(['dev1', null]);
+    expect(captured).toContain('IS NOT DISTINCT FROM $2');
+    expect(captured).not.toContain('raw_payload_sample');
+    expect(r).toEqual([
+      { eventId: 'ev1', time: 't', similarity: '70', hasSnapshot: true },
+    ]);
   });
 });

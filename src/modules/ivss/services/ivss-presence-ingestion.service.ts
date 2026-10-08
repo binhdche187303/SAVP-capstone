@@ -400,21 +400,22 @@ export class IvssPresenceIngestionService implements IvssEventHandlerPort {
           // Dedupe alert dựa vào AlertsService.recordAlert() có sẵn (UQ mở
           // theo alertType+zoneId) — cron quét lại event này sau đó chỉ bump
           // occurrenceCount, KHÔNG tạo alert thứ 2.
-          try {
-            await this.restrictedZoneIntrusionService.evaluateZoneEventNow({
+          // Đợt 2: fire-and-forget — KHÔNG để kiểm tra xâm nhập chặn luồng ingest IVSS.
+          void this.restrictedZoneIntrusionService
+            .evaluateZoneEventNow({
               zoneId: presenceZoneId,
               userId,
               eventTime,
               sourceTable: 'zone_presence_events',
               sourceRowId: presenceId,
-            });
-          } catch (e) {
-            this.logger.error(
-              `restricted-zone intrusion check (immediate) failed (channel=${evt.channelId} szUid=${szUid}): ${
-                e instanceof Error ? e.message : 'unknown'
-              }`,
+            })
+            .catch((e: unknown) =>
+              this.logger.error(
+                `restricted-zone intrusion check (immediate) failed (channel=${evt.channelId} szUid=${szUid}): ${
+                  e instanceof Error ? e.message : 'unknown'
+                }`,
+              ),
             );
-          }
         } catch (e) {
           this.logger.error(
             `zone presence write failed (channel=${evt.channelId} szUid=${szUid}): ${

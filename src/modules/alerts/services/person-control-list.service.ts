@@ -55,14 +55,84 @@ export class PersonControlListService {
       createdBy: actorUserId,
     });
 
+    let saved: PersonControlListEntity;
     try {
-      return await this.repo.save(entity);
+      saved = await this.repo.save(entity);
     } catch (e) {
       if (this.isUniqueViolation(e)) {
         throw dto.userId ? userConflict() : faceProfileConflict();
       }
       throw e;
     }
+    if (dto.sourceEventIds?.length) {
+      await this.markStrangerAlerts(saved, dto.sourceEventIds, actorUserId);
+    }
+    return saved;
+  }
+
+  /**
+   * Đánh dấu "chuyển theo dõi" lên các cảnh báo `stranger` chứa lượt bảo vệ đã chọn.
+   * KHÔNG đổi alert_type (giữ thống kê/rule) — chỉ ghi vào payload_json:
+   * - occurrences[i] khớp sourceEventId → thêm watchlistName/watchlistPriority/personControlId;
+   * - watchlistConversions[] → lịch sử: ai, lúc nào, tên, mức, các lượt.
+   * FE hiển thị Loại "Đối tượng theo dõi (từ Người lạ)" khi có watchlistConversions.
+   */
+  private async markStrangerAlerts(
+    record: PersonControlListEntity,
+    eventIds: string[],
+    actorUserId: string,
+  ): Promise<void> {
+    const mark = {
+      personControlId: record.id,
+      watchlistName: record.displayName,
+      watchlistPriority: record.priority,
+    };
+    const conversion = {
+      ...mark,
+      at: new Date().toISOString(),
+      byUserId: actorUserId,
+      eventIds,
+    };
+    await this.repo.manager.query(
+      `UPDATE security_alerts sa
+          SET payload_json = jsonb_set(
+                jsonb_set(
+                  COALESCE(sa.payload_json, '{}'::jsonb),
+                  '{occurrences}',
+                  (
+                    SELECT COALESCE(
+                      jsonb_agg(
+                        CASE WHEN elem ->> 'sourceEventId' = ANY($1::text[])
+                             THEN elem || $2::jsonb ELSE elem END
+                        ORDER BY ord
+                      ),
+                      '[]'::jsonb
+                    )
+                    FROM jsonb_array_elements(
+                      COALESCE(sa.payload_json -> 'occurrences', '[]'::jsonb)
+                    ) WITH ORDINALITY AS t(elem, ord)
+                  ),
+                  true
+                ),
+                '{watchlistConversions}',
+                COALESCE(sa.payload_json -> 'watchlistConversions', '[]'::jsonb)
+                  || jsonb_build_array($3::jsonb),
+                true
+              ),
+              updated_at = NOW()
+        WHERE sa.alert_type = 'stranger'
+          AND (
+            sa.source_event_id::text = ANY($1::text[])
+            OR EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements(
+                COALESCE(sa.payload_json -> 'occurrences', '[]'::jsonb)
+              ) e
+              WHERE e ->> 'sourceEventId' = ANY($1::text[])
+            )
+          )`,
+      [eventIds, JSON.stringify(mark), JSON.stringify(conversion)],
+    );
   }
 
   async list(

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, MoreThan, Repository } from 'typeorm';
+import { DataSource, In, MoreThan, Repository } from 'typeorm';
 import { GateAccessLogEntity } from '../../zones/entities/gate-access-log.entity.js';
 import { ZonePresenceEventEntity } from '../../zones/entities/zone-presence-event.entity.js';
 import { SystemConfigEntity } from '../../administration/entities/system-config.entity.js';
@@ -10,6 +10,10 @@ import { AlertsService } from '../../alerts/services/alerts.service.js';
 import { vnMinutesOfDay } from '../../../common/utils/vn-restricted-hours.util.js';
 
 const CONFIG_GROUP = 'restricted_zone_intrusion';
+/** Cùng (zone, người) trong khoảng này chỉ ghi alert 1 lần. */
+const INTRUSION_REPEAT_MS = 30_000;
+const FULL_NAME_CACHE_MS = 5 * 60_000;
+const REPEAT_MAP_MAX = 5000;
 const GATE_LOG_WATERMARK_KEY = 'restricted_zone.gate_log_watermark';
 const PRESENCE_EVENT_WATERMARK_KEY = 'restricted_zone.presence_event_watermark';
 import { ZONE_PRESENCE_EVENT_TYPES } from '../../zones/constants/zone-presence-event-type.constant.js';
@@ -39,6 +43,14 @@ interface RestrictedHours {
 @Injectable()
 export class RestrictedZoneIntrusionService {
   private readonly logger = new Logger(RestrictedZoneIntrusionService.name);
+  /** Cron đang chạy → lượt sau bỏ qua. */
+  private cronRunning = false;
+  /** Lần ghi gần nhất theo `zoneId:userId` — chống ghi lặp khi người đứng yên trong vùng. */
+  private readonly lastRecordedAt = new Map<string, number>();
+  private readonly fullNameCache = new Map<
+    string,
+    { value: string | null; expiresAt: number }
+  >();
 
   constructor(
     @InjectRepository(GateAccessLogEntity)
@@ -51,30 +63,61 @@ export class RestrictedZoneIntrusionService {
   ) {}
 
   async evaluateIntrusions(): Promise<EvaluateIntrusionsResult> {
+    if (this.cronRunning) {
+      this.logger.warn(
+        '[INTRUSION] cron lượt trước chưa xong → bỏ qua lượt này',
+      );
+      return {
+        zonesScanned: 0,
+        gateLogsChecked: 0,
+        presenceEventsChecked: 0,
+        violationsFound: 0,
+      };
+    }
+    this.cronRunning = true;
+    try {
+      return await this.runIntrusionScan();
+    } finally {
+      this.cronRunning = false;
+    }
+  }
+
+  /** Đợt 2 perf: 2 truy vấn cho MỌI zone (trước: 2 truy vấn/zone). */
+  private async runIntrusionScan(): Promise<EvaluateIntrusionsResult> {
     const rules = await this.loadZoneScopedIntrusionRules();
     const gateWatermark = await this.loadWatermark(GATE_LOG_WATERMARK_KEY);
     const presenceWatermark = await this.loadWatermark(
       PRESENCE_EVENT_WATERMARK_KEY,
     );
 
-    let gateLogsChecked = 0;
-    let presenceEventsChecked = 0;
     let violationsFound = 0;
     let maxGateTime = gateWatermark;
     let maxPresenceTime = presenceWatermark;
 
-    for (const rule of rules) {
-      const zoneId = rule.zoneId as string; // đã filter zoneId !== null ở loadZoneScopedIntrusionRules
+    const zoneIds = [...new Set(rules.map((r) => r.zoneId as string))];
+    const [logs, events] =
+      zoneIds.length === 0
+        ? [[], []]
+        : await Promise.all([
+            this.gateLogRepo.find({
+              where: {
+                zoneId: In(zoneIds),
+                direction: 'enter',
+                accessTime: MoreThan(gateWatermark),
+              },
+            }),
+            this.presenceRepo.find({
+              where: {
+                zoneId: In(zoneIds),
+                eventType: ZONE_PRESENCE_EVENT_TYPES[0],
+                eventTime: MoreThan(presenceWatermark),
+              },
+            }),
+          ]);
 
-      const logs = await this.gateLogRepo.find({
-        where: {
-          zoneId,
-          direction: 'enter',
-          accessTime: MoreThan(gateWatermark),
-        },
-      });
+    for (const rule of rules) {
       for (const log of logs) {
-        gateLogsChecked++;
+        if (log.zoneId !== rule.zoneId) continue;
         if (this.isViolation(rule, log.userId, log.accessTime)) {
           violationsFound++;
           await this.recordIntrusion(rule, {
@@ -84,18 +127,9 @@ export class RestrictedZoneIntrusionService {
             occurredAt: log.accessTime.toISOString(),
           });
         }
-        if (log.accessTime > maxGateTime) maxGateTime = log.accessTime;
       }
-
-      const events = await this.presenceRepo.find({
-        where: {
-          zoneId,
-          eventType: ZONE_PRESENCE_EVENT_TYPES[0],
-          eventTime: MoreThan(presenceWatermark),
-        },
-      });
       for (const evt of events) {
-        presenceEventsChecked++;
+        if (evt.zoneId !== rule.zoneId) continue;
         if (this.isViolation(rule, evt.userId, evt.eventTime)) {
           violationsFound++;
           await this.recordIntrusion(rule, {
@@ -105,21 +139,25 @@ export class RestrictedZoneIntrusionService {
             occurredAt: evt.eventTime.toISOString(),
           });
         }
-        if (evt.eventTime > maxPresenceTime) maxPresenceTime = evt.eventTime;
       }
+    }
+    for (const log of logs) {
+      if (log.accessTime > maxGateTime) maxGateTime = log.accessTime;
+    }
+    for (const evt of events) {
+      if (evt.eventTime > maxPresenceTime) maxPresenceTime = evt.eventTime;
     }
 
     await this.saveWatermark(GATE_LOG_WATERMARK_KEY, maxGateTime);
     await this.saveWatermark(PRESENCE_EVENT_WATERMARK_KEY, maxPresenceTime);
 
     this.logger.debug(
-      `evaluateIntrusions: zones=${rules.length} gateLogs=${gateLogsChecked} presenceEvents=${presenceEventsChecked} violations=${violationsFound}`,
+      `[INTRUSION] cron: zones=${rules.length} gateLogs=${logs.length} presenceEvents=${events.length} violations=${violationsFound}`,
     );
-
     return {
       zonesScanned: rules.length,
-      gateLogsChecked,
-      presenceEventsChecked,
+      gateLogsChecked: logs.length,
+      presenceEventsChecked: events.length,
       violationsFound,
     };
   }
@@ -148,16 +186,9 @@ export class RestrictedZoneIntrusionService {
     sourceTable: string;
     sourceRowId: string;
   }): Promise<boolean> {
-    const { items: rules } = await this.alertRulesService.list({
-      alertType: 'intrusion',
-      zoneId: args.zoneId,
-      enabled: true,
-      page: 1,
-      limit: 50,
-      sortBy: 'createdAt',
-      sortOrder: 'desc',
-    });
-
+    const rules = (
+      await this.alertRulesService.listEnabledZoneRules('intrusion')
+    ).filter((r) => r.zoneId === args.zoneId);
     let violated = false;
     for (const rule of rules) {
       if (this.isViolation(rule, args.userId, args.eventTime)) {
@@ -194,6 +225,18 @@ export class RestrictedZoneIntrusionService {
     payloadJson: Record<string, unknown>,
   ): Promise<void> {
     const userId = (payloadJson.userId as string | null | undefined) ?? null;
+
+    // Đợt 2 perf: người đứng yên trong vùng → camera bắn "appear" mỗi vài giây; trong
+    // INTRUSION_REPEAT_MS chỉ ghi 1 lần cho mỗi (zone, người) — áp cho cả webhook lẫn cron.
+    const repeatKey = `${rule.zoneId}:${userId ?? 'unknown'}`;
+    const now = Date.now();
+    const last = this.lastRecordedAt.get(repeatKey);
+    if (last !== undefined && now - last < INTRUSION_REPEAT_MS) {
+      this.logger.debug(`[INTRUSION] ${repeatKey} vừa ghi → bỏ qua lần lặp`);
+      return;
+    }
+    // Mỗi người 1 alert riêng trong cùng zone; người chưa định danh gộp chung key ''.
+    const dedupeKey = userId ?? '';
     const sourceTable = payloadJson.sourceTable as string | undefined;
     const sourceRowId = payloadJson.sourceRowId as string | undefined;
 
@@ -201,8 +244,14 @@ export class RestrictedZoneIntrusionService {
     // metadata_json.sourceEventId — xem ZonePresenceWriterService). gate_access_logs có FK
     // event_id trực tiếp nhưng NGOÀI phạm vi lần sửa này (đã xác nhận với user trước đó)
     // → sourceEventId=null cho nhánh đó, giữ nguyên hành vi cũ (không có ảnh).
+    // Sự kiện gốc (ảnh) chỉ dùng cho alert MỚI — alert đang mở thì bỏ JOIN này.
+    const isOpen = await this.alertsService.hasOpenAlert(
+      'intrusion',
+      rule.zoneId,
+      dedupeKey,
+    );
     const sourceEventId =
-      sourceTable === 'zone_presence_events' && sourceRowId
+      !isOpen && sourceTable === 'zone_presence_events' && sourceRowId
         ? await this.findSourceEventIdForPresence(sourceRowId)
         : null;
 
@@ -221,10 +270,36 @@ export class RestrictedZoneIntrusionService {
         isKnownPerson: userId !== null,
         fullName,
       },
+      dedupeKey,
     });
+    // Chỉ đánh dấu chống lặp khi ghi THÀNH CÔNG — recordAlert lỗi (throw) thì lần sau
+    // (webhook kế tiếp/cron) vẫn được ghi lại, không bị chặn oan 30s.
+    this.lastRecordedAt.set(repeatKey, Date.now());
+    this.pruneRepeatMap(Date.now());
   }
 
+  private pruneRepeatMap(now: number): void {
+    if (this.lastRecordedAt.size <= REPEAT_MAP_MAX) return;
+    for (const [k, at] of this.lastRecordedAt) {
+      if (now - at >= INTRUSION_REPEAT_MS) this.lastRecordedAt.delete(k);
+    }
+  }
+
+  /** Tên người ít đổi → cache FULL_NAME_CACHE_MS. */
   private async findUserFullName(userId: string): Promise<string | null> {
+    const now = Date.now();
+    const cached = this.fullNameCache.get(userId);
+    if (cached && cached.expiresAt > now) return cached.value;
+    const value = await this.queryUserFullName(userId);
+    if (this.fullNameCache.size > REPEAT_MAP_MAX) this.fullNameCache.clear();
+    this.fullNameCache.set(userId, {
+      value,
+      expiresAt: now + FULL_NAME_CACHE_MS,
+    });
+    return value;
+  }
+
+  private async queryUserFullName(userId: string): Promise<string | null> {
     try {
       const rows: Array<{ full_name: string }> =
         await this.dataSource.manager.query(
@@ -327,14 +402,8 @@ export class RestrictedZoneIntrusionService {
 
   /** Chỉ rule intrusion GẮN ZONE CỤ THỂ (§2.1) — rule "toàn khuôn viên" bị bỏ qua có chủ đích. */
   private async loadZoneScopedIntrusionRules(): Promise<AlertRuleEntity[]> {
-    const { items } = await this.alertRulesService.list({
-      alertType: 'intrusion',
-      enabled: true,
-      page: 1,
-      limit: 500,
-      sortBy: 'createdAt',
-      sortOrder: 'desc',
-    });
+    const items =
+      await this.alertRulesService.listEnabledZoneRules('intrusion');
     return items.filter((r) => r.zoneId !== null);
   }
 

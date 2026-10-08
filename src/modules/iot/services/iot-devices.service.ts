@@ -15,6 +15,8 @@ import { FACE_VERIFY_HOOK } from '../../../common/ports/face-verify-hook.js';
 import type { FaceVerifyHook } from '../../../common/ports/face-verify-hook.js';
 import { STRANGER_ALERT_HOOK } from '../../../common/ports/stranger-alert-hook.js';
 import type { StrangerAlertHook } from '../../../common/ports/stranger-alert-hook.js';
+import { DEVICE_OFFLINE_ALERT_HOOK } from '../../../common/ports/device-offline-alert-hook.js';
+import type { DeviceOfflineAlertHook } from '../../../common/ports/device-offline-alert-hook.js';
 import * as crypto from 'crypto';
 import { probeTcp } from '../utils/rtsp-probe.util.js';
 import {
@@ -44,7 +46,10 @@ import {
 import { ConfigureFaceServerDto } from '../dto/configure-face-server.dto.js';
 import { RevokeFaceServerTokenDto } from '../dto/revoke-face-server-token.dto.js';
 import { ConfigureRtspDto } from '../dto/configure-rtsp.dto.js';
-import { ConfigureAiConfigDto } from '../dto/configure-ai-config.dto.js';
+import {
+  AI_CONFIG_KEYS,
+  ConfigureAiConfigDto,
+} from '../dto/configure-ai-config.dto.js';
 import { AI_CONFIGURABLE_DEVICE_TYPES } from '../constants/ai-configurable-device-types.constant.js';
 import { IotAuditRepository } from '../repositories/iot-audit.repository.js';
 import { maskSensitiveMetadata } from '../../../common/utils/masking.util.js';
@@ -78,7 +83,12 @@ export interface StrangerEventInput {
 
 @Injectable()
 export class IotDevicesService {
-  private static readonly PROBE_CONCURRENCY = 10;
+  private static readonly DEFAULT_PROBE_CONCURRENCY = 50;
+  private static readonly DEFAULT_OFFLINE_FAIL_THRESHOLD = 3;
+  /** Số lần probe lỗi liên tiếp theo camera (chống báo nhầm). In-memory, single-instance. */
+  private readonly probeFailCount = new Map<string, number>();
+  /** Khóa chống chạy chồng job quét offline. */
+  private detectOfflineRunning = false;
 
   constructor(
     private readonly dataSource: DataSource,
@@ -93,6 +103,10 @@ export class IotDevicesService {
     @Optional()
     @Inject(STRANGER_ALERT_HOOK)
     private readonly strangerAlertHook?: StrangerAlertHook,
+    // Hook cảnh báo camera online → offline, optional (không phụ thuộc alerts).
+    @Optional()
+    @Inject(DEVICE_OFFLINE_ALERT_HOOK)
+    private readonly deviceOfflineAlertHook?: DeviceOfflineAlertHook,
   ) {}
 
   async create(
@@ -521,16 +535,75 @@ export class IotDevicesService {
   /**
    * IOT-014 — active TCP probe các ip_camera để maintain online↔offline.
    * Chỉ đổi cột status; transition mới ghi audit. Read các camera status ∈ {online, offline}.
+   *
+   * Performance (100+ camera):
+   * - Chống báo nhầm: online → offline chỉ khi probe lỗi DEVICE_OFFLINE_FAIL_THRESHOLD lần
+   *   LIÊN TIẾP (mặc định 3 ≈ 3 phút với cron 1 phút). offline → online ngay khi probe OK.
+   * - Probe song song DEVICE_PROBE_CONCURRENCY camera/lượt (mặc định 50).
+   * - Khóa chống chạy chồng: lượt trước chưa xong → lượt sau bỏ qua (`skipped=true`).
+   * - Ghi status + audit theo lô trong 1 transaction (thay vì 1 transaction/camera).
+   * - Gọi hook cảnh báo 1 lần cho cả lô offline / cả lô online (gộp theo khu vực ở hook).
+   * ⚠ Bộ đếm lỗi in-memory: single-instance, reset khi restart (đếm lại từ đầu).
    */
   async detectOfflineDevices(actorUserId: string | null): Promise<{
     checked: number;
     online_count: number;
     offline_count: number;
     transitions: Array<{ id: string; from: string; to: string }>;
+    pending_offline?: number;
+    duration_ms?: number;
+    skipped?: boolean;
   }> {
+    if (this.detectOfflineRunning) {
+      this.logger.warn(
+        '[CAM-OFFLINE] Lượt quét trước chưa xong → bỏ qua lượt này (chống chạy chồng)',
+      );
+      return {
+        checked: 0,
+        online_count: 0,
+        offline_count: 0,
+        transitions: [],
+        skipped: true,
+      };
+    }
+    this.detectOfflineRunning = true;
+    try {
+      return await this.runDetectOfflineDevices(actorUserId);
+    } finally {
+      this.detectOfflineRunning = false;
+    }
+  }
+
+  private async runDetectOfflineDevices(actorUserId: string | null): Promise<{
+    checked: number;
+    online_count: number;
+    offline_count: number;
+    transitions: Array<{ id: string; from: string; to: string }>;
+    pending_offline: number;
+    duration_ms: number;
+  }> {
+    const startedAt = Date.now();
     const timeoutMs = this.configService.get<number>(
       'RTSP_PROBE_TIMEOUT_MS',
       3000,
+    );
+    const failThreshold = Math.max(
+      1,
+      Number(
+        this.configService.get<number>(
+          'DEVICE_OFFLINE_FAIL_THRESHOLD',
+          IotDevicesService.DEFAULT_OFFLINE_FAIL_THRESHOLD,
+        ),
+      ),
+    );
+    const cap = Math.max(
+      1,
+      Number(
+        this.configService.get<number>(
+          'DEVICE_PROBE_CONCURRENCY',
+          IotDevicesService.DEFAULT_PROBE_CONCURRENCY,
+        ),
+      ),
     );
 
     const cameras = await this.dataSource.manager.find(IoTDeviceEntity, {
@@ -539,6 +612,12 @@ export class IotDevicesService {
         status: In([IoTDeviceStatus.ONLINE, IoTDeviceStatus.OFFLINE]),
       },
     });
+
+    // Dọn bộ đếm của camera không còn trong tập quét (bị xoá/disabled/maintenance).
+    const cameraIds = new Set(cameras.map((c) => c.id));
+    for (const id of this.probeFailCount.keys()) {
+      if (!cameraIds.has(id)) this.probeFailCount.delete(id);
+    }
 
     // Resolve địa chỉ probe; bỏ camera không có địa chỉ hợp lệ.
     const targets: Array<{
@@ -557,7 +636,6 @@ export class IotDevicesService {
       oldStatus: IoTDeviceStatus;
       result: 'online' | 'offline';
     }> = [];
-    const cap = IotDevicesService.PROBE_CONCURRENCY;
     for (let i = 0; i < targets.length; i += cap) {
       const batch = targets.slice(i, i + cap);
       await Promise.allSettled(
@@ -572,54 +650,177 @@ export class IotDevicesService {
         ),
       );
     }
+    const probeMs = Date.now() - startedAt;
 
     let onlineCount = 0;
     let offlineCount = 0;
-    const transitions: Array<{ id: string; from: string; to: string }> = [];
+    let pendingOffline = 0;
+    const toOffline: typeof results = [];
+    const toOnline: typeof results = [];
 
     for (const r of results) {
-      if (r.result === 'online') onlineCount++;
-      else offlineCount++;
+      if (r.result === 'online') {
+        onlineCount++;
+        this.probeFailCount.delete(r.device.id);
+        if (r.oldStatus === IoTDeviceStatus.OFFLINE) toOnline.push(r);
+        continue;
+      }
+      offlineCount++;
+      const fails = Math.min(
+        (this.probeFailCount.get(r.device.id) ?? 0) + 1,
+        failThreshold,
+      );
+      this.probeFailCount.set(r.device.id, fails);
+      if (r.oldStatus !== IoTDeviceStatus.ONLINE) continue; // đã offline sẵn
+      if (fails >= failThreshold) {
+        toOffline.push(r);
+      } else {
+        pendingOffline++;
+        this.logger.log(
+          `[CAM-OFFLINE] ${r.device.deviceCode}: probe lỗi ${fails}/${failThreshold} — chưa đánh dấu offline`,
+        );
+      }
+    }
 
-      const newStatus =
-        r.result === 'online'
-          ? IoTDeviceStatus.ONLINE
-          : IoTDeviceStatus.OFFLINE;
-
-      if (newStatus === r.oldStatus) continue; // idempotent: không transition
-
+    // Ghi status + audit theo lô trong 1 transaction. WHERE status = cũ → idempotent.
+    const transitions: Array<{ id: string; from: string; to: string }> = [];
+    if (toOffline.length > 0 || toOnline.length > 0) {
       const queryRunner = this.dataSource.createQueryRunner();
       await queryRunner.connect();
       await queryRunner.startTransaction();
       try {
-        r.device.status = newStatus;
-        await queryRunner.manager.save(IoTDeviceEntity, r.device);
-        await this.iotAuditRepository.logDeviceStatusChange(
+        const offIds = await this.bulkSetStatus(
           queryRunner.manager,
-          {
+          toOffline.map((r) => r.device.id),
+          IoTDeviceStatus.ONLINE,
+          IoTDeviceStatus.OFFLINE,
+        );
+        const onIds = await this.bulkSetStatus(
+          queryRunner.manager,
+          toOnline.map((r) => r.device.id),
+          IoTDeviceStatus.OFFLINE,
+          IoTDeviceStatus.ONLINE,
+        );
+        const audit = [
+          ...offIds.map((id) => ({
             userId: actorUserId,
-            deviceId: r.device.id,
-            action: r.result === 'online' ? 'auto_online' : 'auto_offline',
-            oldStatus: r.oldStatus,
-            newStatus,
-          },
+            deviceId: id,
+            action: 'auto_offline' as const,
+            oldStatus: IoTDeviceStatus.ONLINE,
+            newStatus: IoTDeviceStatus.OFFLINE,
+          })),
+          ...onIds.map((id) => ({
+            userId: actorUserId,
+            deviceId: id,
+            action: 'auto_online' as const,
+            oldStatus: IoTDeviceStatus.OFFLINE,
+            newStatus: IoTDeviceStatus.ONLINE,
+          })),
+        ];
+        await this.iotAuditRepository.logDeviceStatusChanges(
+          queryRunner.manager,
+          audit,
         );
         await queryRunner.commitTransaction();
-        transitions.push({ id: r.device.id, from: r.oldStatus, to: newStatus });
-      } catch {
-        // Lỗi 1 transition → rollback chính nó, KHÔNG ảnh hưởng camera khác.
+        for (const a of audit) {
+          transitions.push({
+            id: a.deviceId,
+            from: a.oldStatus,
+            to: a.newStatus,
+          });
+        }
+      } catch (e) {
+        // Lỗi → rollback cả lô; status chưa đổi nên lượt sau thử lại.
         await queryRunner.rollbackTransaction();
+        this.logger.error(
+          `[CAM-OFFLINE] Ghi trạng thái theo lô lỗi, rollback (offline=${toOffline.length} online=${toOnline.length}): ${
+            e instanceof Error ? e.message : 'unknown'
+          }`,
+        );
       } finally {
         await queryRunner.release();
       }
     }
+
+    // Cảnh báo — SAU khi transition đã commit; lỗi hook KHÔNG ảnh hưởng kết quả probe.
+    if (this.deviceOfflineAlertHook && transitions.length > 0) {
+      const detectedAt = new Date();
+      const byId = new Map(results.map((r) => [r.device.id, r.device]));
+      const toEvt = (id: string) => {
+        const d = byId.get(id) as IoTDeviceEntity;
+        return {
+          deviceId: d.id,
+          deviceCode: d.deviceCode,
+          deviceName: d.deviceName,
+          zoneId: d.zoneId ?? null,
+          detectedAt,
+        };
+      };
+      const offEvts = transitions
+        .filter((t) => t.to === (IoTDeviceStatus.OFFLINE as string))
+        .map((t) => toEvt(t.id));
+      const onEvts = transitions
+        .filter((t) => t.to === (IoTDeviceStatus.ONLINE as string))
+        .map((t) => toEvt(t.id));
+      try {
+        if (offEvts.length > 0) {
+          await this.deviceOfflineAlertHook.onDevicesOffline(offEvts);
+        }
+      } catch (e) {
+        this.logger.error(
+          `[CAM-OFFLINE] hook offline failed: ${e instanceof Error ? e.message : 'unknown'}`,
+        );
+      }
+      try {
+        if (onEvts.length > 0) {
+          // Camera có tín hiệu lại → gỡ khỏi alert đang mở / đóng alert nếu hết camera rớt.
+          await this.deviceOfflineAlertHook.onDevicesOnline?.(onEvts);
+        }
+      } catch (e) {
+        this.logger.error(
+          `[CAM-OFFLINE] hook online failed: ${e instanceof Error ? e.message : 'unknown'}`,
+        );
+      }
+    }
+
+    const durationMs = Date.now() - startedAt;
+    const nOff = transitions.filter((t) => t.to === 'offline').length;
+    this.logger.log(
+      `[CAM-OFFLINE] Quét ${targets.length} camera (song song ${cap}, ngưỡng lỗi ${failThreshold}) ` +
+        `probe=${probeMs}ms tổng=${durationMs}ms | online=${onlineCount} offline=${offlineCount} ` +
+        `chờ-xác-nhận=${pendingOffline} → mới-offline=${nOff} có-lại=${transitions.length - nOff}`,
+    );
 
     return {
       checked: targets.length,
       online_count: onlineCount,
       offline_count: offlineCount,
       transitions,
+      pending_offline: pendingOffline,
+      duration_ms: durationMs,
     };
+  }
+
+  /** UPDATE status cả lô bằng 1 câu; chỉ đổi dòng còn đúng `from` → trả id đã đổi. */
+  private async bulkSetStatus(
+    manager: EntityManager,
+    ids: string[],
+    from: IoTDeviceStatus,
+    to: IoTDeviceStatus,
+  ): Promise<string[]> {
+    if (ids.length === 0) return [];
+    const res: unknown = await manager.query(
+      `UPDATE iot_devices SET status = $1, updated_at = NOW()
+        WHERE id = ANY($2::uuid[]) AND status = $3
+      RETURNING id`,
+      [to, ids, from],
+    );
+    // UPDATE…RETURNING qua TypeORM (pg) trả [rows, count].
+    const rows =
+      Array.isArray(res) && res.length === 2 && Array.isArray(res[0])
+        ? (res[0] as Array<{ id: string }>)
+        : ((res as Array<{ id: string }>) ?? []);
+    return rows.map((r) => r.id);
   }
 
   /**
@@ -1356,14 +1557,14 @@ export class IotDevicesService {
     // MERGE từng cờ — chỉ khoá gửi (!== undefined) mới ghi đè; CHƯA đụng configured_at.
     const mergedFlags: Record<string, unknown> = { ...currentAiConfig };
     delete mergedFlags.configured_at;
-    if (dto.faceRecognition !== undefined) {
-      mergedFlags.face_recognition = dto.faceRecognition;
-    }
-    if (dto.plateRecognition !== undefined) {
-      mergedFlags.plate_recognition = dto.plateRecognition;
-    }
-    if (dto.peopleCounting !== undefined) {
-      mergedFlags.people_counting = dto.peopleCounting;
+    // 3 cờ bật/tắt + cấu hình nâng cao 2.2.6 (ngưỡng, vùng, khung giờ, liveness...).
+    for (const [field, key] of Object.entries(AI_CONFIG_KEYS)) {
+      const value = dto[field as keyof ConfigureAiConfigDto];
+      if (value === undefined) continue;
+      mergedFlags[key] =
+        value !== null && typeof value === 'object' && !Array.isArray(value)
+          ? { ...value }
+          : value;
     }
 
     // SO SÁNH GIÁ TRỊ THẬT (bỏ qua configured_at): giống ⇒ NO-OP, trả device nguyên trạng.
@@ -2098,8 +2299,9 @@ export class IotDevicesService {
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
+    let strangerEventId: string | null = null;
     try {
-      await this.iotDeviceEventsService.storeRawEvent(
+      const stored = await this.iotDeviceEventsService.storeRawEvent(
         {
           device,
           eventType: 'face_stranger',
@@ -2125,6 +2327,7 @@ export class IotDevicesService {
         },
         queryRunner.manager,
       );
+      strangerEventId = stored?.id ?? null;
       await queryRunner.manager.save(IoTDeviceEntity, device);
       await queryRunner.commitTransaction();
     } catch (error) {
@@ -2149,6 +2352,7 @@ export class IotDevicesService {
           strangerId: sf.stranger_id,
           similarity: sf.similarity != null ? String(sf.similarity) : null,
           capturedAt: now,
+          eventId: strangerEventId,
         });
       } catch (e) {
         this.logger.error(

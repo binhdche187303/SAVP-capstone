@@ -18,7 +18,7 @@ export function fmtTz(date: Date, tz: string): FaceGateTimeParts {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
-    hour12: false,
+    hourCycle: 'h23', // KHÔNG dùng hour12:false — một số ICU trả '24' lúc nửa đêm
   }).formatToParts(date);
 
   const map: Record<string, string> = {};

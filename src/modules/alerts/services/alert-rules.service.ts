@@ -37,8 +37,21 @@ export interface EffectiveRuleResult {
  * `VehicleControlListService` (chấp nhận trùng nhỏ `isUniqueViolation` giữa các service,
  * mirror decision đã áp dụng ở UC8/UC9 — xem spec plan §0).
  */
+/** Thời gian cache kết quả `findEffectiveRule` (bật/tắt luật theo khu vực). */
+const EFFECTIVE_RULE_CACHE_MS = 60_000;
+
 @Injectable()
 export class AlertRulesService {
+  private readonly effectiveRuleCache = new Map<
+    string,
+    { value: EffectiveRuleResult; expiresAt: number }
+  >();
+  /** Cache `listEnabledZoneRules` theo alertType — cron + webhook crowd/intrusion đọc mỗi sự kiện. */
+  private readonly zoneRulesCache = new Map<
+    string,
+    { value: AlertRuleEntity[]; expiresAt: number }
+  >();
+
   constructor(
     @InjectRepository(AlertRuleEntity)
     private readonly repo: Repository<AlertRuleEntity>,
@@ -71,7 +84,9 @@ export class AlertRulesService {
     });
 
     try {
-      return await this.repo.save(entity);
+      const saved = await this.repo.save(entity);
+      this.clearRuleCaches();
+      return saved;
     } catch (e) {
       if (this.isUniqueViolation(e)) {
         throw alertRuleConflict(dto.alertType, zoneId);
@@ -165,7 +180,9 @@ export class AlertRulesService {
     entity.updatedBy = actorUserId;
 
     try {
-      return await this.repo.save(entity);
+      const saved = await this.repo.save(entity);
+      this.clearRuleCaches();
+      return saved;
     } catch (e) {
       if (this.isUniqueViolation(e)) {
         throw alertRuleConflict(nextAlertType, nextZoneId);
@@ -178,6 +195,36 @@ export class AlertRulesService {
     await this.findOne(id);
     await this.repo.update(id, { updatedBy: actorUserId });
     await this.repo.softDelete(id);
+    this.clearRuleCaches();
+  }
+
+  /**
+   * Luật BẬT gắn khu vực cụ thể của 1 loại (crowd/intrusion) — cache EFFECTIVE_RULE_CACHE_MS,
+   * create/update/remove xoá ngay. Thay `list()` (COUNT + SELECT phân trang) ở đường nóng.
+   */
+  async listEnabledZoneRules(alertType: string): Promise<AlertRuleEntity[]> {
+    const now = Date.now();
+    const cached = this.zoneRulesCache.get(alertType);
+    if (cached && cached.expiresAt > now) return cached.value;
+    const value = await this.repo.find({
+      where: {
+        alertType,
+        enabled: true,
+        deletedAt: IsNull(),
+        zoneId: Not(IsNull()),
+      },
+      order: { createdAt: 'DESC' },
+    });
+    this.zoneRulesCache.set(alertType, {
+      value,
+      expiresAt: now + EFFECTIVE_RULE_CACHE_MS,
+    });
+    return value;
+  }
+
+  private clearRuleCaches(): void {
+    this.effectiveRuleCache.clear();
+    this.zoneRulesCache.clear();
   }
 
   /**
@@ -211,6 +258,24 @@ export class AlertRulesService {
    * gọi `recordAlert()`.
    */
   async findEffectiveRule(
+    alertType: string,
+    zoneId?: string | null,
+  ): Promise<EffectiveRuleResult> {
+    // Cache EFFECTIVE_RULE_CACHE_MS — luồng cảnh báo gọi mỗi sự kiện; create/update/remove
+    // xoá cache ngay nên đổi luật có hiệu lực tức thì.
+    const key = `${alertType}|${zoneId ?? ''}`;
+    const now = Date.now();
+    const cached = this.effectiveRuleCache.get(key);
+    if (cached && cached.expiresAt > now) return cached.value;
+    const value = await this.queryEffectiveRule(alertType, zoneId);
+    this.effectiveRuleCache.set(key, {
+      value,
+      expiresAt: now + EFFECTIVE_RULE_CACHE_MS,
+    });
+    return value;
+  }
+
+  private async queryEffectiveRule(
     alertType: string,
     zoneId?: string | null,
   ): Promise<EffectiveRuleResult> {

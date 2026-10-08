@@ -3,6 +3,7 @@ import {
   Controller,
   Post,
   Patch,
+  Put,
   Get,
   Query,
   HttpCode,
@@ -22,7 +23,15 @@ import { ConfigureRtspDto } from '../dto/configure-rtsp.dto.js';
 import { ConfigureAiConfigDto } from '../dto/configure-ai-config.dto.js';
 import { RevokeFaceServerTokenDto } from '../dto/revoke-face-server-token.dto.js';
 import { ConfigureFaceServerDto } from '../dto/configure-face-server.dto.js';
+import { ConnectionHistoryQueryDto } from '../dto/connection-history-query.dto.js';
 import { IotDevicesService } from '../services/iot-devices.service.js';
+import { DeviceConnectionHistoryService } from '../services/device-connection-history.service.js';
+import { CameraSettingsService } from '../services/camera-settings.service.js';
+import {
+  AnprStatsQueryDto,
+  ConfigureRecordingDto,
+  SaveCameraLayoutDto,
+} from '../dto/camera-settings.dto.js';
 import { toIotDeviceResponse } from '../dto/iot-device-response.dto.js';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard.js';
 // A5 (IOT-005): route check-availability dùng guard auth THẬT (mirror B21).
@@ -32,7 +41,11 @@ import { CurrentUser } from '../../auth/decorators/current-user.decorator.js';
 
 @Controller('iot-devices')
 export class IotDevicesController {
-  constructor(private readonly iotDevicesService: IotDevicesService) {}
+  constructor(
+    private readonly iotDevicesService: IotDevicesService,
+    private readonly connectionHistoryService: DeviceConnectionHistoryService,
+    private readonly cameraSettingsService: CameraSettingsService,
+  ) {}
 
   // IOT-013: liệt kê thiết bị (filter + phân trang). Read-only, query whitelist-only.
   @Get()
@@ -61,6 +74,97 @@ export class IotDevicesController {
     return {
       success: true,
       message: 'Device status summary retrieved successfully',
+      data,
+    };
+  }
+
+  // 2.2.1: số lượt xe theo từng camera biển số trong ngày. Route STATIC — trước @Get(':id').
+  @Get('anpr-stats')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('iot.device.read')
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  async anprStats(@Query() query: AnprStatsQueryDto) {
+    const data = await this.cameraSettingsService.getAnprStats(query.date);
+
+    return {
+      success: true,
+      message: 'ANPR camera stats retrieved successfully',
+      data,
+    };
+  }
+
+  // 2.2.7: dung lượng lưu trữ ghi hình (tổng ổ + theo camera). Route STATIC.
+  @Get('recording-storage')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('iot.device.read')
+  async recordingStorage() {
+    const data = await this.cameraSettingsService.getStorageUsage();
+
+    return {
+      success: true,
+      message: 'Recording storage usage retrieved successfully',
+      data,
+    };
+  }
+
+  // 2.2.4: lưu vị trí/hướng camera trên sơ đồ 1 tầng (metadata_json.layout).
+  @Put('layout')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('iot.device.update')
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  async saveLayout(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: SaveCameraLayoutDto,
+  ) {
+    const data = await this.cameraSettingsService.saveLayout(
+      user?.userId ?? null,
+      dto,
+    );
+
+    return {
+      success: true,
+      message: 'Camera layout saved successfully',
+      data,
+    };
+  }
+
+  // 2.2.7: lịch ghi hình & thời gian lưu trữ của 1 camera (metadata_json.recording).
+  @Patch(':id/recording-policy')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('iot.device.update')
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  async configureRecording(
+    @CurrentUser() user: { userId: string },
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ConfigureRecordingDto,
+  ) {
+    const device = await this.cameraSettingsService.configureRecording(
+      user?.userId ?? null,
+      id,
+      dto,
+    );
+
+    return {
+      success: true,
+      message: 'Recording policy updated successfully',
+      data: toIotDeviceResponse(device),
+    };
+  }
+
+  // Lịch sử kết nối (online/offline), uptime và sự cố của 1 thiết bị. Read-only.
+  @Get(':id/connection-history')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('iot.device.read')
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  async connectionHistory(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: ConnectionHistoryQueryDto,
+  ) {
+    const data = await this.connectionHistoryService.getHistory(id, query.days);
+
+    return {
+      success: true,
+      message: 'Device connection history retrieved successfully',
       data,
     };
   }

@@ -14,7 +14,7 @@ export interface ZoneHeatmapDto {
   peakOccupancy: number;
   peakAt: string | null;
   relativeDensity: number;
-  /** BLOCKED (kế thừa UC-126 §2.1): LUÔN `null` cho tới khi `zones` có cột tọa độ thật. */
+  /** Toạ độ GPS từ `zones.latitude/longitude`; `null` khi zone chưa được đặt vị trí. */
   coordinates: { lat: number; lng: number } | null;
 }
 

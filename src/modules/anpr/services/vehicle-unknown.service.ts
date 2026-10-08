@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import type { ListUnknownVehiclesQueryDto } from '../dto/list-unknown-vehicles-query.dto.js';
+import {
+  CONTROL_LIST_FLAG_COLUMNS,
+  CONTROL_LIST_FLAG_JOIN,
+} from '../utils/control-list-flag.sql.js';
 
 interface UnknownRow {
   id: string;
@@ -41,13 +45,11 @@ export interface UnknownVehicleItem {
   plateColor: string | null;
   vehicleType: string | null;
   /**
-   * true nếu event này có 1 security_alerts.alert_type='vehicle_control_match' gắn qua
-   * source_event_id (recon 2026-08-08, R1-R3, mirror VehicleHistoryService). GIỚI HẠN
-   * ĐÃ BIẾT: evaluate() throttle 300s/plate (vehicle-control-alert.service.ts) — sự kiện
-   * bị throttle trong cùng cửa sổ có isBlacklisted=false dù xe đang trong control-list.
+   * STT 19: true nếu biển nằm trong vehicle_control_list (active) TẠI thời điểm xe qua —
+   * xem utils/control-list-flag.sql.ts (thay JOIN security_alerts cũ, vốn sai cho lượt sau).
    */
   isBlacklisted: boolean;
-  /** security_alerts.payload_json->>'listType' ('blocklist'|'watchlist'); null nếu isBlacklisted=false. */
+  /** vehicle_control_list.list_type ('blocklist' ưu tiên | 'watchlist'); null nếu isBlacklisted=false. */
   listType: string | null;
 }
 
@@ -60,11 +62,9 @@ export interface UnknownVehicleItem {
  * SEC-03: bind tham số (from/to/limit/offset). SEC-01: KHÔNG imageBase64 (UC5 vốn không lưu).
  * KHÔNG dùng VehicleRegistrationService (raw query riêng).
  *
- * isBlacklisted/listType (recon 2026-08-08, R1-R3, mirror VehicleHistoryService): LEFT
- * JOIN security_alerts qua FK source_event_id → iot_device_events.id. KHÔNG đụng luồng
- * ghi (onVehicleEvent()/evaluate()). Giới hạn ĐÃ BIẾT: evaluate() throttle 300s/plate →
- * sự kiện bị throttle trong cùng cửa sổ có isBlacklisted=false dù xe đang trong
- * control-list — KHÔNG cố sửa ở đây.
+ * isBlacklisted/listType (STT 19, 2026-10-08): LATERAL vehicle_control_list theo biển +
+ * thời điểm — fragment dùng chung với VehicleHistoryService (utils/control-list-flag.sql.ts).
+ * KHÔNG đụng luồng ghi (onVehicleEvent()/evaluate()).
  */
 @Injectable()
 export class VehicleUnknownService {
@@ -79,8 +79,8 @@ export class VehicleUnknownService {
 
     // WHERE base = literal (KHÔNG user input). Time-range build động → bind ($1, $2...).
     // `iot_device_events.` prefix BẮT BUỘC (KHÔNG chỉ để rõ ràng) — dùng chung cho cả
-    // COUNT (không JOIN) lẫn rows (có JOIN security_alerts, cũng có payload_json/id
-    // trùng tên → để trần sẽ ambiguous). Xem VehicleHistoryService cho lý do đầy đủ.
+    // COUNT (không JOIN) lẫn rows (có LATERAL vehicle_control_list tham chiếu thẳng
+    // iot_device_events.*). Xem VehicleHistoryService cho lý do đầy đủ.
     const params: unknown[] = [...VEHICLE_EVENT_TYPES];
     let where = `iot_device_events.event_type IN (${VEHICLE_EVENT_TYPE_SQL}) AND iot_device_events.payload_json->>'matchState' = 'unmatched'`;
     if (query.from) {
@@ -117,12 +117,9 @@ export class VehicleUnknownService {
               iot_device_events.payload_json->>'utc'                AS utc,
               iot_device_events.payload_json->>'plateColor'         AS plate_color,
               iot_device_events.payload_json->>'vehicleType'        AS vehicle_type,
-              sa.id IS NOT NULL                                     AS is_blacklisted,
-              sa.payload_json->>'listType'                          AS list_type
+              ${CONTROL_LIST_FLAG_COLUMNS}
          FROM iot_device_events
-         LEFT JOIN security_alerts sa
-                ON sa.source_event_id = iot_device_events.id
-               AND sa.alert_type = 'vehicle_control_match'
+         ${CONTROL_LIST_FLAG_JOIN}
         WHERE ${where}
         ORDER BY iot_device_events.event_time DESC
         LIMIT $${limitIdx} OFFSET $${offsetIdx}`,

@@ -16,6 +16,11 @@ export interface RecordAlertInput {
   sourceEventId?: string | null;
   ruleId?: string | null;
   payloadJson?: Record<string, unknown> | null;
+  /**
+   * Gộp alert đang mở theo (alertType, zoneId, dedupeKey). Bỏ trống = gộp theo
+   * (alertType, zoneId) như cũ. VD person_watchlist_match: userId → mỗi người 1 alert.
+   */
+  dedupeKey?: string | null;
 }
 
 export interface RecordAlertResult {

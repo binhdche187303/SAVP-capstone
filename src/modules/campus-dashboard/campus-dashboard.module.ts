@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module.js';
+import { KpiRollupModule } from '../kpi-rollup/kpi-rollup.module.js';
 import { ZoneEntity } from '../zones/entities/zone.entity.js';
 import { ZonePresenceEventEntity } from '../zones/entities/zone-presence-event.entity.js';
 import { GateAccessLogEntity } from '../zones/entities/gate-access-log.entity.js';
@@ -21,6 +22,10 @@ import { EmployeeSummaryService } from './services/employee-summary.service.js';
 import { EmployeeSummaryController } from './controllers/employee-summary.controller.js';
 import { BusinessAdminSummaryService } from './services/business-admin-summary.service.js';
 import { BusinessAdminSummaryController } from './controllers/business-admin-summary.controller.js';
+import { PresenceByDepartmentService } from './services/presence-by-department.service.js';
+import { PresenceByDepartmentController } from './controllers/presence-by-department.controller.js';
+import { CampusMapService } from './services/campus-map.service.js';
+import { CampusMapController } from './controllers/campus-map.controller.js';
 
 /**
  * CampusDashboardModule (CDB-001 / UC-126, dùng chung cho UC-119/UC-120/CDB-RS-001 — Bước 4 SAVP).
@@ -38,6 +43,7 @@ import { BusinessAdminSummaryController } from './controllers/business-admin-sum
 @Module({
   imports: [
     AuthModule,
+    KpiRollupModule,
     TypeOrmModule.forFeature([
       ZoneEntity,
       ZonePresenceEventEntity,
@@ -55,6 +61,8 @@ import { BusinessAdminSummaryController } from './controllers/business-admin-sum
     ManagerSummaryController,
     EmployeeSummaryController,
     BusinessAdminSummaryController,
+    PresenceByDepartmentController,
+    CampusMapController,
   ],
   providers: [
     CampusDashboardRepository,
@@ -64,6 +72,8 @@ import { BusinessAdminSummaryController } from './controllers/business-admin-sum
     ManagerSummaryService,
     EmployeeSummaryService,
     BusinessAdminSummaryService,
+    PresenceByDepartmentService,
+    CampusMapService,
   ],
   exports: [],
 })

@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsInt, Min, Max } from 'class-validator';
+import { IsOptional, IsInt, IsUUID, Matches, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 
 /**
@@ -34,4 +34,30 @@ export class ListStrangerAlertsQueryDto {
   @IsInt()
   @Min(1)
   windowMinutes?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Từ ngày (YYYY-MM-DD, giờ VN). Có from/to ⇒ lọc theo khoảng ngày thay cho windowMinutes',
+  })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
+    message: 'from phải theo định dạng YYYY-MM-DD',
+  })
+  from?: string;
+
+  @ApiPropertyOptional({
+    description: 'Đến ngày (YYYY-MM-DD, giờ VN, tính cả ngày này)',
+  })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
+    message: 'to phải theo định dạng YYYY-MM-DD',
+  })
+  to?: string;
+
+  @ApiPropertyOptional({
+    description: 'Chỉ lấy người lạ của 1 thiết bị (camera)',
+  })
+  @IsOptional()
+  @IsUUID()
+  deviceId?: string;
 }
