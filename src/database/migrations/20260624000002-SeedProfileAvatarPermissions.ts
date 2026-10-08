@@ -42,6 +42,15 @@ export class SeedProfileAvatarPermissions20260624000002 implements MigrationInte
   ];
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS "UQ_permissions_permission_code"
+        ON permissions (permission_code);
+    `);
+    await queryRunner.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS "UQ_role_permissions_role_permission"
+        ON role_permissions (role_id, permission_id);
+    `);
+
     for (const permission of this.permissions) {
       const inserted: Array<{ id: string }> = await queryRunner.query(
         `INSERT INTO permissions (permission_code, permission_name, module_code, action_code, description, is_active)
