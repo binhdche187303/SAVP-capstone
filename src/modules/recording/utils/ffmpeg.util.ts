@@ -16,6 +16,30 @@ import { spawn, ChildProcess } from 'child_process';
  * lai, ngoài scope #23b.
  */
 export function buildFfmpegArgs(url: string, outPath: string): string[] {
+  if (url === 'mock://testsrc') {
+    return [
+      '-f',
+      'lavfi',
+      '-re',
+      '-i',
+      'testsrc2=size=1280x720:rate=15',
+      '-an',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'veryfast',
+      '-tune',
+      'zerolatency',
+      '-pix_fmt',
+      'yuv420p',
+      '-movflags',
+      '+faststart',
+      '-f',
+      'mp4',
+      outPath,
+    ];
+  }
+
   return [
     '-rtsp_transport',
     'tcp',

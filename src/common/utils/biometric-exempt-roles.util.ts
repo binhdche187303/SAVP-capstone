@@ -7,7 +7,10 @@
  * — đặt ở `common` để tránh cross-module import, cùng lý do với
  * `biometric-status-resolver.util.ts`.
  */
-export const BIOMETRIC_EXEMPT_ROLE_CODES = ['BUSINESS_ADMIN', 'SYSTEM_ADMIN'];
+export const BIOMETRIC_EXEMPT_ROLE_CODES = [
+  'BUSINESS_ADMIN',
+  'SYSTEM_ADMIN',
+];
 
 export function isBiometricExemptRole(roleCodes: string[]): boolean {
   return roleCodes.some((code) => BIOMETRIC_EXEMPT_ROLE_CODES.includes(code));

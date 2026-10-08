@@ -8,7 +8,7 @@ import { VehicleTrafficStatsResponseDto } from '../dto/vehicle-traffic-stats-res
 import { VehicleTrafficStatsSummaryDto } from '../dto/vehicle-traffic-stats-summary.dto.js';
 import { VehicleTrafficStatsBucketDto } from '../dto/vehicle-traffic-stats-bucket.dto.js';
 
-const VEHICLE_EVENT_TYPE = 'ivss_vehicle_event';
+const VEHICLE_EVENT_TYPES = ['ivss_vehicle_event', 'camera_vehicle_event'];
 
 interface SummaryRow {
   total: number;
@@ -29,12 +29,12 @@ interface SeriesRow {
 /**
  * VehicleTrafficStatsService (VTS-001 / UC-114) — thống kê lưu lượng phương tiện.
  *
- * Nguồn: `iot_device_events WHERE event_type='ivss_vehicle_event'` — ĐÚNG PRE-2 SRS trích
- * dẫn "UC-ANPR-05" (sự kiện biển số thô), KHÔNG PHẢI `gate_access_logs`. Raw SQL qua
+ * Nguồn: `iot_device_events` với event ANPR (`ivss_vehicle_event` legacy bridge +
+ * `camera_vehicle_event` camera ảo/camera thật độc lập), KHÔNG PHẢI `gate_access_logs`. Raw SQL qua
  * `DataSource` mirror CHÍNH XÁC `VehicleHistoryService` (cùng bảng, cùng event_type) — KHÔNG
  * `@InjectRepository` (enum entity `IoTDeviceEventType` không có giá trị này).
  *
- * DATA-02 (crux): `event_type = 'ivss_vehicle_event'` LUÔN là điều kiện WHERE đầu tiên.
+ * DATA-02 (crux): `event_type IN (...)` LUÔN là điều kiện WHERE đầu tiên.
  * Vocabulary `direction` payload THẬT: `enter/leave/seen` (KHÔNG PHẢI `in/out`).
  */
 @Injectable()
@@ -85,8 +85,10 @@ export class VehicleTrafficStatsService {
     where: string;
     params: unknown[];
   } {
-    const params: unknown[] = [];
-    let where = `event_type = '${VEHICLE_EVENT_TYPE}'`;
+    const params: unknown[] = [...VEHICLE_EVENT_TYPES];
+    let where = `event_type IN (${VEHICLE_EVENT_TYPES.map(
+      (_, idx) => `$${idx + 1}`,
+    ).join(', ')})`;
 
     params.push(query.from);
     where += ` AND event_time >= $${params.length}`;

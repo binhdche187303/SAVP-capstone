@@ -390,6 +390,15 @@ export class TranscriptionService {
         : null,
       cleanedText: transcript.cleanedText,
       segments,
+      warnings: Array.isArray((transcript.speakerSegmentsJson as any)?.warnings)
+        ? (transcript.speakerSegmentsJson as any).warnings
+        : [],
+      manualReviewRequired:
+        (transcript.speakerSegmentsJson as any)?.manualReviewRequired === true,
+      manualReviewSegmentCount:
+        Number(
+          (transcript.speakerSegmentsJson as any)?.manualReviewSegmentCount || 0,
+        ) || 0,
       generatedAt: transcript.createdAt,
       meta: includeSegments
         ? {

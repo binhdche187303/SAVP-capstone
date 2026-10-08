@@ -55,6 +55,7 @@ VALID_WARNINGS = {
     "sepformer_skipped_low_resources",
     "sepformer_error_skipped",
     "low_confidence_transcript",
+    "no_reliable_speech_detected",
     "chunking_applied",
 }
 

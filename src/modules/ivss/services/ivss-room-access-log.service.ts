@@ -39,7 +39,7 @@ export interface RoomAccessLogQueryOptions {
   search?: string;
 }
 
-const FACE_EVENT_TYPE = 'ivss_face_event';
+const FACE_EVENT_TYPES = ['camera_face_event', 'ivss_face_event'];
 /** Múi giờ nghiệp vụ — dùng cho CẢ mặc định `date` lẫn biên ngày trong SQL. */
 const BUSINESS_TIMEZONE = 'Asia/Ho_Chi_Minh';
 const DEFAULT_PAGE = 1;
@@ -50,7 +50,7 @@ const DEFAULT_LIMIT = 20;
  * hoặc TOÀN HỆ THỐNG (ALS-002: `roomId` null → không lọc phòng).
  *
  * Khác Màn 1 (`IvssPresenceQueryService`, góc nhìn theo CUỘC HỌP): ở đây lấy MỌI
- * `ivss_face_event` trong ngày, KỂ CẢ người không dự họp nào và event chưa
+ * event nhận diện khuôn mặt trong ngày, KỂ CẢ người không dự họp nào và event chưa
  * khớp danh tính — phục vụ giám sát an ninh.
  *
  * 100% READ-ONLY: không ghi DB, không gọi bridge, không emit WS.
@@ -144,7 +144,7 @@ export class IvssRoomAccessLogService {
     // chiều: '00:00 ngày đó giờ VN' → timestamptz '2026-07-28 17:00:00+00'.
     // Đã nghiệm thu bằng psql với SET TIME ZONE 'UTC'.
     const whereSql = `
-        WHERE e.event_type = $1
+        WHERE e.event_type = ANY($1::text[])
           AND e.event_time >= ($2::date::timestamp AT TIME ZONE '${BUSINESS_TIMEZONE}')
           AND e.event_time <  (($2::date + interval '1 day')::timestamp AT TIME ZONE '${BUSINESS_TIMEZONE}')
           AND ($3::uuid IS NULL OR e.room_id = $3::uuid)
@@ -158,7 +158,7 @@ export class IvssRoomAccessLogService {
                 ON u.id = NULLIF(e.payload_json->>'userId', '')::uuid
          LEFT JOIN departments d ON d.id = u.department_id
          LEFT JOIN rooms r ON r.id = e.room_id`;
-    const filterParams = [FACE_EVENT_TYPE, day, roomId, search, meetingId];
+    const filterParams = [FACE_EVENT_TYPES, day, roomId, search, meetingId];
 
     // Đếm trên TOÀN BỘ kết quả lọc (không chỉ trang hiện tại) — matched/unmatched phải
     // phản ánh cả ngày, nếu đếm trong trang thì số liệu vô nghĩa khi phân trang.

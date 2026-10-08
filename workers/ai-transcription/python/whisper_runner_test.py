@@ -8,6 +8,7 @@ faster-whisper, không test chất lượng STT thật (việc đó thuộc benc
 T-MERGE-005, đo trên audio thật)."""
 
 from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
 
 from faster_whisper.vad import VadOptions
 
@@ -30,7 +31,7 @@ def test_vad_parameters_uses_default_2000ms_when_env_unset(monkeypatch):
 
     transcribe("fake.wav", "medium", "cpu", "int8", language="vi-VN")
 
-    _, kwargs = mock_model_instance.transcribe.call_args
+    _, kwargs = mock_model_instance.transcribe.call_args_list[0]
     assert kwargs["vad_filter"] is True
     vad_params = kwargs["vad_parameters"]
     assert isinstance(vad_params, VadOptions)
@@ -43,7 +44,7 @@ def test_vad_parameters_reads_min_silence_from_env(monkeypatch):
 
     transcribe("fake.wav", "medium", "cpu", "int8", language="vi-VN")
 
-    _, kwargs = mock_model_instance.transcribe.call_args
+    _, kwargs = mock_model_instance.transcribe.call_args_list[0]
     vad_params = kwargs["vad_parameters"]
     assert vad_params.min_silence_duration_ms == 3500
 
@@ -54,5 +55,67 @@ def test_vad_parameters_falls_back_to_default_on_invalid_env(monkeypatch):
 
     transcribe("fake.wav", "medium", "cpu", "int8", language="vi-VN")
 
-    _, kwargs = mock_model_instance.transcribe.call_args
+    _, kwargs = mock_model_instance.transcribe.call_args_list[0]
     assert kwargs["vad_parameters"].min_silence_duration_ms == 2000
+
+
+def test_filters_high_no_speech_probability_segments(monkeypatch):
+    monkeypatch.delenv("WHISPER_NO_SPEECH_PROB_THRESHOLD", raising=False)
+    fake_info = MagicMock()
+    fake_info.language = "vi"
+    mock_model_instance = MagicMock()
+    mock_model_instance.transcribe.return_value = (
+        [
+            SimpleNamespace(
+                text="Hãy subscribe cho kênh Ghiền Mì Gõ",
+                start=3.89,
+                end=5.89,
+                avg_logprob=-0.36,
+                no_speech_prob=0.56,
+            ),
+            SimpleNamespace(
+                text="Nội dung cuộc họp thật",
+                start=6.0,
+                end=7.0,
+                avg_logprob=-0.1,
+                no_speech_prob=0.1,
+            ),
+        ],
+        fake_info,
+    )
+    monkeypatch.setattr(
+        "whisper_runner.WhisperModel",
+        MagicMock(return_value=mock_model_instance),
+    )
+
+    result = transcribe("fake.wav", "medium", "cpu", "int8", language="vi-VN")
+
+    assert result["rawText"] == "Nội dung cuộc họp thật"
+    assert len(result["segments"]) == 1
+
+
+def test_no_speech_threshold_can_be_overridden(monkeypatch):
+    monkeypatch.setenv("WHISPER_NO_SPEECH_PROB_THRESHOLD", "0.9")
+    fake_info = MagicMock()
+    fake_info.language = "vi"
+    mock_model_instance = MagicMock()
+    mock_model_instance.transcribe.return_value = (
+        [
+            SimpleNamespace(
+                text="Câu vẫn được giữ",
+                start=0.0,
+                end=1.0,
+                avg_logprob=-0.1,
+                no_speech_prob=0.56,
+            )
+        ],
+        fake_info,
+    )
+    monkeypatch.setattr(
+        "whisper_runner.WhisperModel",
+        MagicMock(return_value=mock_model_instance),
+    )
+
+    result = transcribe("fake.wav", "medium", "cpu", "int8", language="vi-VN")
+
+    assert result["rawText"] == "Câu vẫn được giữ"

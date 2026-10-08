@@ -18,6 +18,11 @@ interface CountRow {
   total: number;
 }
 
+const VEHICLE_EVENT_TYPES = ['ivss_vehicle_event', 'camera_vehicle_event'];
+const VEHICLE_EVENT_TYPE_SQL = VEHICLE_EVENT_TYPES.map(
+  (_, idx) => `$${idx + 1}`,
+).join(', ');
+
 export interface PaginationMeta {
   page: number;
   limit: number;
@@ -76,8 +81,8 @@ export class VehicleUnknownService {
     // `iot_device_events.` prefix BẮT BUỘC (KHÔNG chỉ để rõ ràng) — dùng chung cho cả
     // COUNT (không JOIN) lẫn rows (có JOIN security_alerts, cũng có payload_json/id
     // trùng tên → để trần sẽ ambiguous). Xem VehicleHistoryService cho lý do đầy đủ.
-    const params: unknown[] = [];
-    let where = `iot_device_events.event_type = 'ivss_vehicle_event' AND iot_device_events.payload_json->>'matchState' = 'unmatched'`;
+    const params: unknown[] = [...VEHICLE_EVENT_TYPES];
+    let where = `iot_device_events.event_type IN (${VEHICLE_EVENT_TYPE_SQL}) AND iot_device_events.payload_json->>'matchState' = 'unmatched'`;
     if (query.from) {
       params.push(query.from);
       where += ` AND iot_device_events.event_time >= $${params.length}`;

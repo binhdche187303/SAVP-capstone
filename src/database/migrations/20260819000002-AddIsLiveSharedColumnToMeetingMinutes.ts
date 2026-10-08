@@ -10,7 +10,7 @@ export class AddIsLiveSharedColumnToMeetingMinutes20260819000002 implements Migr
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `ALTER TABLE "meeting_minutes" ADD COLUMN "is_live_shared" boolean NOT NULL DEFAULT false`,
+      `ALTER TABLE "meeting_minutes" ADD COLUMN IF NOT EXISTS "is_live_shared" boolean NOT NULL DEFAULT false`,
     );
   }
 

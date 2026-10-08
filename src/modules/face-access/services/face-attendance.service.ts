@@ -249,6 +249,26 @@ export class FaceAttendanceService implements FaceVerifyHook {
     this.logger.log(
       `attendance check_out: user=${userId} meeting=${meeting.id} left_early=${leftEarly}.`,
     );
+
+    try {
+      this.websocketService.emitToRoom(
+        `meeting:${meeting.id}`,
+        'meeting.attendance.updated',
+        {
+          meetingId: meeting.id,
+          userId,
+          eventType: 'check_out',
+          checkOutTime: verifyTime.toISOString(),
+          leftEarly,
+        },
+      );
+    } catch (e) {
+      this.logger.warn(
+        `WS emit meeting.attendance.updated failed: ${
+          e instanceof Error ? e.message : 'unknown'
+        }`,
+      );
+    }
   }
 
   /**

@@ -8,6 +8,7 @@ interface HistoryRow {
   plate_number: string | null;
   channel_id: number | null;
   direction: string | null;
+  vehicle_type: string | null;
   match_state: string | null;
   event_time: Date;
   utc: string | null;
@@ -37,6 +38,11 @@ export interface VehicleHistoryItem {
   plateNumber: string | null;
   channelId: number | null;
   direction: string | null;
+  /**
+   * Loại phương tiện: ưu tiên event payload do camera/bridge gửi, fallback sang
+   * vehicle_registrations.vehicle_type theo biển số nếu camera chưa phân loại.
+   */
+  vehicleType: string | null;
   matchState: string | null;
   eventTime: Date;
   utc: string | null;
@@ -69,7 +75,10 @@ export interface VehicleOwnerInfo {
   department: string | null;
 }
 
-const EVENT_TYPE = 'ivss_vehicle_event';
+const VEHICLE_EVENT_TYPES = ['ivss_vehicle_event', 'camera_vehicle_event'];
+const VEHICLE_EVENT_TYPE_SQL = VEHICLE_EVENT_TYPES.map(
+  (_, idx) => `$${idx + 1}`,
+).join(', ');
 
 /**
  * VehicleHistoryService (VHI-001 / UC7) — lịch sử ra/vào cổng (read-only).
@@ -108,8 +117,8 @@ export class VehicleHistoryService {
     userId: string,
     query: ListVehicleHistoryQueryDto,
   ): Promise<{ items: VehicleHistoryItem[]; meta: PaginationMeta }> {
-    const params: unknown[] = [userId];
-    let where = `iot_device_events.event_type = '${EVENT_TYPE}' AND iot_device_events.payload_json->>'userId' = $1`;
+    const params: unknown[] = [...VEHICLE_EVENT_TYPES, userId];
+    let where = `iot_device_events.event_type IN (${VEHICLE_EVENT_TYPE_SQL}) AND iot_device_events.payload_json->>'userId' = $${params.length}`;
     where = this.applyFilters(query, params, where);
     return this.paginate(where, params, query, false);
   }
@@ -118,8 +127,8 @@ export class VehicleHistoryService {
   async listAll(
     query: ListVehicleHistoryQueryDto,
   ): Promise<{ items: VehicleHistoryItem[]; meta: PaginationMeta }> {
-    const params: unknown[] = [];
-    let where = `iot_device_events.event_type = '${EVENT_TYPE}'`;
+    const params: unknown[] = [...VEHICLE_EVENT_TYPES];
+    let where = `iot_device_events.event_type IN (${VEHICLE_EVENT_TYPE_SQL})`;
     if (query.matchState) {
       params.push(query.matchState);
       where += ` AND iot_device_events.payload_json->>'matchState' = $${params.length}`;
@@ -184,6 +193,10 @@ export class VehicleHistoryService {
     const departmentJoin = includeUserId
       ? `LEFT JOIN departments d ON d.id = u.department_id`
       : '';
+    const vehicleRegistrationJoin = `
+      LEFT JOIN vehicle_registrations vr
+             ON vr.plate_number = iot_device_events.payload_json->>'plateNumber'
+            AND vr.deleted_at IS NULL`;
 
     // total: COUNT cùng WHERE (KHÔNG limit/offset). Cần CÙNG JOIN users như rows query
     // vì `where` có thể tham chiếu u.full_name (filter ownerName, chỉ listAll truyền).
@@ -221,6 +234,10 @@ export class VehicleHistoryService {
                 iot_device_events.payload_json->>'gateDirection',
                 iot_device_events.payload_json->>'direction'
               )                                                     AS direction,
+              COALESCE(
+                NULLIF(iot_device_events.payload_json->>'vehicleType', ''),
+                vr.vehicle_type
+              )                                                     AS vehicle_type,
               iot_device_events.payload_json->>'matchState'         AS match_state,
               iot_device_events.event_time,
               iot_device_events.payload_json->>'utc'                AS utc,
@@ -230,6 +247,7 @@ export class VehicleHistoryService {
          LEFT JOIN security_alerts sa
                 ON sa.source_event_id = iot_device_events.id
                AND sa.alert_type = 'vehicle_control_match'
+         ${vehicleRegistrationJoin}
          ${ownerJoin}
          ${departmentJoin}
         WHERE ${where}
@@ -245,6 +263,7 @@ export class VehicleHistoryService {
           plateNumber: r.plate_number,
           channelId: r.channel_id,
           direction: r.direction,
+          vehicleType: r.vehicle_type,
           matchState: r.match_state,
           eventTime: r.event_time,
           utc: r.utc,

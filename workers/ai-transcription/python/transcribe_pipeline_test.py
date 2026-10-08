@@ -97,6 +97,7 @@ def test_run_pipeline_handles_zero_segments():
     assert result["rawText"] == ""
     assert result["segments"] == []
     assert "low_confidence_transcript" in result["warnings"]
+    assert "no_reliable_speech_detected" in result["warnings"]
 
 
 class TestCollapseRepeatedSegments:

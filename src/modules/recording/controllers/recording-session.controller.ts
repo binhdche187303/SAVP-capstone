@@ -23,6 +23,8 @@ import { RequirePermissions } from '../../auth/decorators/require-permissions.de
 
 const AUDIO_UPLOAD_MAX_BYTES =
   Number(process.env.STORAGE_MAX_FILE_SIZE) || 100 * 1024 * 1024;
+const VIDEO_UPLOAD_MAX_BYTES =
+  Number(process.env.RECORDING_VIDEO_UPLOAD_MAX_BYTES) || 500 * 1024 * 1024;
 
 @Controller()
 export class RecordingSessionController {
@@ -151,6 +153,33 @@ export class RecordingSessionController {
       success: true,
       message:
         'Audio uploaded — dùng recordingSessionId để tạo transcription job',
+      data,
+    };
+  }
+
+  // Local/mock webcam flow: upload a browser-recorded video blob and persist it
+  // as a normal recording session + media file so it can be replayed after the meeting.
+  @Post('meetings/:meetingId/recording-sessions/video-upload')
+  @HttpCode(201)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('recording.video.start')
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: VIDEO_UPLOAD_MAX_BYTES } }),
+  )
+  async uploadVideo(
+    @Req() req: any,
+    @Param('meetingId', ParseUUIDPipe) meetingId: string,
+    @UploadedFile() file: any,
+  ) {
+    const userId = req.user?.userId || req.user?.sub || req.user?.id || null;
+    const data = await this.recordingSessionService.uploadVideoFromBrowser(
+      meetingId,
+      file,
+      userId,
+    );
+    return {
+      success: true,
+      message: 'Video recording uploaded',
       data,
     };
   }

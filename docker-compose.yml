@@ -6,6 +6,22 @@
 # =============================================================================
 
 services:
+  # ─── Frontend (React static build served by Nginx) ───────────────────────
+  frontend:
+    build:
+      context: ../SAVP-capstone-FE-
+      dockerfile: Dockerfile
+      args:
+        REACT_APP_API_BASE_URL: ${FRONTEND_API_BASE_URL:-http://localhost:3000/api/v1}
+        REACT_APP_WS_URL: ${FRONTEND_WS_URL:-http://localhost:3000}
+    container_name: capstone-frontend
+    ports:
+      - "${FRONTEND_PORT:-3001}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
   # ─── Backend (NestJS) ────────────────────────────────────────────────────
   backend:
     build:
@@ -16,11 +32,16 @@ services:
       - "${APP_PORT:-3000}:${APP_PORT:-3000}"
     env_file:
       - .env
+    command: ["sh", "-c", "if [ \"$${DB_MIGRATIONS_RUN:-false}\" = \"true\" ]; then npx typeorm migration:run -d dist/database/data-source.js; fi; exec node dist/main.js"]
     environment:
       # Ghi đè host để backend trong container nói chuyện với service khác
       # qua Docker network (không phải localhost của host).
       DB_HOST: postgres
       DB_PORT: 5432
+      DB_SYNCHRONIZE: ${DOCKER_DB_SYNCHRONIZE:-true}
+      DB_MIGRATIONS_RUN: ${DOCKER_DB_MIGRATIONS_RUN:-false}
+      MOCK_RECORDING_ENABLED: ${MOCK_RECORDING_ENABLED:-true}
+      TRANSCRIPTION_PROVIDER: ${DOCKER_TRANSCRIPTION_PROVIDER:-mock}
       REDIS_HOST: redis
       REDIS_PORT: 6379
       BULL_REDIS_HOST: redis
@@ -28,6 +49,12 @@ services:
       # MinIO: backend dùng service name, console vẫn expose ra host
       STORAGE_S3_ENDPOINT: minio
       STORAGE_S3_PORT: 9000
+      APP_URL: http://localhost:${APP_PORT:-3000}
+      API_PUBLIC_BASE_URL: http://localhost:${APP_PORT:-3000}
+      STORAGE_PUBLIC_BASE_URL: http://localhost:${APP_PORT:-3000}/uploads
+      GUEST_ACCESS_INVITE_BASE_URL: http://localhost:${FRONTEND_PORT:-3001}/guest/join
+      CORS_ORIGIN: http://localhost:${FRONTEND_PORT:-3001},http://localhost:${APP_PORT:-3000},http://localhost:5173
+      WS_CORS_ORIGIN: http://localhost:${FRONTEND_PORT:-3001},http://localhost:${APP_PORT:-3000},http://localhost:5173
       IVSS_BRIDGE_BASE_URL: ${IVSS_BRIDGE_BASE_URL:-}
     volumes:
       - backend-storage:/app/storage
@@ -36,8 +63,6 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      minio:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
@@ -65,7 +90,9 @@ services:
 
   # ─── MinIO (S3-compatible) ───────────────────────────────────────────────
   minio:
-    image: minio/minio:latest
+    profiles:
+      - s3
+    image: quay.io/minio/minio:RELEASE.2024-03-30T09-41-56Z
     container_name: capstone-minio
     ports:
       - "9000:9000"   # API

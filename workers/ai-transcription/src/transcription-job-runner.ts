@@ -107,7 +107,11 @@ export function cleanupStaleTempDirs(now = Date.now()): string[] {
 }
 
 async function probeContainerDurationSeconds(filePath: string): Promise<number> {
-  const ffprobeBin = process.env['AI_WORKER_FFPROBE_BIN'] || 'ffprobe';
+  const ffprobeBin = resolveBinary(
+    process.env['AI_WORKER_FFPROBE_BIN'] ||
+      process.env['FFPROBE_PATH'] ||
+      'ffprobe',
+  );
   const { stdout } = await execFileAsync(ffprobeBin, [
     '-v',
     'error',
@@ -142,7 +146,9 @@ async function getAudioDurationSeconds(filePath: string): Promise<number> {
     return seconds;
   }
 
-  const ffmpegBin = process.env['AI_WORKER_FFMPEG_BIN'] || 'ffmpeg';
+  const ffmpegBin = resolveBinary(
+    process.env['AI_WORKER_FFMPEG_BIN'] || process.env['FFMPEG_PATH'] || 'ffmpeg',
+  );
   const remuxedPath = `${filePath}.duration-fix.webm`;
   try {
     await execFileAsync(ffmpegBin, [
@@ -172,6 +178,42 @@ async function getAudioDurationSeconds(filePath: string): Promise<number> {
   }
 
   throw new Error('AUDIO_DURATION_PROBE_FAILED');
+}
+
+function resolveBinary(command: string): string {
+  if (path.isAbsolute(command) || command.includes(path.sep)) {
+    return command;
+  }
+
+  const candidates = [
+    path.join('/usr/bin', command),
+    path.join('/usr/local/bin', command),
+    path.join('/opt/homebrew/bin', command),
+  ];
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) return candidate;
+    } catch {
+      // Ignore fs errors and fall back to PATH lookup below.
+    }
+  }
+
+  return command;
+}
+
+function resolvePythonBinary(): string {
+  if (process.env['AI_WORKER_PYTHON_BIN']) {
+    return process.env['AI_WORKER_PYTHON_BIN'];
+  }
+
+  const localVenvPython = path.join(__dirname, '..', '.venv', 'bin', 'python');
+  try {
+    if (fs.existsSync(localVenvPython)) return localVenvPython;
+  } catch {
+    // Fall back to PATH lookup below.
+  }
+
+  return 'python';
 }
 
 function validateResultShape(
@@ -306,7 +348,17 @@ export async function runTranscriptionJob(
     );
 
     const pythonDir = path.join(__dirname, '..', 'python');
-    const pythonBin = process.env['AI_WORKER_PYTHON_BIN'] || 'python';
+    const pythonBin = resolvePythonBinary();
+    const ffprobeBin = resolveBinary(
+      process.env['AI_WORKER_FFPROBE_BIN'] ||
+        process.env['FFPROBE_PATH'] ||
+        'ffprobe',
+    );
+    const ffmpegBin = resolveBinary(
+      process.env['AI_WORKER_FFMPEG_BIN'] ||
+        process.env['FFMPEG_PATH'] ||
+        'ffmpeg',
+    );
     const pythonArgs = [
       path.join(pythonDir, 'transcribe_pipeline.py'),
       '--input',
@@ -336,6 +388,11 @@ export async function runTranscriptionJob(
     }
     await execFileAsync(pythonBin, pythonArgs, {
       maxBuffer: 1024 * 1024 * 20,
+      env: {
+        ...process.env,
+        AI_WORKER_FFPROBE_BIN: ffprobeBin,
+        AI_WORKER_FFMPEG_BIN: ffmpegBin,
+      },
     });
 
     if (!fs.existsSync(resultPath)) {

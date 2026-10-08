@@ -38,7 +38,9 @@ from overlap_detector import (
 from schemas import SchemaValidationError, new_segment, validate_result
 from whisper_runner import transcribe
 
-LOW_CONFIDENCE_THRESHOLD = 0.5
+LOW_CONFIDENCE_THRESHOLD = float(
+    os.environ.get("MIN_RELIABLE_TRANSCRIPT_CONFIDENCE", "0.75")
+)
 # Số lần lặp liên tiếp y hệt nhau tối thiểu để coi là hallucination loop (không
 # phải người nói thật sự lặp "vâng vâng vâng" 5-6 lần liền — ngưỡng cao hơn mức
 # lặp tự nhiên trong hội thoại).
@@ -175,8 +177,17 @@ def run_channel_zone_pipeline(
     overall_confidence = (
         sum(all_confidences) / len(all_confidences) if all_confidences else 0.0
     )
+    if overall_confidence < LOW_CONFIDENCE_THRESHOLD:
+        for segment in all_segments:
+            segment["lowConfidence"] = True
+            segment["manualReviewRequired"] = True
+            segment["notes"] = list(segment.get("notes", [])) + [
+                "transcript_below_reliable_threshold"
+            ]
     if overall_confidence < LOW_CONFIDENCE_THRESHOLD or collapsed_runs:
         warnings.append("low_confidence_transcript")
+    if not all_segments:
+        warnings.append("no_reliable_speech_detected")
 
     if overlap_detection_enabled:
         overlap_windows = detect_overlaps_from_segments(all_segments)
@@ -258,8 +269,17 @@ def run_pipeline(
         log_event("hallucination_loop_collapsed", runs=collapsed_runs)
 
     warnings: List[str] = []
+    if whisper_result["confidenceScore"] < LOW_CONFIDENCE_THRESHOLD:
+        for segment in segments:
+            segment["lowConfidence"] = True
+            segment["manualReviewRequired"] = True
+            segment["notes"] = list(segment.get("notes", [])) + [
+                "transcript_below_reliable_threshold"
+            ]
     if whisper_result["confidenceScore"] < LOW_CONFIDENCE_THRESHOLD or collapsed_runs:
         warnings.append("low_confidence_transcript")
+    if not segments:
+        warnings.append("no_reliable_speech_detected")
 
     detected_speakers: List[Dict[str, Any]] = []
     pyannote_version: Optional[str] = None

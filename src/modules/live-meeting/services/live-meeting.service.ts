@@ -151,6 +151,10 @@ export class LiveMeetingService {
   private readonly DEFAULT_WARNING_MINUTES = 10;
   private readonly SCHEDULER_JOB_NAME = 'meeting-time-warning';
 
+  private buildWarningJobId(meetingId: string): string {
+    return `${this.SCHEDULER_JOB_NAME}-${meetingId}`;
+  }
+
   /**
    * ───────────────────────────────────────────────────────────
    *  Public API — Manual Start (Normal Flow)
@@ -2279,6 +2283,7 @@ export class LiveMeetingService {
       const r = await this.recordingSessionService.stopAllActiveForMeeting(
         meetingId,
         null,
+        'meeting_ended',
       );
       if (r.scanned > 0) {
         this.logger.log(
@@ -4653,7 +4658,7 @@ export class LiveMeetingService {
 
       // 6. Enqueue BullMQ job
       const delayMs = warningScheduledAt.getTime() - now.getTime();
-      const jobId = 'meeting-time-warning:' + meetingId;
+      const jobId = this.buildWarningJobId(meetingId);
       let enqueuedJobId: string | undefined;
       try {
         enqueuedJobId = await this.queueService.addJob(
@@ -4858,7 +4863,7 @@ export class LiveMeetingService {
       try {
         const queue = this.queueService.getQueue(this.schedulerQueueName);
         if (queue) {
-          const oldJobId = 'meeting-time-warning:' + meetingId;
+          const oldJobId = this.buildWarningJobId(meetingId);
           const oldJob = await queue.getJob(oldJobId);
           if (oldJob) {
             await oldJob.remove();
@@ -4919,7 +4924,7 @@ export class LiveMeetingService {
   async cancelWarningJob(meetingId: string): Promise<void> {
     try {
       // 1. Cancel BullMQ job
-      const jobId = 'meeting-time-warning:' + meetingId;
+      const jobId = this.buildWarningJobId(meetingId);
       try {
         const queue = this.queueService.getQueue(this.schedulerQueueName);
         if (queue) {
