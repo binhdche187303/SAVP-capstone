@@ -2,6 +2,7 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
+  Index,
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
@@ -9,6 +10,9 @@ import { RoleEntity } from './role.entity.js';
 import { PermissionEntity } from './permission.entity.js';
 import { UserEntity } from './user.entity.js';
 
+@Index('UQ_role_permissions_role_permission', ['roleId', 'permissionId'], {
+  unique: true,
+})
 @Entity('role_permissions')
 export class RolePermissionEntity {
   @PrimaryGeneratedColumn('uuid')

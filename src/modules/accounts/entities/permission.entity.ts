@@ -3,9 +3,11 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  Index,
   UpdateDateColumn,
 } from 'typeorm';
 
+@Index('UQ_permissions_permission_code', ['permissionCode'], { unique: true })
 @Entity('permissions')
 export class PermissionEntity {
   @PrimaryGeneratedColumn('uuid')
