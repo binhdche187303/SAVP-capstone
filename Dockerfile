@@ -76,6 +76,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=5 \
    || exit 1
 
 # Tự chạy migration còn thiếu trước khi start (tránh quên chạy tay khi deploy).
-# Migration đã chạy thì TypeORM bỏ qua. Migration lỗi → container KHÔNG start (fail sớm, dễ thấy).
+# Với DB demo mới tinh có thể bật DB_SCHEMA_SYNC_BEFORE_MIGRATIONS=true để TypeORM
+# tạo base schema từ entity trước, sau đó các migration seed/index chạy tiếp.
 # `exec` để node thay thế sh → tini chuyển SIGTERM thẳng tới node.
-CMD ["sh", "-c", "npx typeorm migration:run -d dist/database/data-source.js && exec node dist/main.js"]
+CMD ["sh", "-c", "if [ \"$DB_SCHEMA_SYNC_BEFORE_MIGRATIONS\" = \"true\" ]; then npx typeorm schema:sync -d dist/database/data-source.js; fi; if [ \"$DB_MIGRATIONS_RUN\" = \"true\" ]; then npx typeorm migration:run -d dist/database/data-source.js; fi; exec node dist/main.js"]
