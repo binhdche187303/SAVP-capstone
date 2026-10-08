@@ -23,6 +23,16 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
 def _resolve_model_ref(model_size_or_path: str) -> str:
     """Nếu có WHISPER_MODEL_PATH (volume model đã preload) và tồn tại, dùng path
     đó. Ngược lại fallback dùng model_size_or_path (tên model, faster-whisper sẽ
@@ -71,47 +81,83 @@ def transcribe(
     # chỉnh mà không sửa code.
     vad_min_silence_ms = _env_int("WHISPER_VAD_MIN_SILENCE_MS", 2000)
     vad_parameters = VadOptions(min_silence_duration_ms=vad_min_silence_ms)
-
-    segments_iter, info = model.transcribe(
-        audio_path,
-        language=whisper_language,
-        task="transcribe",
-        beam_size=5,
-        vad_filter=True,
-        vad_parameters=vad_parameters,
-        temperature=0.0,
-        initial_prompt=initial_prompt,
-        # condition_on_previous_text=True (default) làm model thiên về lặp lại
-        # output trước đó -> hallucination loop kiểu "Được rồi." lặp hàng chục
-        # lần trên đoạn nhiễu/im lặng. Tắt đi + thêm repetition_penalty/
-        # no_repeat_ngram_size để chặn lặp cụm từ.
-        condition_on_previous_text=False,
-        repetition_penalty=1.3,
-        no_repeat_ngram_size=3,
+    no_speech_threshold = _env_float("WHISPER_NO_SPEECH_PROB_THRESHOLD", 0.5)
+    no_speech_rescue_min_confidence = _env_float(
+        "WHISPER_NO_SPEECH_RESCUE_MIN_CONFIDENCE", 0.35
+    )
+    no_speech_rescue_max_probability = _env_float(
+        "WHISPER_NO_SPEECH_RESCUE_MAX_PROBABILITY", 0.85
     )
 
-    segments: List[Dict[str, Any]] = []
-    text_parts: List[str] = []
-    confidences: List[float] = []
+    def run_pass(vad_filter: bool) -> tuple[Any, List[Dict[str, Any]], List[str], List[float]]:
+        kwargs: Dict[str, Any] = {}
+        if vad_filter:
+            kwargs["vad_parameters"] = vad_parameters
+        segments_iter, pass_info = model.transcribe(
+            audio_path,
+            language=whisper_language,
+            task="transcribe",
+            beam_size=5,
+            vad_filter=vad_filter,
+            temperature=0.0,
+            initial_prompt=initial_prompt,
+            # condition_on_previous_text=True (default) làm model thiên về lặp lại
+            # output trước đó -> hallucination loop kiểu "Được rồi." lặp hàng chục
+            # lần trên đoạn nhiễu/im lặng. Tắt đi + thêm repetition_penalty/
+            # no_repeat_ngram_size để chặn lặp cụm từ.
+            condition_on_previous_text=False,
+            repetition_penalty=1.3,
+            no_repeat_ngram_size=3,
+            **kwargs,
+        )
+        pass_segments: List[Dict[str, Any]] = []
+        pass_text_parts: List[str] = []
+        pass_confidences: List[float] = []
+        rejected_no_speech_segments: List[Dict[str, Any]] = []
+        rejected_no_speech_text_parts: List[str] = []
+        rejected_no_speech_confidences: List[float] = []
 
-    for idx, seg in enumerate(segments_iter):
-        text = seg.text.strip()
-        if not text:
-            continue
-        confidence = None
-        if seg.avg_logprob is not None:
-            confidence = max(0.0, min(1.0, math.exp(seg.avg_logprob)))
-            confidences.append(confidence)
-        text_parts.append(text)
-        segments.append(
-            {
+        for idx, seg in enumerate(segments_iter):
+            text = seg.text.strip()
+            if not text:
+                continue
+            no_speech_prob = getattr(seg, "no_speech_prob", None)
+            confidence = None
+            if seg.avg_logprob is not None:
+                confidence = max(0.0, min(1.0, math.exp(seg.avg_logprob)))
+            candidate = {
                 "index": idx,
                 "startMs": int(round(seg.start * 1000)),
                 "endMs": int(round(seg.end * 1000)),
                 "text": text,
                 "confidence": confidence,
             }
-        )
+            if no_speech_prob is not None and no_speech_prob >= no_speech_threshold:
+                if (
+                    confidence is not None
+                    and confidence >= no_speech_rescue_min_confidence
+                    and no_speech_prob <= no_speech_rescue_max_probability
+                ):
+                    rejected_no_speech_segments.append(candidate)
+                    rejected_no_speech_text_parts.append(text)
+                    rejected_no_speech_confidences.append(confidence)
+                continue
+            if confidence is not None:
+                pass_confidences.append(confidence)
+            pass_text_parts.append(text)
+            pass_segments.append(candidate)
+        if not pass_segments and rejected_no_speech_segments:
+            return (
+                pass_info,
+                rejected_no_speech_segments,
+                rejected_no_speech_text_parts,
+                rejected_no_speech_confidences,
+            )
+        return pass_info, pass_segments, pass_text_parts, pass_confidences
+
+    info, segments, text_parts, confidences = run_pass(vad_filter=True)
+    if not segments and os.environ.get("WHISPER_FALLBACK_NO_VAD", "true") == "true":
+        info, segments, text_parts, confidences = run_pass(vad_filter=False)
 
     overall_confidence = sum(confidences) / len(confidences) if confidences else 0.0
     detected_language = language or getattr(info, "language", None) or "vi-VN"

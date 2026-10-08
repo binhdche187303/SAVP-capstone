@@ -8,6 +8,10 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
+RUN npm config set fetch-retries 5 \
+  && npm config set fetch-retry-mintimeout 20000 \
+  && npm config set fetch-retry-maxtimeout 120000
+
 # Cài deps hệ thống cho native modules (bcrypt, etc.)
 RUN apk add --no-cache python3 make g++
 
@@ -30,23 +34,33 @@ RUN npm run build || (echo "Build failed" && exit 1)
 FROM node:20-alpine AS runner
 WORKDIR /app
 
+RUN npm config set fetch-retries 5 \
+  && npm config set fetch-retry-mintimeout 20000 \
+  && npm config set fetch-retry-maxtimeout 120000
+
 # ffmpeg/ffprobe cho recording (REC-002/005) + curl cho healthcheck
 RUN apk add --no-cache ffmpeg curl tini
 
-# Chỉ cài production deps cho backend
+# Tận dụng deps đã tải ở builder rồi prune về production để tránh tải npm lần 2.
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+COPY --from=builder /app/node_modules ./node_modules
+RUN npm prune --omit=dev && npm cache clean --force
 
 # Copy dist đã build từ builder
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/workers ./workers
+COPY --from=builder /app/workers/ai-transcription/package.json ./workers/ai-transcription/package.json
+COPY --from=builder /app/workers/ai-transcription/package-lock.json ./workers/ai-transcription/package-lock.json
+COPY --from=builder /app/workers/ai-transcription/node_modules ./workers/ai-transcription/node_modules
+COPY --from=builder /app/workers/ai-transcription/dist ./workers/ai-transcription/dist
+RUN npm prune --omit=dev --prefix workers/ai-transcription && npm cache clean --force
 # Assets (fonts cho PDF export)
 COPY --from=builder /app/src/assets ./dist/assets
 # Nếu assets nằm ngoài dist, đảm bảo copy đúng vị trí
 COPY src/assets ./src/assets
 
-# Tạo thư mục runtime (storage, uploads) — mount volume sẽ ghi đè
-RUN mkdir -p /app/storage/recordings /app/uploads && chown -R node:node /app
+# Tạo thư mục runtime có quyền ghi; tránh chown toàn bộ node_modules gây phình image.
+RUN mkdir -p /app/storage/recordings /app/uploads \
+  && chown -R node:node /app/storage /app/uploads
 
 USER node
 EXPOSE 3000

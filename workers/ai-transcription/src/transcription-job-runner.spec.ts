@@ -66,6 +66,10 @@ describe('transcription-job-runner (T011)', () => {
     delete process.env['AI_PROFILE'];
     delete process.env['MAX_AUDIO_DURATION_LOCAL_SECONDS'];
     delete process.env['PYANNOTE_MODEL_PATH'];
+    delete process.env['AI_WORKER_FFPROBE_BIN'];
+    delete process.env['AI_WORKER_FFMPEG_BIN'];
+    delete process.env['FFPROBE_PATH'];
+    delete process.env['FFMPEG_PATH'];
     mockFs.mkdirSync.mockReturnValue(undefined as never);
     mockFs.rmSync.mockReturnValue(undefined);
     mockDownload.mockResolvedValue({ path: '/tmp/job-1/source-audio', sizeBytes: 1000 });
@@ -131,6 +135,41 @@ describe('transcription-job-runner (T011)', () => {
         'Vietcetera, podcast, marketing, design',
       ]),
     );
+  });
+
+  it('REGRESSION: truyền ffprobe/ffmpeg đã resolve tuyệt đối xuống python env', async () => {
+    process.env['FFPROBE_PATH'] = 'ffprobe';
+    process.env['FFMPEG_PATH'] = 'ffmpeg';
+    mockExecFileImpl((file) => {
+      if (file.includes('ffprobe')) return { stdout: '60\n', stderr: '' };
+      return { stdout: '', stderr: '' };
+    });
+    mockFs.existsSync.mockReturnValue(true);
+    mockFs.readFileSync.mockReturnValue(
+      JSON.stringify({
+        languageCode: 'vi-VN',
+        rawText: 'a',
+        cleanedText: 'a',
+        confidenceScore: 0.9,
+        segments: [],
+        detectedSpeakers: [],
+        modelVersions: { whisper: 'medium', pyannote: null, sepformer: null },
+        warnings: [],
+      }) as never,
+    );
+
+    await runTranscriptionJob(baseInput);
+
+    expect(mockExecFile.mock.calls[0][0]).toBe('/usr/bin/ffprobe');
+    const pythonCall = mockExecFile.mock.calls.find(
+      (call) => !String(call[0]).includes('ffprobe'),
+    );
+    expect(pythonCall?.[2]).toMatchObject({
+      env: expect.objectContaining({
+        AI_WORKER_FFPROBE_BIN: '/usr/bin/ffprobe',
+        AI_WORKER_FFMPEG_BIN: '/usr/bin/ffmpeg',
+      }),
+    });
   });
 
   it('không có initialPrompt → KHÔNG truyền --initial-prompt (python tự fallback env)', async () => {

@@ -15,7 +15,8 @@ import {
 } from '../../kpi-rollup/utils/sql-params.util.js';
 import type { ReadWindow } from '../../kpi-rollup/utils/kpi-window.types.js';
 
-const VEHICLE_EVENT_TYPE = 'ivss_vehicle_event';
+const IVSS_VEHICLE_EVENT_TYPE = 'ivss_vehicle_event';
+const CAMERA_VEHICLE_EVENT_TYPE = 'camera_vehicle_event';
 
 interface SummaryRow {
   total: number;
@@ -63,7 +64,8 @@ const RAW_COLS: SourceCols = {
  * VehicleTrafficStatsService (VTS-001 / UC-114) — thống kê lưu lượng phương tiện.
  *
  * Nguồn: `iot_device_events WHERE event_type='ivss_vehicle_event'` — ĐÚNG PRE-2 SRS trích
- * dẫn "UC-ANPR-05" (sự kiện biển số thô), KHÔNG PHẢI `gate_access_logs`.
+ * dẫn "UC-ANPR-05" (sự kiện biển số thô), cộng thêm `camera_vehicle_event` cho camera
+ * ảo/camera thật độc lập, KHÔNG PHẢI `gate_access_logs`.
  * KPI-001: giờ tròn đã rollup đọc `kpi_vehicle_hourly` / `kpi_vehicle_plate_hourly`, mép +
  * phần chưa rollup đọc raw; bucket series theo giờ VN (trước đây theo UTC của session DB).
  *
@@ -161,10 +163,18 @@ export class VehicleTrafficStatsService {
       parts.push(select(AGG_COLS, where));
     }
     const rawWhere =
-      `FROM iot_device_events WHERE event_type = '${VEHICLE_EVENT_TYPE}'` +
+      `FROM iot_device_events WHERE event_type = ${p.add(IVSS_VEHICLE_EVENT_TYPE)}` +
       ` AND ${rangeClause('event_time', window.raw, p)}` +
       this.filterSql(query, p, RAW_COLS);
     parts.push(select(RAW_COLS, rawWhere));
+
+    const cameraRawWhere =
+      `FROM iot_device_events WHERE event_type = ${p.add(CAMERA_VEHICLE_EVENT_TYPE)}` +
+      ` AND event_time >= ${p.add(query.from)}` +
+      ` AND event_time <= ${p.add(query.to)}` +
+      this.filterSql(query, p, RAW_COLS);
+    parts.push(select(RAW_COLS, cameraRawWhere));
+
     return this.dataSource.manager.query(
       wrap(parts.join('\n UNION ALL \n')),
       p.values,

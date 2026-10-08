@@ -164,7 +164,7 @@ export class TranscriptionWorkerProcessor extends WorkerHost {
         await this.backgroundJobsService.markFailed(backgroundJobId, errMsg);
         if (isNonRetryableError(errMsg)) return;
       } else {
-        await this.backgroundJobsService.markFailed(backgroundJobId, errMsg);
+        await this.backgroundJobsService.markRetrying(backgroundJobId);
       }
 
       throw error;

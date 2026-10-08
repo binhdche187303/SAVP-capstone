@@ -1,4 +1,9 @@
 faster-whisper>=1.0.0
+# Pin transitive deps used by faster-whisper runtime. Newer PyAV dropped the
+# `metadata_errors` kwarg expected by faster-whisper 1.2.x; HF Hub 1.x also
+# regressed model download/open behavior on this stack.
+av<19
+huggingface-hub<1.0
 psutil>=5.9.0
 pytest>=8.0.0
 

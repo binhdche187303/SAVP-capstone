@@ -14,7 +14,7 @@ export class AddContentFormatColumnToMeetingMinutes20260819000003
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `ALTER TABLE "meeting_minutes" ADD COLUMN "content_format" varchar(20) NOT NULL DEFAULT 'template'`,
+      `ALTER TABLE "meeting_minutes" ADD COLUMN IF NOT EXISTS "content_format" varchar(20) NOT NULL DEFAULT 'template'`,
     );
   }
 

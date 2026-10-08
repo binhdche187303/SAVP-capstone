@@ -4148,9 +4148,31 @@ export class MeetingsService {
       .andWhere('m.deleted_at IS NULL')
       .orderBy('m.start_time', 'ASC');
 
-    // Optional: status filter
+    // Optional: status filter. Treat overdue scheduled/in_progress meetings as completed for
+    // read screens so UI is not stuck while the status cron is catching up/restarting.
     if (status && status.length > 0) {
-      qb.andWhere('m.status IN (:...status)', { status });
+      const wantsCompleted = status.includes(MeetingStatus.COMPLETED);
+      const wantsInProgress = status.includes(MeetingStatus.IN_PROGRESS);
+      const wantsScheduled = status.includes(MeetingStatus.SCHEDULED);
+      if (wantsCompleted && !wantsInProgress) {
+        qb.andWhere(
+          `(m.status IN (:...status) OR (m.status IN (:...overdueStatuses) AND m.end_time < NOW()))`,
+          {
+            status,
+            overdueStatuses: [MeetingStatus.SCHEDULED, MeetingStatus.IN_PROGRESS],
+          },
+        );
+      } else if (wantsInProgress && !wantsCompleted) {
+        qb.andWhere('m.status IN (:...status) AND m.end_time >= NOW()', {
+          status,
+        });
+      } else if (wantsScheduled && !wantsCompleted) {
+        qb.andWhere('m.status IN (:...status) AND m.end_time >= NOW()', {
+          status,
+        });
+      } else {
+        qb.andWhere('m.status IN (:...status)', { status });
+      }
     }
 
     // Optional: role filter
@@ -4213,6 +4235,13 @@ export class MeetingsService {
       const recordingEnabled =
         row.recording_enabled === true || row.recording_enabled === 'true';
 
+      const effectiveStatus =
+        [MeetingStatus.SCHEDULED, MeetingStatus.IN_PROGRESS].includes(
+          row.m_status as MeetingStatus,
+        ) && isPast
+          ? MeetingStatus.COMPLETED
+          : row.m_status;
+
       return new ScheduleEventDto({
         meetingId: row.m_id,
         meetingCode: row.m_meeting_code,
@@ -4220,7 +4249,7 @@ export class MeetingsService {
         startTime,
         endTime,
         timezone: row.m_timezone ?? 'Asia/Ho_Chi_Minh',
-        status: row.m_status,
+        status: effectiveStatus,
         userRole: row.effective_user_role as 'organizer' | 'host' | 'attendee',
         room,
         // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
@@ -4231,7 +4260,7 @@ export class MeetingsService {
             })
           : null,
         recordingEnabled,
-        colorKey: row.m_status,
+        colorKey: effectiveStatus,
         isCurrent,
         isPast,
       });
@@ -4460,6 +4489,9 @@ export class MeetingsService {
     const { page, limit, from, to, q } = query;
     const status =
       query.status && query.status.length > 0 ? query.status : ['completed'];
+    const wantsCompleted = status.includes(MeetingStatus.COMPLETED);
+    const wantsInProgress = status.includes(MeetingStatus.IN_PROGRESS);
+    const wantsScheduled = status.includes(MeetingStatus.SCHEDULED);
 
     const qb = this.dataSource
       .getRepository(MeetingEntity)
@@ -4485,9 +4517,28 @@ export class MeetingsService {
         '(m.organizer_id = :userId OR m.host_id = :userId OR mp.id IS NOT NULL)',
         { userId },
       )
-      .andWhere('m.status IN (:...status)', { status })
       .andWhere('m.deleted_at IS NULL')
       .orderBy('m.start_time', 'DESC');
+
+    if (wantsCompleted && !wantsInProgress) {
+      qb.andWhere(
+        `(m.status IN (:...status) OR (m.status IN (:...overdueStatuses) AND m.end_time < NOW()))`,
+        {
+          status,
+          overdueStatuses: [MeetingStatus.SCHEDULED, MeetingStatus.IN_PROGRESS],
+        },
+      );
+    } else if (wantsInProgress && !wantsCompleted) {
+      qb.andWhere('m.status IN (:...status) AND m.end_time >= NOW()', {
+        status,
+      });
+    } else if (wantsScheduled && !wantsCompleted) {
+      qb.andWhere('m.status IN (:...status) AND m.end_time >= NOW()', {
+        status,
+      });
+    } else {
+      qb.andWhere('m.status IN (:...status)', { status });
+    }
 
     if (from) {
       qb.andWhere('m.start_time >= :from', { from: new Date(from) });
@@ -4541,12 +4592,20 @@ export class MeetingsService {
         (endTime.getTime() - startTime.getTime()) / 60000,
       );
 
+      const effectiveStatus =
+        [MeetingStatus.SCHEDULED, MeetingStatus.IN_PROGRESS].includes(
+          row.m_status as MeetingStatus,
+        ) &&
+        endTime.getTime() < Date.now()
+          ? MeetingStatus.COMPLETED
+          : row.m_status;
+
       return new MeetingHistoryItemDto({
         meetingId: row.m_id,
         title: row.m_title,
         startTime: startTime.toISOString(),
         endTime: endTime.toISOString(),
-        status: row.m_status,
+        status: effectiveStatus,
         room,
         organizerName: row.organizer_name ?? '',
         durationMinutes,

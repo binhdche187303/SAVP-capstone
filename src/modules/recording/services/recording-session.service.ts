@@ -58,6 +58,12 @@ export class RecordingSessionService {
     '.ogg',
     '.webm',
   ];
+  private static readonly SUPPORTED_VIDEO_EXTENSIONS = [
+    '.webm',
+    '.mp4',
+    '.mov',
+    '.mkv',
+  ];
 
   constructor(
     private readonly dataSource: DataSource,
@@ -113,17 +119,23 @@ export class RecordingSessionService {
       });
     }
     const device = deviceRows[0];
-    if (device.device_type !== 'ip_camera') {
+    if (!['ip_camera', 'room_camera'].includes(device.device_type)) {
       throw new BadRequestException({
         code: 'INVALID_VIDEO_SOURCE_DEVICE',
-        message: 'cameraDeviceId must reference an ip_camera.',
+        message: 'cameraDeviceId must reference an RTSP-capable room camera.',
       });
     }
 
     // 3. rtsp_config
+    const mockRecordingEnabled = this.configService.get<boolean>(
+      'MOCK_RECORDING_ENABLED',
+      false,
+    );
+    const isMockCamera =
+      mockRecordingEnabled && device.metadata_json?.['mock_camera'] === true;
     const metaCfg = device.metadata_json?.['rtsp_config'];
     const cfg = metaCfg ? (metaCfg as RtspConfig) : null;
-    if (!cfg || !cfg.rtsp_host || !cfg.rtsp_path) {
+    if (!isMockCamera && (!cfg || !cfg.rtsp_host || !cfg.rtsp_path)) {
       throw new BadRequestException({
         code: 'RTSP_NOT_CONFIGURED',
         message: 'Camera RTSP is not configured.',
@@ -189,6 +201,9 @@ export class RecordingSessionService {
           startedBy: userId,
           storageProvider: 'local',
           storagePath: outPath,
+          metadataJson: isMockCamera
+            ? { mock_camera: true, source: 'ffmpeg-testsrc' }
+            : null,
         });
         await manager.save(RecordingSessionEntity, session);
 
@@ -198,7 +213,7 @@ export class RecordingSessionService {
 
     // 6. Dựng URL (in-memory; KHÔNG log/lưu). Decrypt password nếu có. KHÔNG cần nằm trong
     // transaction (không đụng DB), giữ ngoài để lock giải phóng sớm nhất có thể.
-    const url = this.buildRtspUrl(cfg);
+    const url = isMockCamera ? 'mock://testsrc' : this.buildRtspUrl(cfg!);
 
     // 9. Spawn ffmpeg + probe no-data (REC-007): exit→failed; file>0→recording; hết cửa sổ & file 0→no_data.
     this.processManager.start(sessionId, url, outPath);
@@ -443,6 +458,7 @@ export class RecordingSessionService {
   async stopAllActiveForMeeting(
     meetingId: string,
     userId: string | null,
+    reason?: string,
   ): Promise<{ scanned: number; stopped: number; failed: number }> {
     const rows: Array<{ id: string }> = await this.dataSource.manager.query(
       `SELECT id FROM recording_sessions
@@ -455,6 +471,20 @@ export class RecordingSessionService {
     for (const row of rows) {
       try {
         await this.stopVideo(meetingId, row.id, userId);
+        if (reason) {
+          await this.dataSource.manager.query(
+            `UPDATE recording_sessions
+                SET metadata_json = COALESCE(metadata_json, '{}'::jsonb) || $1::jsonb
+              WHERE id = $2`,
+            [
+              JSON.stringify({
+                auto_stop_reason: reason,
+                auto_stopped_at: new Date().toISOString(),
+              }),
+              row.id,
+            ],
+          );
+        }
         stopped++;
       } catch (e: unknown) {
         failed++;
@@ -883,6 +913,16 @@ export class RecordingSessionService {
       status: string;
       startedAt: Date;
       stoppedAt: Date | null;
+      mediaFiles: Array<{
+        id: string;
+        fileName: string;
+        title: string;
+        mimeType: string;
+        fileType: string;
+        fileSizeBytes: string | null;
+        durationSeconds: number | null;
+        uploadedAt: Date | null;
+      }>;
     }>
   > {
     const meetingRows: Array<{ id: string }> =
@@ -906,11 +946,33 @@ export class RecordingSessionService {
       status: string;
       started_at: Date;
       stopped_at: Date | null;
+      media_files: unknown;
     }> = await this.dataSource.manager.query(
-      `SELECT id, session_type, source_type, status, started_at, stopped_at
-       FROM recording_sessions
-       WHERE meeting_id = $1
-       ORDER BY started_at DESC`,
+      `SELECT rs.id, rs.session_type, rs.source_type, rs.status, rs.started_at, rs.stopped_at,
+              COALESCE(
+                jsonb_agg(
+                  jsonb_build_object(
+                    'id', mf.id,
+                    'fileName', mf.file_name,
+                    'title', mf.file_name,
+                    'mimeType', mf.mime_type,
+                    'fileType', mf.file_type,
+                    'fileSizeBytes', mf.file_size_bytes,
+                    'durationSeconds', mf.duration_seconds,
+                    'uploadedAt', mf.uploaded_at
+                  )
+                  ORDER BY mf.uploaded_at DESC
+                ) FILTER (WHERE mf.id IS NOT NULL),
+                '[]'::jsonb
+              ) AS media_files
+       FROM recording_sessions rs
+       LEFT JOIN media_files mf
+         ON mf.recording_session_id = rs.id
+        AND mf.is_active = true
+        AND mf.deleted_at IS NULL
+       WHERE rs.meeting_id = $1
+       GROUP BY rs.id, rs.session_type, rs.source_type, rs.status, rs.started_at, rs.stopped_at
+       ORDER BY rs.started_at DESC`,
       [meetingId],
     );
 
@@ -921,7 +983,151 @@ export class RecordingSessionService {
       status: r.status,
       startedAt: r.started_at,
       stoppedAt: r.stopped_at,
+      mediaFiles: Array.isArray(r.media_files) ? r.media_files : [],
     }));
+  }
+
+  /**
+   * Upload video đã ghi bằng MediaRecorder trên trình duyệt (mock webcam).
+   * Dữ liệu vẫn đi qua recording_sessions + media_files để xem lại giống camera thật.
+   */
+  async uploadVideoFromBrowser(
+    meetingId: string,
+    file: {
+      buffer: Buffer;
+      originalname: string;
+      mimetype: string;
+      size: number;
+    },
+    userId: string | null,
+  ): Promise<{
+    recordingSessionId: string;
+    mediaFileId: string;
+    storageKey: string;
+    durationSeconds: number | null;
+  }> {
+    const meetingRows: Array<{ id: string }> =
+      await this.dataSource.manager.query(
+        'SELECT id FROM meetings WHERE id = $1',
+        [meetingId],
+      );
+    if (!meetingRows || meetingRows.length === 0) {
+      throw new NotFoundException({
+        code: 'MEETING_NOT_FOUND',
+        message: 'Meeting not found.',
+      });
+    }
+
+    if (userId) {
+      await this.assertHostOrAdmin(meetingId, userId, 'upload ghi hình');
+    }
+
+    if (!file || !file.buffer || file.buffer.length === 0) {
+      throw new BadRequestException({
+        code: 'EMPTY_VIDEO_FILE',
+        message: 'File video rỗng hoặc không hợp lệ.',
+      });
+    }
+    const ext = path.extname(file.originalname).toLowerCase() || '.webm';
+    if (!RecordingSessionService.SUPPORTED_VIDEO_EXTENSIONS.includes(ext)) {
+      throw new BadRequestException({
+        code: 'UNSUPPORTED_MEDIA_FORMAT',
+        message: `Định dạng "${ext}" không được hỗ trợ. Chấp nhận: ${RecordingSessionService.SUPPORTED_VIDEO_EXTENSIONS.join(', ')}`,
+      });
+    }
+
+    const videoBuffer = await this.remuxWebmBufferIfNeeded(file.buffer, ext);
+    const checksum = createHash('sha256').update(videoBuffer).digest('hex');
+    const durationSeconds = await this.probeUploadedVideoDuration(
+      videoBuffer,
+      ext,
+    );
+
+    const safeOriginalName =
+      file.originalname && path.extname(file.originalname)
+        ? file.originalname
+        : `webcam-recording-${Date.now()}${ext}`;
+    const saved = await this.storageService.saveFile({
+      buffer: videoBuffer,
+      originalName: safeOriginalName,
+      folder: `recordings/${meetingId}`,
+    });
+    const driver = this.storageService.getDriver();
+    const bucket = this.storageService.getBucketName();
+
+    const sessionId = randomUUID();
+    const now = new Date();
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    let mediaFileId: string;
+    try {
+      const session = queryRunner.manager.create(RecordingSessionEntity, {
+        id: sessionId,
+        meetingId,
+        sessionType: RecordingSessionType.VIDEO,
+        sourceType: RecordingSourceType.MANUAL_UPLOAD,
+        status: RecordingSessionStatus.STOPPED,
+        startedAt: now,
+        stoppedAt: now,
+        startedBy: userId,
+        stoppedBy: userId,
+        storageProvider: driver,
+        storagePath: saved.storageKey,
+        fileSizeBytes: String(videoBuffer.length),
+        durationSeconds,
+        checksum,
+        metadataJson: { source: 'browser_webcam' },
+      });
+      await queryRunner.manager.save(RecordingSessionEntity, session);
+
+      const insert = (await queryRunner.query(
+        `INSERT INTO media_files
+           (file_name, file_type, mime_type, storage_provider, storage_bucket, storage_key,
+            recording_session_id, meeting_id, uploaded_by,
+            file_size_bytes, checksum, duration_seconds, metadata_json, is_active)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,true)
+         RETURNING id`,
+        [
+          safeOriginalName,
+          'video',
+          file.mimetype || (ext === '.webm' ? 'video/webm' : 'video/mp4'),
+          driver,
+          bucket,
+          saved.storageKey,
+          sessionId,
+          meetingId,
+          userId,
+          String(videoBuffer.length),
+          checksum,
+          durationSeconds,
+          JSON.stringify({ source: 'browser_webcam' }),
+        ],
+      )) as Array<{ id: string }>;
+      mediaFileId = insert[0].id;
+
+      await queryRunner.commitTransaction();
+    } catch (e) {
+      await queryRunner.rollbackTransaction();
+      this.logger.error(
+        `uploadVideoFromBrowser failed for meeting ${meetingId}: ${
+          e instanceof Error ? e.message : 'unknown'
+        }`,
+      );
+      throw new InternalServerErrorException({
+        code: 'VIDEO_UPLOAD_FAILED',
+        message: 'Failed to save uploaded video.',
+      });
+    } finally {
+      await queryRunner.release();
+    }
+
+    return {
+      recordingSessionId: sessionId,
+      mediaFileId,
+      storageKey: saved.storageKey,
+      durationSeconds,
+    };
   }
 
   /**
@@ -1306,6 +1512,27 @@ export class RecordingSessionService {
     try {
       fs.writeFileSync(tmpPath, buffer);
       return await probeAudioDuration(tmpPath);
+    } catch {
+      return null;
+    } finally {
+      try {
+        fs.unlinkSync(tmpPath);
+      } catch {
+        // best-effort cleanup
+      }
+    }
+  }
+
+  /** Ghi buffer video ra temp file để ffprobe đo duration (best-effort), rồi xoá. */
+  private async probeUploadedVideoDuration(
+    buffer: Buffer,
+    ext: string,
+  ): Promise<number | null> {
+    const tmpPath = path.join(os.tmpdir(), `video-probe-${randomUUID()}${ext}`);
+    try {
+      fs.writeFileSync(tmpPath, buffer);
+      const probe = await probeMedia(tmpPath);
+      return probe?.durationSeconds ?? null;
     } catch {
       return null;
     } finally {

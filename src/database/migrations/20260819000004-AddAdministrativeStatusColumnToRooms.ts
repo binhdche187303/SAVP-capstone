@@ -17,7 +17,7 @@ export class AddAdministrativeStatusColumnToRooms20260819000004
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `ALTER TABLE "rooms" ADD COLUMN "administrative_status" varchar(20) NOT NULL DEFAULT 'available'`,
+      `ALTER TABLE "rooms" ADD COLUMN IF NOT EXISTS "administrative_status" varchar(20) NOT NULL DEFAULT 'available'`,
     );
   }
 

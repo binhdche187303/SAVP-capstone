@@ -157,8 +157,8 @@ export class SeedDemoRecordingTranscriptMinutes20260720000010 implements Migrati
     // meeting_minutes: MTG-001 (published + link transcript), MTG-002 (published),
     // MTG-007 (draft + ai_summary_json demo).
     await queryRunner.query(
-      `INSERT INTO meeting_minutes (meeting_id, title, status, minutes_content, linked_transcript_id, issued_by, issued_at, prepared_by, approved_by, approved_at)
-       SELECT mt.id, 'Bien ban: ' || mt.title, 'published',
+      `INSERT INTO meeting_minutes (meeting_id, title, status, source, minutes_content, linked_transcript_id, issued_by, issued_at, prepared_by, approved_by, approved_at)
+       SELECT mt.id, 'Bien ban: ' || mt.title, 'published', 'manual',
               'Noi dung bien ban demo cho cuoc hop ' || mt.title || '. Cac quyet dinh va action item duoc ghi nhan day du.',
               t.id, mt.organizer_id, mt.actual_end_time, mt.organizer_id, mt.organizer_id, mt.actual_end_time
        FROM meetings mt
@@ -167,8 +167,8 @@ export class SeedDemoRecordingTranscriptMinutes20260720000010 implements Migrati
          AND NOT EXISTS (SELECT 1 FROM meeting_minutes mm WHERE mm.meeting_id = mt.id);`,
     );
     await queryRunner.query(
-      `INSERT INTO meeting_minutes (meeting_id, title, status, minutes_content, issued_by, issued_at, prepared_by, approved_by, approved_at)
-       SELECT mt.id, 'Bien ban: ' || mt.title, 'published',
+      `INSERT INTO meeting_minutes (meeting_id, title, status, source, minutes_content, issued_by, issued_at, prepared_by, approved_by, approved_at)
+       SELECT mt.id, 'Bien ban: ' || mt.title, 'published', 'manual',
               'Noi dung bien ban demo cho cuoc hop ' || mt.title || '.',
               mt.organizer_id, mt.actual_end_time, mt.organizer_id, mt.organizer_id, mt.actual_end_time
        FROM meetings mt
@@ -176,8 +176,8 @@ export class SeedDemoRecordingTranscriptMinutes20260720000010 implements Migrati
          AND NOT EXISTS (SELECT 1 FROM meeting_minutes mm WHERE mm.meeting_id = mt.id);`,
     );
     await queryRunner.query(
-      `INSERT INTO meeting_minutes (meeting_id, title, status, minutes_content, linked_transcript_id, prepared_by, ai_summary_json)
-       SELECT mt.id, 'Bien ban (nhap AI): ' || mt.title, 'draft',
+      `INSERT INTO meeting_minutes (meeting_id, title, status, source, minutes_content, linked_transcript_id, prepared_by, ai_summary_json)
+       SELECT mt.id, 'Bien ban (nhap AI): ' || mt.title, 'draft', 'ai',
               'Ban nhap bien ban duoc AI tao tu transcript, can Host review truoc khi publish.',
               t.id, mt.organizer_id,
               '{"keyPoints": ["Tong quan kien truc he thong hien tai", "De xuat cai tien tu team"], "risks": [], "openQuestions": ["Can chot timeline PoC"], "uncertainParts": [], "meta": {"provider": "mock", "model": "demo-seed", "promptVersion": "v1", "note": "Du lieu demo, khong phai ket qua AI that"}}'::jsonb

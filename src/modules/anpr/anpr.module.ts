@@ -83,6 +83,10 @@ import {
   // VPT-IMPORT-001: export VehicleRegistrationService để AccountsModule tái dùng
   // register() cho cột license_plate (tùy chọn) trong import Excel nhân viên —
   // KHÔNG trùng lặp logic normalize/validate/conflict biển số.
-  exports: [TypeOrmModule, VehicleRegistrationService],
+  exports: [
+    TypeOrmModule,
+    VehicleRegistrationService,
+    VehicleControlAlertService,
+  ],
 })
 export class AnprModule {}

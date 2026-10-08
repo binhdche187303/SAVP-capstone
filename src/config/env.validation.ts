@@ -143,6 +143,10 @@ export const envValidationSchema = Joi.object({
     'http://localhost:3000/uploads',
   ),
   STORAGE_MAX_FILE_SIZE: Joi.number().integer().default(104857600),
+  RECORDING_VIDEO_UPLOAD_MAX_BYTES: Joi.number()
+    .integer()
+    .min(1)
+    .default(524288000),
   // S3/MinIO: chỉ bắt buộc khi STORAGE_DRIVER=s3
   STORAGE_S3_REGION: Joi.when('STORAGE_DRIVER', {
     is: 's3',

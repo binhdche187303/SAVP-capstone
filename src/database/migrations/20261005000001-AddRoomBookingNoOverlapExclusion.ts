@@ -37,12 +37,18 @@ export class AddRoomBookingNoOverlapExclusion20261005000001
 
     await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS btree_gist`);
     await queryRunner.query(`
-      ALTER TABLE "room_bookings"
-        ADD CONSTRAINT "ex_room_bookings_no_overlap"
-        EXCLUDE USING gist (
-          "room_id" WITH =,
-          tstzrange("reserved_start_time", "reserved_end_time", '[)') WITH &&
-        ) WHERE ("status" IN ('approved', 'active'))`);
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'ex_room_bookings_no_overlap'
+        ) THEN
+          ALTER TABLE "room_bookings"
+            ADD CONSTRAINT "ex_room_bookings_no_overlap"
+            EXCLUDE USING gist (
+              "room_id" WITH =,
+              tstzrange("reserved_start_time", "reserved_end_time", '[)') WITH &&
+            ) WHERE ("status" IN ('approved', 'active'));
+        END IF;
+      END $$;`);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {

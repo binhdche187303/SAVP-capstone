@@ -7,7 +7,11 @@
  * Dùng chung cho: autocomplete gợi ý người tham dự (GET /users), thêm thủ công
  * (addInternalParticipant) và import Excel (ParticipantImportService).
  */
-export const MEETING_INELIGIBLE_ROLE_CODES = ['BUSINESS_ADMIN', 'SYSTEM_ADMIN'];
+export const MEETING_INELIGIBLE_ROLE_CODES = [
+  'BUSINESS_ADMIN',
+  'SYSTEM_ADMIN',
+  'GUARD',
+];
 
 export function isMeetingIneligibleRole(roleCodes: string[]): boolean {
   return roleCodes.some((code) => MEETING_INELIGIBLE_ROLE_CODES.includes(code));
