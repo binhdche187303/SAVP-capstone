@@ -52,12 +52,17 @@ import { DeviceAlertModule } from './modules/device-alert/device-alert.module';
 import { SearchModule } from './modules/search/search.module';
 import { GuestAccessModule } from './modules/guest-access/guest-access.module';
 
+const mockRecordingEnabled =
+  String(process.env['MOCK_RECORDING_ENABLED'] ?? '').toLowerCase() === 'true';
+const shouldLoadDevModule =
+  process.env['NODE_ENV'] === 'development' || mockRecordingEnabled;
+
 /**
- * Dev-only module — chỉ load khi NODE_ENV=development.
- * Tránh import static để không bị tree-shake sai hoặc load ở production.
+ * Dev/demo module — load khi chạy development hoặc khi bật mock recording để demo.
+ * Tránh import static để không bị tree-shake sai ở production.
  */
 async function loadDevModule(): Promise<(new () => unknown)[]> {
-  if (process.env['NODE_ENV'] === 'development') {
+  if (shouldLoadDevModule) {
     const { DevModule } = await import('./modules/dev/dev.module.js');
     return [DevModule];
   }
@@ -66,7 +71,7 @@ async function loadDevModule(): Promise<(new () => unknown)[]> {
 
 // Resolve dev modules synchronously at module definition time
 const devModules =
-  process.env['NODE_ENV'] === 'development'
+  shouldLoadDevModule
     ? (() => {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { DevModule } = require('./modules/dev/dev.module');
