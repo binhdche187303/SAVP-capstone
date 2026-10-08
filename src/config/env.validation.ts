@@ -37,6 +37,7 @@ export const envValidationSchema = Joi.object({
   DB_SYNCHRONIZE: Joi.boolean().default(false),
   DB_LOGGING: Joi.boolean().default(false),
   DB_MIGRATIONS_RUN: Joi.boolean().default(false),
+  DB_SCHEMA_SYNC_BEFORE_MIGRATIONS: Joi.boolean().default(false),
 
   // ─── C. Redis ────────────────────────────────────────────────────────────────
   REDIS_HOST: Joi.string().required(),
@@ -230,6 +231,7 @@ export const envValidationSchema = Joi.object({
   // REC-002: ffmpeg + nơi lưu file recording.
   FFMPEG_PATH: Joi.string().default('ffmpeg'),
   RECORDING_STORAGE_PATH: Joi.string().default('./storage/recordings'),
+  MOCK_RECORDING_ENABLED: Joi.boolean().default(false),
   // REC-005: ffprobe trích metadata media (best-effort).
   FFPROBE_PATH: Joi.string().default('ffprobe'),
   // NSC-001 (#31): token nội bộ cho POST /internal/no-show-cases (fail-closed nếu rỗng).
