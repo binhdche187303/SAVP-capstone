@@ -23,3 +23,9 @@ export const VEHICLE_EXPORT_JOB_NAME = 'export:vehicle';
 
 /** Job name cho security alert export (UC-129, Bước 5 SAVP) */
 export const SECURITY_ALERT_EXPORT_JOB_NAME = 'export:security-alert';
+
+/** Job name cho Trung tâm báo cáo (RPT-CENTER-BE-001, Task 11) */
+export const REPORT_CENTER_EXPORT_JOB_NAME = 'export:report-center';
+
+/** Job name cho lần chạy lịch gửi báo cáo (RPT-CENTER-BE-001, Task 15) */
+export const REPORT_SCHEDULE_RUN_JOB_NAME = 'report-schedule:run';

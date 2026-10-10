@@ -177,6 +177,50 @@ describe('NotificationWorkerService', () => {
     );
   });
 
+  it('[T1c] RPT-CENTER: attachments[] → mọi tệp được tải và gửi, tên có dấu giữ nguyên', async () => {
+    mailService.sendMail.mockResolvedValue({ success: true, messageId: 'msg-003' });
+    notificationRepo.findOne.mockResolvedValue({ id: testData.notificationId, deliveryStatus: NotificationDeliveryStatus.QUEUED });
+    const job = makeMockJob({
+      data: {
+        ...testData,
+        attachments: [
+          { storageKey: 'exports/a.pdf', fileName: 'Báo cáo Ra vào.pdf', mimeType: 'application/pdf' },
+          { storageKey: 'exports/b.xlsx', fileName: 'Bảng dữ liệu.xlsx', mimeType: 'application/vnd.ms-excel' },
+          { storageKey: 'exports/c.docx', fileName: 'Văn bản.docx', mimeType: 'application/msword' },
+        ],
+      },
+      attemptsMade: 0,
+    });
+    await service.process(job);
+    const sent = (mailService.sendMail as jest.Mock).mock.calls[0][0].attachments;
+    expect(sent.map((a: { filename: string }) => a.filename)).toEqual(['Báo cáo Ra vào.pdf', 'Bảng dữ liệu.xlsx', 'Văn bản.docx']);
+    expect(storageService.downloadFile).toHaveBeenCalledTimes(3);
+  });
+
+  it('[T1d] RPT-CENTER: có cả attachment cũ và attachments[] → gộp, không trùng storageKey', async () => {
+    mailService.sendMail.mockResolvedValue({ success: true, messageId: 'msg-004' });
+    notificationRepo.findOne.mockResolvedValue({ id: testData.notificationId, deliveryStatus: NotificationDeliveryStatus.QUEUED });
+    const same = { storageKey: 'exports/x.pdf', fileName: 'x.pdf', mimeType: 'application/pdf' };
+    const job = makeMockJob({
+      data: { ...testData, attachment: same, attachments: [same, { storageKey: 'exports/y.pdf', fileName: 'y.pdf', mimeType: 'application/pdf' }] },
+      attemptsMade: 0,
+    });
+    await service.process(job);
+    const sent = (mailService.sendMail as jest.Mock).mock.calls[0][0].attachments;
+    expect(sent.map((a: { filename: string }) => a.filename)).toEqual(['x.pdf', 'y.pdf']);
+  });
+
+  it('[T1e] RPT-CENTER: một tệp tải lỗi → job ném để BullMQ thử lại, không gửi mail thiếu tệp', async () => {
+    notificationRepo.findOne.mockResolvedValue({ id: testData.notificationId, deliveryStatus: NotificationDeliveryStatus.QUEUED });
+    (storageService.downloadFile as jest.Mock).mockRejectedValueOnce(new Error('S3 timeout'));
+    const job = makeMockJob({
+      data: { ...testData, attachments: [{ storageKey: 'exports/a.pdf', fileName: 'a.pdf', mimeType: 'application/pdf' }] },
+      attemptsMade: 0,
+    });
+    await expect(service.process(job)).rejects.toThrow('S3 timeout');
+    expect(mailService.sendMail).not.toHaveBeenCalled();
+  });
+
   // ── T2: Email fails, retries remain ──
   it('[T2] should throw error and mark bg_job RETRYING when email fails with retries left', async () => {
     mailService.sendMail.mockResolvedValue({

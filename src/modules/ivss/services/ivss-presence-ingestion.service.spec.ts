@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-argument */
 import { Test, TestingModule } from '@nestjs/testing';
+import { VISITOR_FACE_EVENT_HOOK } from '../../../common/ports/visitor-face-event-hook.js';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { IvssPresenceIngestionService } from './ivss-presence-ingestion.service.js';
@@ -116,10 +117,11 @@ describe('IvssPresenceIngestionService (IPI-001 #38+#39)', () => {
   // IRP-001 (#40): build service với gate realtime ON/OFF (B1 — mirror configService.get bool).
   // B2 (Zone realtime): zoneRealtime — tham số MỚI, mặc định false, KHÔNG đổi chữ ký gọi
   // build(true)/build(false) đã có ở mọi test cũ (backward-compatible).
-  const build = async (realtime = false, zoneRealtime = false) => {
+  const build = async (realtime = false, zoneRealtime = false, visitorHook?: unknown) => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         IvssPresenceIngestionService,
+        ...(visitorHook ? [{ provide: VISITOR_FACE_EVENT_HOOK, useValue: visitorHook }] : []),
         { provide: DataSource, useValue: dsMock },
         { provide: WebsocketService, useValue: wsMock },
         { provide: ZonePresenceWriterService, useValue: writerMock },
@@ -1317,6 +1319,55 @@ describe('IvssPresenceIngestionService (IPI-001 #38+#39)', () => {
       const p = payloadOf();
       expect(p.matchState).toBe('unmatched_identity');
       expect(p.userId).toBeNull();
+    });
+  });
+
+  // ── VIS-BE-001: hook phân hệ Khách ──
+  describe('hook khách đến làm việc', () => {
+    const ZONE = '11111111-1111-4111-8111-111111111111';
+    const withHook = async (hook: unknown) => build(false, false, hook);
+
+    it('gọi hook với userId, khu vực camera, hướng, sourceEventId và deviceId', async () => {
+      const hook = { onIvssFaceEvent: jest.fn().mockResolvedValue(undefined) };
+      const svc = await withHook(hook);
+      wire({ presenceMap: { '5': ZONE }, directionMap: { '5': 'enter' } });
+      await svc.onFaceEvent(evt());
+      expect(hook.onIvssFaceEvent).toHaveBeenCalledTimes(1);
+      expect(hook.onIvssFaceEvent).toHaveBeenCalledWith(expect.objectContaining({
+        userId: 'u1', zoneId: ZONE, direction: 'enter', sourceEventId: 'evt1', deviceId: 'bridge1',
+      }));
+    });
+
+    it('không gọi hook khi không nhận ra người (similarity dưới ngưỡng → userId null)', async () => {
+      const hook = { onIvssFaceEvent: jest.fn() };
+      const svc = await withHook(hook);
+      presenceConfigMock.getValues.mockResolvedValue({ minSimilarityThreshold: 0.95 });
+      wire();
+      await svc.onFaceEvent(evt({ similarity: 0.9 }));
+      expect(hook.onIvssFaceEvent).not.toHaveBeenCalled();
+    });
+
+    it('không gọi hook khi sự kiện trùng (dedupe)', async () => {
+      const hook = { onIvssFaceEvent: jest.fn() };
+      const svc = await withHook(hook);
+      wire({ dedupeHit: 'old-event' });
+      await svc.onFaceEvent(evt());
+      expect(hook.onIvssFaceEvent).not.toHaveBeenCalled();
+    });
+
+    it('hook từ chối (reject) → sự kiện vẫn được lưu, onFaceEvent không ném', async () => {
+      const hook = { onIvssFaceEvent: jest.fn().mockRejectedValue(new Error('visitor boom')) };
+      const svc = await withHook(hook);
+      wire();
+      await expect(svc.onFaceEvent(evt())).resolves.toBeUndefined();
+      expect(insert()).toBeDefined();
+      await new Promise((r) => setImmediate(r)); // để .catch() của fire-and-forget chạy xong
+    });
+
+    it('không có hook (module Khách không nạp) → hành vi cũ không đổi', async () => {
+      wire();
+      await expect(service.onFaceEvent(evt())).resolves.toBeUndefined();
+      expect(insert()).toBeDefined();
     });
   });
 });

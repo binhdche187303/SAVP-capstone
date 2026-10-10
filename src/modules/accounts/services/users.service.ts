@@ -52,6 +52,7 @@ import {
   isPartnerAccount,
   resolvePartnerDepartmentId,
 } from '../../../common/utils/partner-account.util.js';
+import { VISITOR_DEPARTMENT_ID } from '../../visitors/constants/visit-status.constant.js';
 
 // UC-10 — READ-only cross-module entities (chỉ dùng để kiểm ràng buộc tham chiếu
 // và soft-delete quan hệ trong transaction xóa; KHÔNG gọi/sửa service module khác).
@@ -152,6 +153,25 @@ export class UsersService {
     private readonly cloudinaryService: CloudinaryService,
     private readonly authzReadRepository: AuthzReadRepository,
   ) {}
+
+  /**
+   * VIS-BE-001: tài khoản khách ẩn — không đăng nhập được (password_hash không phải bcrypt hợp lệ,
+   * email `.invalid` không nhận được thư), thuộc đơn vị VISITOR, không có role. Chỉ tồn tại để
+   * khách đi qua đường nhận diện (device_user_mappings, gate_access_logs… đều khóa theo user_id).
+   * Chạy trong manager của người gọi để cùng transaction với bảng `visitors`.
+   */
+  async createVisitorShadowUser(
+    manager: EntityManager,
+    input: { visitorId: string; fullName: string },
+  ): Promise<{ userId: string }> {
+    const short = input.visitorId.replace(/-/g, '').slice(0, 12);
+    const rows: Array<{ id: string }> = await manager.query(
+      `INSERT INTO users (employee_code, username, email, password_hash, full_name, department_id, account_status, employment_status)
+       VALUES ($1, $2, $3, '!', $4, $5, 'active', 'active') RETURNING id`,
+      [`VIS-${short}`, `visitor_${short}`, `${input.visitorId}@visitor.invalid`, input.fullName, VISITOR_DEPARTMENT_ID],
+    );
+    return { userId: rows[0].id };
+  }
 
   async createUser(
     dto: CreateUserDto,
@@ -2037,7 +2057,9 @@ export class UsersService {
       .getRepository(UserEntity)
       .createQueryBuilder('u')
       .where('u.deletedAt IS NULL')
-      .andWhere('u.accountStatus = :status', { status: AccountStatus.ACTIVE });
+      .andWhere('u.accountStatus = :status', { status: AccountStatus.ACTIVE })
+      // Tài khoản khách ẩn (VIS-BE-001) không phải nhân sự: không hiện trong danh sách/autocomplete.
+      .andWhere('(u.departmentId IS NULL OR u.departmentId <> :visitorDept)', { visitorDept: VISITOR_DEPARTMENT_ID });
 
     if (search) {
       qb.andWhere(
@@ -2158,7 +2180,9 @@ export class UsersService {
     const qb = this.dataSource
       .getRepository(UserEntity)
       .createQueryBuilder('u')
-      .where('u.deletedAt IS NULL');
+      .where('u.deletedAt IS NULL')
+      // Tài khoản khách ẩn (VIS-BE-001) không phải nhân sự.
+      .andWhere('(u.departmentId IS NULL OR u.departmentId <> :visitorDept)', { visitorDept: VISITOR_DEPARTMENT_ID });
 
     if (scopeIds) {
       qb.andWhere('u.departmentId IN (:...scopeIds)', { scopeIds });

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { ILike, IsNull, Repository } from 'typeorm';
+import { ILike, IsNull, Not, Or, Repository } from 'typeorm';
+import { VISITOR_DEPARTMENT_ID } from '../../visitors/constants/visit-status.constant.js';
 import { AuthzReadRepository } from '../../auth/repositories/authz-read.repository.js';
 import { ZoneEntity } from '../../zones/entities/zone.entity.js';
 import { IoTDeviceEntity } from '../../iot/entities/iot-device.entity.js';
@@ -136,11 +137,13 @@ export class SearchService {
 
   private async searchUsers(q: string): Promise<SearchResultItemDto[]> {
     const like = `%${q}%`;
+    const notVisitorDept = Or(IsNull(), Not(VISITOR_DEPARTMENT_ID));
     const rows = await this.userRepo.find({
+      // Loại tài khoản khách ẩn (VIS-BE-001).
       where: [
-        { fullName: ILike(like), deletedAt: IsNull() },
-        { email: ILike(like), deletedAt: IsNull() },
-        { employeeCode: ILike(like), deletedAt: IsNull() },
+        { fullName: ILike(like), deletedAt: IsNull(), departmentId: notVisitorDept },
+        { email: ILike(like), deletedAt: IsNull(), departmentId: notVisitorDept },
+        { employeeCode: ILike(like), deletedAt: IsNull(), departmentId: notVisitorDept },
       ],
       take: RESULTS_PER_TYPE,
     });

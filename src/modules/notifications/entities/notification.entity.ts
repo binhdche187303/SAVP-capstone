@@ -59,6 +59,16 @@ export enum NotificationType {
   // Canh bao an ninh moi (security_alerts, recordAlert isNew) -> bao nguoi co quyen
   // security_alert.read (SecurityAlertNotifierService).
   SECURITY_ALERT = 'security_alert',
+  // VIS-BE-001 (2.10 Khách đến làm việc): thông báo cho người được gặp + email cho khách.
+  VISITOR_PENDING_APPROVAL = 'visitor_pending_approval',
+  VISITOR_REGISTERED = 'visitor_registered',
+  VISITOR_ARRIVED = 'visitor_arrived',
+  VISITOR_LEFT = 'visitor_left',
+  VISITOR_OVERSTAY = 'visitor_overstay',
+  VISITOR_MUST_LEAVE = 'visitor_must_leave',
+  VISITOR_EMAIL = 'visitor_email',
+  // RPT-CENTER-BE-001: email báo cáo gửi định kỳ.
+  REPORT_SCHEDULE_DELIVERY = 'report_schedule_delivery',
 }
 
 export enum NotificationChannel {

@@ -52,6 +52,8 @@ export interface EnqueueEmailNotificationDto extends CreateNotificationDto {
     fileName: string;
     mimeType: string;
   };
+  /** Nhiều tệp đính kèm (báo cáo định kỳ). Có thể dùng cùng `attachment`. */
+  attachments?: { storageKey: string; fileName: string; mimeType: string }[];
 }
 
 /**
@@ -197,6 +199,7 @@ export class NotificationsService {
           emailHtml: dto.emailHtml,
           payloadJson: dto.payloadJson,
           attachment: dto.attachment,
+          attachments: dto.attachments,
         },
       );
     } catch (error) {
