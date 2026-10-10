@@ -281,6 +281,7 @@ export const envValidationSchema = Joi.object({
   // RPT-CENTER-BE-001 (2.13 Trung tâm báo cáo): bật route và cron lịch gửi (mặc định TẮT).
   REPORT_CENTER_ENABLED: Joi.boolean().default(false),
   SCHEDULER_REPORT_SCHEDULE_ENABLED: Joi.boolean().default(false),
+  SCHEDULER_DEVICE_MAINTENANCE_ENABLED: Joi.boolean().default(false),
   // KPI-001: đọc bảng tổng hợp ở API zone traffic / vehicle stats. false ⇒ quay về 100% raw.
   KPI_ROLLUP_READ_ENABLED: Joi.boolean().default(true),
   IVSS_SYNC_LEAD_MINUTES: Joi.number().integer().min(1).default(5),

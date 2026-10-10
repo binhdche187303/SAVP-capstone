@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { AlertsModule } from '../alerts/alerts.module.js';
 import { DEVICE_OFFLINE_ALERT_HOOK } from '../../common/ports/device-offline-alert-hook.js';
+import { DeviceMaintenanceAlertService } from './services/device-maintenance-alert.service.js';
 import { DeviceOfflineAlertService } from './services/device-offline-alert.service.js';
 
 /**
@@ -16,11 +17,12 @@ import { DeviceOfflineAlertService } from './services/device-offline-alert.servi
   imports: [AlertsModule],
   providers: [
     DeviceOfflineAlertService,
+    DeviceMaintenanceAlertService,
     {
       provide: DEVICE_OFFLINE_ALERT_HOOK,
       useExisting: DeviceOfflineAlertService,
     },
   ],
-  exports: [DEVICE_OFFLINE_ALERT_HOOK],
+  exports: [DEVICE_OFFLINE_ALERT_HOOK, DeviceMaintenanceAlertService],
 })
 export class DeviceAlertModule {}

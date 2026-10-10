@@ -40,6 +40,7 @@ const DEFAULT_SEVERITY_BY_TYPE: Record<string, AlertSeverity> = {
   stranger: 'medium',
   unknown_vehicle: 'medium',
   device_error: 'low',
+  device_maintenance: 'medium',
   // VIS-BE-001 (2.10 Khách đến làm việc)
   visitor_overstay: 'medium',
   visitor_must_leave: 'high',
