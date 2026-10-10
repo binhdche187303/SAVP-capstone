@@ -1,6 +1,8 @@
 import {
+  Body,
   Controller,
   Get,
+  Post,
   Query,
   UseGuards,
   UsePipes,
@@ -56,6 +58,29 @@ export class GateAccessLogController {
       message: 'Gate access logs retrieved successfully',
       data: items.map(toGateAccessLogResponse),
       meta,
+    };
+  }
+
+  @Post('admin/gate-access-logs/scan')
+  @UseGuards(JwtAuthGuard)
+  async scanFromGuardDashboard(
+    @CurrentUser() user: { userId: string },
+    @Body()
+    body: {
+      gateId?: string;
+      direction?: 'in' | 'out' | 'enter' | 'leave';
+      scenario?: 'authorized' | 'unknown' | 'plate_mismatch';
+      snapshotImageBase64?: string;
+    },
+  ) {
+    const data = await this.gateAccessLogService.scanFromGuardDashboard(
+      user.userId,
+      body,
+    );
+    return {
+      success: data.success,
+      message: data.message,
+      data,
     };
   }
 

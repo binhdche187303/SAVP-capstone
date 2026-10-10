@@ -7,6 +7,9 @@ import { StudentEntity } from './entities/student.entity.js';
 import { ClassSectionEntity } from './entities/class-section.entity.js';
 import { ClassEnrollmentEntity } from './entities/class-enrollment.entity.js';
 import { ClassSessionEntity } from './entities/class-session.entity.js';
+import { AuthModule } from '../auth/auth.module.js';
+import { ClassAttendanceController } from './controllers/class-attendance.controller.js';
+import { ClassAttendanceService } from './services/class-attendance.service.js';
 
 /**
  * AcademicModule (ACD-001) — SCHEMA-ONLY: chỉ đăng ký entity Học vụ (R13, R14).
@@ -15,6 +18,7 @@ import { ClassSessionEntity } from './entities/class-session.entity.js';
  */
 @Module({
   imports: [
+    AuthModule,
     TypeOrmModule.forFeature([
       SemesterEntity,
       SubjectEntity,
@@ -25,6 +29,8 @@ import { ClassSessionEntity } from './entities/class-session.entity.js';
       ClassSessionEntity,
     ]),
   ],
+  controllers: [ClassAttendanceController],
+  providers: [ClassAttendanceService],
   exports: [TypeOrmModule],
 })
 export class AcademicModule {}
