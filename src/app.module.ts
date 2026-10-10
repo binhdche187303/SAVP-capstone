@@ -51,6 +51,8 @@ import { CrowdAlertModule } from './modules/crowd-alert/crowd-alert.module';
 import { DeviceAlertModule } from './modules/device-alert/device-alert.module';
 import { SearchModule } from './modules/search/search.module';
 import { GuestAccessModule } from './modules/guest-access/guest-access.module';
+import { VisitorsModule } from './modules/visitors/visitors.module';
+import { VisitorHooksModule } from './modules/visitors/visitor-hooks.module';
 
 /**
  * Dev-only module — chỉ load khi NODE_ENV=development.
@@ -134,7 +136,10 @@ void loadDevModule; // suppress unused warning
     CrowdAlertModule, // Bước 4 SAVP (ACR-001/UC-121): cron cảnh báo tụ tập đông người
     DeviceAlertModule, // Camera online → offline → security_alerts device_error + thông báo SA/BA
     SearchModule, // SRCH-01: tìm kiếm tổng hợp đa nguồn (zone/device/vehicle/user/meeting)
-    GuestAccessModule, // GLA-001: khách ngoài công ty truy cập live-meeting qua magic link + OTP
+    GuestAccessModule,
+    // GLA-001: khách ngoài công ty truy cập live-meeting qua magic link + OTP
+    VisitorsModule, // VIS-BE-001 — gate bằng VISITORS_ENABLED (mặc định tắt)
+    VisitorHooksModule, // cầu nối ivss/face-access → phân hệ Khách (token VISITOR_FACE_EVENT_HOOK)
     // ─── Dev-only (conditionally loaded) ───────────────────────────────────────
     ...devModules,
   ],

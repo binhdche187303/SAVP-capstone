@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
+import { returnedRows } from '../../../common/utils/pg-result.util.js';
 import { ConfigService } from '@nestjs/config';
 import {
   FaceProfileEntity,
@@ -134,6 +135,83 @@ export class FaceProfileService {
       case 'local':
       default:
         return StorageProvider.LOCAL;
+    }
+  }
+
+  /**
+   * VIS-BE-001: đổi trạng thái hồ sơ khuôn mặt (kho thường trực IVSS tự nạp/gỡ theo `active`).
+   * Chỉ cho `active` | `revoked` | `disabled` — `pending_review`/`rejected` thuộc luồng duyệt ảnh của quản trị.
+   * Trả true nếu có đổi.
+   */
+  async setProfileStatus(
+    userId: string,
+    status: FaceProfileStatus.ACTIVE | FaceProfileStatus.REVOKED | FaceProfileStatus.DISABLED,
+    actorId: string | null,
+  ): Promise<boolean> {
+    if (![FaceProfileStatus.ACTIVE, FaceProfileStatus.REVOKED, FaceProfileStatus.DISABLED].includes(status)) {
+      throw new BadRequestException({ code: 'VALIDATION_ERROR', message: 'Trạng thái hồ sơ khuôn mặt không hợp lệ.' });
+    }
+    const rows = returnedRows<{ id: string }>(
+      await this.dataSource.manager.query(
+        `UPDATE face_profiles SET status = $2, last_updated_at = now()
+          WHERE user_id = $1 AND deleted_at IS NULL AND status <> $2 RETURNING id`,
+        [userId, status],
+      ),
+    );
+    if (rows.length > 0) this.logger.log(`Hồ sơ khuôn mặt user ${userId} → ${status} (actor ${actorId ?? 'system'})`);
+    return rows.length > 0;
+  }
+
+  /**
+   * VIS-BE-001 (BR-V19): xóa ảnh và hồ sơ khuôn mặt — hồ sơ xóa mềm, media vô hiệu hóa, file bị xóa khỏi kho lưu trữ.
+   * Chỉ dùng cho dữ liệu sinh trắc của khách hết hạn lưu giữ; lịch sử lượt khách ở nơi khác vẫn giữ.
+   */
+  async deletePortrait(userId: string, extraMediaIds: string[] = []): Promise<{ deleted: boolean }> {
+    const profile = await this.faceProfileRepo.findOne({ where: { userId } });
+    if (!profile && extraMediaIds.length === 0) return { deleted: false };
+    const media: Array<{ id: string; storage_key: string }> = await this.dataSource.manager.query(
+      `SELECT id, storage_key FROM media_files
+        WHERE (id = $2 OR id = ANY($3::uuid[]) OR (related_entity_type = 'face_profile' AND related_entity_id = $1)) AND is_active = true`,
+      [userId, profile?.primaryImageFileId ?? null, extraMediaIds],
+    );
+    for (const m of media) {
+      try {
+        await this.storageService.deleteFile(m.storage_key);
+      } catch (e) {
+        this.logger.warn(`Không xóa được file ${m.storage_key}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    if (media.length) {
+      await this.dataSource.manager.query(`UPDATE media_files SET is_active = false WHERE id = ANY($1::uuid[])`, [media.map((m) => m.id)]);
+    }
+    if (profile) await this.faceProfileRepo.softDelete(profile.id);
+    return { deleted: true };
+  }
+
+  /**
+   * VIS-BE-001: ảnh của một media_files bất kỳ (kể cả ảnh chưa duyệt) dạng data URL — để màn chi tiết lượt khách
+   * hiện ảnh đăng ký. Local đọc đĩa, cloud tải từ file_url. null nếu không đọc được (không ném).
+   */
+  async getMediaDataUrl(mediaFileId: string): Promise<string | null> {
+    const rows: Array<{ storage_key: string; storage_provider: string; file_url: string | null; mime_type: string }> =
+      await this.dataSource.manager.query(
+        `SELECT storage_key, storage_provider, file_url, mime_type FROM media_files WHERE id = $1 LIMIT 1`,
+        [mediaFileId],
+      );
+    const media = rows[0];
+    if (!media) return null;
+    try {
+      let buffer: Buffer | null = null;
+      if (media.storage_provider === 'local') {
+        buffer = this.storageService.getFile(media.storage_key);
+      } else if (media.file_url) {
+        const res = await fetch(media.file_url);
+        if (res.ok) buffer = Buffer.from(await res.arrayBuffer());
+      }
+      return buffer ? `data:${media.mime_type || 'image/jpeg'};base64,${buffer.toString('base64')}` : null;
+    } catch (e) {
+      this.logger.warn(`getMediaDataUrl ${mediaFileId} lỗi: ${e instanceof Error ? e.message : String(e)}`);
+      return null;
     }
   }
 

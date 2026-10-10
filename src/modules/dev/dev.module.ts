@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { DevController } from './dev.controller.js';
 import { MailModule } from '../mail/mail.module.js';
 import { AnprModule } from '../anpr/anpr.module.js';
+import { VisitorsModule } from '../visitors/visitors.module.js';
 import { FaceAccessModule } from '../face-access/face-access.module.js';
 
 /**
@@ -15,7 +16,7 @@ import { FaceAccessModule } from '../face-access/face-access.module.js';
  * KHÔNG expose bất kỳ secret/credential nào trong response.
  */
 @Module({
-  imports: [ConfigModule, MailModule, AnprModule, FaceAccessModule],
+  imports: [ConfigModule, MailModule, AnprModule, FaceAccessModule, VisitorsModule],
   controllers: [DevController],
 })
 export class DevModule {}

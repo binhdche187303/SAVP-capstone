@@ -7,6 +7,7 @@ import { normalizePlate } from '../anpr/utils/normalize-plate.js';
 import { StorageService } from '../storage/storage.service.js';
 import { saveEventSnapshot } from '../../common/utils/save-event-snapshot.util.js';
 import { VehicleControlAlertService } from '../anpr/services/vehicle-control-alert.service.js';
+import { VisitorDevScanService, type DevScanScenario } from '../visitors/services/visitor-dev-scan.service.js';
 import { FaceAttendanceService } from '../face-access/services/face-attendance.service.js';
 
 interface TestMailBody {
@@ -36,6 +37,13 @@ interface MockFaceAttendanceBody {
   direction?: 'in' | 'out' | 'enter' | 'leave';
   verifyTime?: string;
   snapshotImageBase64?: string;
+}
+
+interface MockVisitorScanBody {
+  code?: string;
+  zoneId?: string;
+  direction?: 'in' | 'out';
+  scenario?: DevScanScenario;
 }
 
 interface MockCameraFaceScanBody {
@@ -72,6 +80,7 @@ export class DevController {
     private readonly storageService: StorageService,
     private readonly vehicleControlAlertService: VehicleControlAlertService,
     private readonly faceAttendanceService: FaceAttendanceService,
+    private readonly visitorDevScan: VisitorDevScanService,
   ) {}
 
   /**
@@ -1165,5 +1174,20 @@ export class DevController {
     );
     if (!rows[0]) return null;
     return { userId: rows[0].user_id, vehicleRegistrationId: rows[0].id };
+  }
+
+  /**
+   * VIS-BE-001: giả lập camera cổng thấy khách (màn hình "Cổng" của FE). Đi cùng đường với sự kiện camera thật
+   * (VisitorGateService). Chỉ có khi NODE_ENV=development (DevModule) và cần VISITORS_ENABLED=true.
+   */
+  @Post('mock-visitor-scan')
+  @ApiOperation({ summary: 'Giả lập camera cổng quét khách vào/ra (dev only)' })
+  mockVisitorScan(@Body() body: MockVisitorScanBody) {
+    return this.visitorDevScan.scan({
+      code: String(body.code ?? ''),
+      zoneId: body.zoneId ?? null,
+      direction: body.direction === 'out' ? 'out' : 'in',
+      scenario: body.scenario,
+    });
   }
 }

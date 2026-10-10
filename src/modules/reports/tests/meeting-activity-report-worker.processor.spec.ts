@@ -20,6 +20,8 @@ import { RoomUtilizationReportWorkerProcessor } from '../processors/room-utiliza
 import { GateAccessReportWorkerProcessor } from '../processors/gate-access-report-worker.processor.js';
 import { VehicleReportWorkerProcessor } from '../processors/vehicle-report-worker.processor.js';
 import { SecurityAlertReportWorkerProcessor } from '../processors/security-alert-report-worker.processor.js';
+import { ReportCenterWorkerProcessor } from '../center/report-center-worker.processor.js';
+import { ReportScheduleRunWorker } from '../schedules/report-schedule-run.worker.js';
 
 // Mock renderers — must be defined BEFORE module imports
 const mockRenderPdf = jest.fn().mockResolvedValue(Buffer.from('PDF_CONTENT'));
@@ -54,6 +56,9 @@ jest.mock('../renderers/security-alert-pdf-renderer.js', () => ({
 jest.mock('../renderers/security-alert-xlsx-renderer.js', () => ({
   renderSecurityAlertXlsx: jest.fn().mockResolvedValue(Buffer.from('XLSX')),
 }));
+// RPT-CENTER: worker Trung tâm báo cáo kéo theo các renderer dùng exceljs/pdfkit thật, vốn không chạy được khi `fs` bị mock ở dưới.
+jest.mock('../center/report-center-worker.processor.js', () => ({ ReportCenterWorkerProcessor: class {} }));
+jest.mock('../schedules/report-schedule-run.worker.js', () => ({ ReportScheduleRunWorker: class {} }));
 jest.mock('../renderers/user-export-xlsx-renderer.js', () => ({
   renderUserExportXlsx: jest.fn().mockResolvedValue(Buffer.from('XLSX')),
 }));
@@ -196,6 +201,8 @@ describe('MeetingActivityReportWorkerProcessor', () => {
           provide: SecurityAlertReportWorkerProcessor,
           useValue: mockSecurityAlertWorker,
         },
+        { provide: ReportCenterWorkerProcessor, useValue: { processExport: jest.fn() } },
+        { provide: ReportScheduleRunWorker, useValue: { processExport: jest.fn() } },
       ],
     }).compile();
 

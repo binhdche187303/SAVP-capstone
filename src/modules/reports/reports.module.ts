@@ -34,6 +34,7 @@ import { ZoneEntity } from '../zones/entities/zone.entity.js';
 // Bước 5 SAVP (UC-128): entity nguồn cho VehicleReportDataService +
 // GateAccessModule (export VehicleTrafficStatsService qua DI)
 import { VehicleRegistrationEntity } from '../anpr/entities/vehicle-registration.entity.js';
+import { NotificationsModule } from '../notifications/notifications.module.js';
 import { GateAccessModule } from '../gate-access/gate-access.module.js';
 
 // Bước 5 SAVP (UC-129): entity nguồn cho SecurityAlertReportDataService
@@ -65,6 +66,28 @@ import { GateAccessReportWorkerProcessor } from './processors/gate-access-report
 import { VehicleReportWorkerProcessor } from './processors/vehicle-report-worker.processor.js';
 import { SecurityAlertReportWorkerProcessor } from './processors/security-alert-report-worker.processor.js';
 
+// RPT-CENTER-BE-001: Trung tâm báo cáo (2.13)
+import { ReportCenterController } from './center/controllers/report-center.controller.js';
+import { ReportCenterService } from './center/report-center.service.js';
+import { ReportCenterEnabledGuard } from './center/report-center-enabled.guard.js';
+import { ReportCenterExportService } from './center/report-center-export.service.js';
+import { ReportCenterWorkerProcessor } from './center/report-center-worker.processor.js';
+import { ReportFileService } from './center/report-file.service.js';
+import { ReportScheduleRunController } from './schedules/controllers/report-schedule-run.controller.js';
+import { ReportScheduleDispatchService } from './schedules/report-schedule-dispatch.service.js';
+import { ReportScheduleRunService } from './schedules/report-schedule-run.service.js';
+import { ReportScheduleRunWorker } from './schedules/report-schedule-run.worker.js';
+import { ReportScheduleController } from './schedules/controllers/report-schedule.controller.js';
+import { ReportScheduleService } from './schedules/report-schedule.service.js';
+import { ReportScopeService } from './center/report-scope.service.js';
+import { REPORT_PROVIDERS, type ReportProvider } from './center/report-model.js';
+import { GateAccessReportProvider } from './center/providers/gate-access.provider.js';
+import { VehicleReportProvider } from './center/providers/vehicle.provider.js';
+import { VisitorReportProvider } from './center/providers/visitor.provider.js';
+import { StaffAttendanceReportProvider } from './center/providers/staff-attendance.provider.js';
+import { RoomUtilizationReportProvider } from './center/providers/room-utilization.provider.js';
+import { SecurityAlertReportProvider } from './center/providers/security-alert.provider.js';
+
 // BE-04 (Đợt P1): user export
 import { UserExportService } from './services/user-export.service.js';
 import { UserExportDataService } from './services/user-export-data.service.js';
@@ -91,6 +114,8 @@ import { UserExportDataService } from './services/user-export-data.service.js';
     // Bước 5 SAVP (UC-128): lấy VehicleTrafficStatsService qua DI (đã export ở
     // gate-access.module.ts), KHÔNG fork logic UC-114.
     GateAccessModule,
+    // RPT-CENTER: lần chạy lịch gửi gửi email báo cáo qua NotificationsService.
+    NotificationsModule,
     TypeOrmModule.forFeature([
       // Entities cho data aggregation
       MeetingEntity,
@@ -121,8 +146,33 @@ import { UserExportDataService } from './services/user-export-data.service.js';
     GateAccessReportController,
     VehicleReportController,
     SecurityAlertReportController,
+    ReportCenterController,
+    ReportScheduleController,
+    ReportScheduleRunController,
   ],
   providers: [
+    ReportCenterService,
+    ReportCenterExportService,
+    ReportScheduleService,
+    ReportScheduleDispatchService,
+    ReportScheduleRunService,
+    ReportScheduleRunWorker,
+    ReportCenterWorkerProcessor,
+    ReportFileService,
+    ReportScopeService,
+    ReportCenterEnabledGuard,
+    // Các provider của 6 loại báo cáo được thêm vào mảng này theo từng task (gate-access, vehicle, …).
+    GateAccessReportProvider,
+    VehicleReportProvider,
+    RoomUtilizationReportProvider,
+    SecurityAlertReportProvider,
+    StaffAttendanceReportProvider,
+    VisitorReportProvider,
+    {
+      provide: REPORT_PROVIDERS,
+      useFactory: (...providers: ReportProvider[]): ReportProvider[] => providers,
+      inject: [GateAccessReportProvider, VehicleReportProvider, RoomUtilizationReportProvider, SecurityAlertReportProvider, StaffAttendanceReportProvider, VisitorReportProvider],
+    },
     MeetingActivityReportService,
     MeetingActivityReportDataService,
     MeetingActivityReportWorkerProcessor,
@@ -147,6 +197,6 @@ import { UserExportDataService } from './services/user-export-data.service.js';
     UserExportService,
     UserExportDataService,
   ],
-  exports: [UserExportService],
+  exports: [UserExportService, ReportScheduleDispatchService],
 })
 export class ReportsModule {}

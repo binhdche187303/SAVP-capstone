@@ -24,6 +24,9 @@ import { RoomUtilizationReportWorkerProcessor } from './room-utilization-report-
 import { GateAccessReportWorkerProcessor } from './gate-access-report-worker.processor.js';
 import { VehicleReportWorkerProcessor } from './vehicle-report-worker.processor.js';
 import { SecurityAlertReportWorkerProcessor } from './security-alert-report-worker.processor.js';
+import { ReportCenterWorkerProcessor } from '../center/report-center-worker.processor.js';
+import { REPORT_CENTER_EXPORT_JOB_NAME, REPORT_SCHEDULE_RUN_JOB_NAME } from '../constants/report-export-job.constants.js';
+import { ReportScheduleRunWorker } from '../schedules/report-schedule-run.worker.js';
 
 interface MeetingActivityExportJobData {
   backgroundJobId: string;
@@ -69,6 +72,8 @@ export class MeetingActivityReportWorkerProcessor extends WorkerHost {
     private readonly gateAccessWorker: GateAccessReportWorkerProcessor,
     private readonly vehicleWorker: VehicleReportWorkerProcessor,
     private readonly securityAlertWorker: SecurityAlertReportWorkerProcessor,
+    private readonly reportCenterWorker: ReportCenterWorkerProcessor,
+    private readonly reportScheduleRunWorker: ReportScheduleRunWorker,
   ) {
     super();
   }
@@ -108,6 +113,18 @@ export class MeetingActivityReportWorkerProcessor extends WorkerHost {
         job as unknown as Parameters<
           SecurityAlertReportWorkerProcessor['processExport']
         >[0],
+      );
+    }
+    if (job.name === REPORT_CENTER_EXPORT_JOB_NAME) {
+      // RPT-CENTER-BE-001: Trung tâm báo cáo (3 định dạng dùng chung).
+      return this.reportCenterWorker.processExport(
+        job as unknown as Parameters<ReportCenterWorkerProcessor['processExport']>[0],
+      );
+    }
+    if (job.name === REPORT_SCHEDULE_RUN_JOB_NAME) {
+      // RPT-CENTER-BE-001: lần chạy lịch gửi báo cáo (ném lại lỗi tạm thời để BullMQ retry).
+      return this.reportScheduleRunWorker.processExport(
+        job as unknown as Parameters<ReportScheduleRunWorker['processExport']>[0],
       );
     }
     if (job.name !== 'export:meeting-activity') return;

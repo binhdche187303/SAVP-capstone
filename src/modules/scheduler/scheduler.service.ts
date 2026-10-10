@@ -19,6 +19,8 @@ import { MeetingRequestReviewService } from '../meetings/services/meeting-reques
 import { RecordingSessionService } from '../recording/services/recording-session.service.js';
 import { RecordingSystemConfigService } from '../recording/services/recording-system-config.service.js';
 import { OccupancyPersistenceService } from '../presence/services/occupancy-persistence.service.js';
+import { ReportScheduleDispatchService } from '../reports/schedules/report-schedule-dispatch.service.js';
+import { VisitorSweepService } from '../visitors/services/visitor-sweep.service.js';
 import {
   KpiRollupJobService,
   type RollupRunResult,
@@ -57,6 +59,8 @@ export class SchedulerService {
   private readonly securityAlertAutoResolveEnabled: boolean;
   private readonly recordingMaxDurationEnabled: boolean;
   private readonly kpiRollupEnabled: boolean;
+  private readonly visitorEnabled: boolean;
+  private readonly reportScheduleEnabled: boolean;
 
   constructor(
     private readonly dataSource: DataSource,
@@ -79,6 +83,8 @@ export class SchedulerService {
     private readonly recordingSystemConfigService: RecordingSystemConfigService,
     private readonly occupancyPersistenceService: OccupancyPersistenceService,
     private readonly kpiRollupJobService: KpiRollupJobService,
+    private readonly visitorSweepService: VisitorSweepService,
+    private readonly reportScheduleDispatchService: ReportScheduleDispatchService,
   ) {
     this.schedulerEnabled = this.configService.get<boolean>(
       'SCHEDULER_ENABLED',
@@ -167,8 +173,20 @@ export class SchedulerService {
       false,
     );
 
+    // VIS-BE-001: quét khách đến làm việc (default OFF).
+    this.visitorEnabled = this.configService.get<boolean>(
+      'SCHEDULER_VISITOR_ENABLED',
+      false,
+    );
+
+    // RPT-CENTER-BE-001: gửi báo cáo theo lịch (default OFF).
+    this.reportScheduleEnabled = this.configService.get<boolean>(
+      'SCHEDULER_REPORT_SCHEDULE_ENABLED',
+      false,
+    );
+
     this.logger.log(
-      `SchedulerService initialized — enabled=${this.schedulerEnabled} | no-show=${this.noShowEnabled} | auto-release=${this.autoReleaseEnabled} | reminder=${this.reminderEnabled} | device-offline-detect=${this.deviceOfflineDetectEnabled} | face-sync=${this.faceSyncEnabled} | early-vacancy=${this.earlyVacancyEnabled} | ivss-sync=${this.ivssSyncEnabled} | ivss-portrait=${this.ivssPortraitEnabled} | restricted-zone=${this.restrictedZoneEnabled} | crowd-alert=${this.crowdAlertEnabled} | gate-pairing=${this.gatePairingEnabled} | auto-complete=${this.autoCompleteEnabled} | meeting-status=${this.meetingStatusEnabled} | meeting-request-expire=${this.meetingRequestExpireEnabled} | security-alert-auto-resolve=${this.securityAlertAutoResolveEnabled} | recording-max-duration=${this.recordingMaxDurationEnabled} | kpi-rollup=${this.kpiRollupEnabled}`,
+      `SchedulerService initialized — enabled=${this.schedulerEnabled} | no-show=${this.noShowEnabled} | auto-release=${this.autoReleaseEnabled} | reminder=${this.reminderEnabled} | device-offline-detect=${this.deviceOfflineDetectEnabled} | face-sync=${this.faceSyncEnabled} | early-vacancy=${this.earlyVacancyEnabled} | ivss-sync=${this.ivssSyncEnabled} | ivss-portrait=${this.ivssPortraitEnabled} | restricted-zone=${this.restrictedZoneEnabled} | crowd-alert=${this.crowdAlertEnabled} | gate-pairing=${this.gatePairingEnabled} | auto-complete=${this.autoCompleteEnabled} | meeting-status=${this.meetingStatusEnabled} | meeting-request-expire=${this.meetingRequestExpireEnabled} | security-alert-auto-resolve=${this.securityAlertAutoResolveEnabled} | recording-max-duration=${this.recordingMaxDurationEnabled} | kpi-rollup=${this.kpiRollupEnabled} | visitor=${this.visitorEnabled} | report-schedule=${this.reportScheduleEnabled}`,
     );
   }
 
@@ -703,6 +721,64 @@ export class SchedulerService {
       this.logger.error(
         `[Scheduler] checkCheckinAlerts() failed: ${(error as Error).message}`,
       );
+    }
+  }
+
+  /**
+   * VIS-BE-001: hết hạn / quá giờ / chưa ghi giờ ra của khách. Gate SCHEDULER_ENABLED && SCHEDULER_VISITOR_ENABLED
+   * (default OFF). Khóa Redis nằm trong service; KHÔNG ném ra cron.
+   */
+  @Cron(CronExpression.EVERY_MINUTE, { name: 'visitor-sweep' })
+  async visitorSweep(): Promise<void> {
+    if (!this.schedulerEnabled || !this.visitorEnabled) return;
+    try {
+      const r = await this.visitorSweepService.runSweep(new Date());
+      if (!r.skipped) {
+        this.logger.log(
+          `[Scheduler] visitor-sweep: expired=${r.expired} overstay-notified=${r.overstayNotified} overstay-escalated=${r.overstayEscalated} exit-unrecorded=${r.exitUnrecorded}`,
+        );
+      }
+    } catch (e) {
+      this.logger.error(`[Scheduler] visitor-sweep failed: ${e instanceof Error ? e.message : 'unknown'}`);
+    }
+  }
+
+  /** VIS-BE-001: đối soát khuôn mặt khách trên thiết bị (IVSS/FaceGate). Cùng cờ SCHEDULER_VISITOR_ENABLED. */
+  @Cron(CronExpression.EVERY_5_MINUTES, { name: 'visitor-face-reconcile' })
+  async visitorFaceReconcile(): Promise<void> {
+    if (!this.schedulerEnabled || !this.visitorEnabled) return;
+    try {
+      const r = await this.visitorSweepService.runFaceReconcile();
+      if (!r.skipped) this.logger.log(`[Scheduler] visitor-face-reconcile: synced=${r.synced}`);
+    } catch (e) {
+      this.logger.error(`[Scheduler] visitor-face-reconcile failed: ${e instanceof Error ? e.message : 'unknown'}`);
+    }
+  }
+
+  /** VIS-BE-001 (BR-V19): dọn ảnh khách quá hạn lưu giữ, 02:30 hằng ngày. Cùng cờ SCHEDULER_VISITOR_ENABLED. */
+  @Cron('0 30 2 * * *', { name: 'visitor-photo-retention' })
+  async visitorPhotoRetention(): Promise<void> {
+    if (!this.schedulerEnabled || !this.visitorEnabled) return;
+    try {
+      const r = await this.visitorSweepService.runPhotoRetention(new Date());
+      if (!r.skipped) this.logger.log(`[Scheduler] visitor-photo-retention: purged=${r.purged}`);
+    } catch (e) {
+      this.logger.error(`[Scheduler] visitor-photo-retention failed: ${e instanceof Error ? e.message : 'unknown'}`);
+    }
+  }
+
+  /**
+   * RPT-CENTER-BE-001: sinh lần chạy cho các lịch gửi báo cáo đến hạn. Gate SCHEDULER_ENABLED && SCHEDULER_REPORT_SCHEDULE_ENABLED
+   * (default OFF). An toàn khi nhiều instance cùng chạy (FOR UPDATE SKIP LOCKED). KHÔNG ném ra cron.
+   */
+  @Cron(CronExpression.EVERY_MINUTE, { name: 'report-schedule-dispatch' })
+  async reportScheduleDispatch(): Promise<void> {
+    if (!this.schedulerEnabled || !this.reportScheduleEnabled) return;
+    try {
+      const r = await this.reportScheduleDispatchService.dispatchDue(new Date());
+      if (r.dispatched > 0) this.logger.log(`[Scheduler] report-schedule-dispatch: dispatched=${r.dispatched}`);
+    } catch (e) {
+      this.logger.error(`[Scheduler] report-schedule-dispatch failed: ${e instanceof Error ? e.message : 'unknown'}`);
     }
   }
 }

@@ -304,9 +304,9 @@ describe('FaceProvisioningService (FMP-001)', () => {
     );
     expect(String(stale)).toContain("metadata_json->>'source', '') <> 'ivss'");
     // F3 (PORTRAIT-001): nhánh dedup KHÔNG join meetings/bookingId nên phải loại trừ
-    // MỌI source ngoài FMP — thêm 'portrait' (kho mặt thường trực) cạnh 'ivss'.
+    // MỌI source ngoài FMP — thêm 'portrait' (kho mặt thường trực) cạnh 'ivss'; VIS-BE-001 thêm 'visitor'.
     expect(String(dedup)).toContain(
-      "metadata_json->>'source', '') NOT IN ('ivss', 'portrait')",
+      "metadata_json->>'source', '') NOT IN ('ivss', 'portrait', 'visitor')",
     );
   });
 

@@ -569,3 +569,87 @@ export function buildGuestOtpEmail(params: {
     bodyHtml,
   });
 }
+
+// ── Khách đến làm việc (VIS-BE-001, 2.10) ──────────────────────────────────
+// Email chỉ chứa mã lượt và đường dẫn tra cứu; KHÔNG chứa số giấy tờ/điện thoại của khách.
+
+export function buildVisitorRegistrationReceivedEmail(params: {
+  visitorName: string;
+  code: string;
+  hostName: string;
+  scheduledFrom: Date | string;
+  scheduledTo: Date | string;
+  statusUrl: string;
+}): string {
+  const bodyHtml =
+    renderParagraph(`Kính gửi ${escapeHtml(params.visitorName)},`) +
+    renderParagraph('Đăng ký đến làm việc của bạn đã được ghi nhận và đang chờ người được gặp xác nhận.') +
+    renderInfoTable([
+      { label: 'Mã lượt khách', value: `<strong>${escapeHtml(params.code)}</strong>` },
+      { label: 'Người được gặp', value: escapeHtml(params.hostName) },
+      { label: 'Thời gian', value: `${escapeHtml(formatDateTimeVN(params.scheduledFrom))} &ndash; ${escapeHtml(formatDateTimeVN(params.scheduledTo))}` },
+    ]) +
+    renderParagraph(`Tra cứu kết quả tại: <a href="${escapeHtml(params.statusUrl)}">${escapeHtml(params.statusUrl)}</a>`);
+  return renderEmailLayout({ heading: 'Đã nhận đăng ký khách', bodyHtml });
+}
+
+export function buildVisitorApprovedEmail(params: {
+  visitorName: string;
+  code: string;
+  hostName: string;
+  validFrom: Date | string;
+  validTo: Date | string;
+  zoneNames: string[];
+  statusUrl: string;
+}): string {
+  const bodyHtml =
+    renderParagraph(`Kính gửi ${escapeHtml(params.visitorName)},`) +
+    renderParagraph('Đăng ký của bạn đã được chấp thuận. Khi đến cổng, vui lòng nhìn vào camera để xác thực khuôn mặt.') +
+    renderInfoTable([
+      { label: 'Mã lượt khách', value: `<strong>${escapeHtml(params.code)}</strong>` },
+      { label: 'Người được gặp', value: escapeHtml(params.hostName) },
+      { label: 'Được vào từ', value: escapeHtml(formatDateTimeVN(params.validFrom)) },
+      { label: 'Đến', value: escapeHtml(formatDateTimeVN(params.validTo)) },
+      { label: 'Khu vực', value: escapeHtml(params.zoneNames.join(', ') || 'Cổng chính') },
+    ]) +
+    renderParagraph(`Xem chi tiết và mã QR: <a href="${escapeHtml(params.statusUrl)}">${escapeHtml(params.statusUrl)}</a>`);
+  return renderEmailLayout({ heading: 'Đăng ký khách đã được duyệt', bodyHtml });
+}
+
+export function buildVisitorRejectedEmail(params: {
+  visitorName: string;
+  code: string;
+  reason: string;
+}): string {
+  const bodyHtml =
+    renderParagraph(`Kính gửi ${escapeHtml(params.visitorName)},`) +
+    renderParagraph(`Rất tiếc, đăng ký <strong>${escapeHtml(params.code)}</strong> của bạn không được chấp thuận.`) +
+    renderCallout(`Lý do: ${escapeHtml(params.reason)}`, 'danger') +
+    renderParagraph('Bạn có thể đăng ký lại với thời gian khác hoặc liên hệ người được gặp để biết thêm chi tiết.');
+  return renderEmailLayout({ heading: 'Đăng ký khách không được duyệt', bodyHtml });
+}
+
+/** RPT-CENTER-BE-001: email gửi báo cáo định kỳ — tên báo cáo, kỳ, lời nhắn và danh sách tệp đính kèm. */
+export function buildReportScheduleEmail(params: {
+  scheduleName: string;
+  reportTitle: string;
+  periodLabel: string;
+  message?: string | null;
+  fileNames: string[];
+  appUrl?: string | null;
+  note?: string | null;
+}): string {
+  const bodyHtml =
+    renderParagraph(`Báo cáo <strong>${escapeHtml(params.reportTitle)}</strong> của lịch gửi “${escapeHtml(params.scheduleName)}” đã sẵn sàng.`) +
+    renderInfoTable([
+      { label: 'Báo cáo', value: escapeHtml(params.reportTitle) },
+      { label: 'Kỳ dữ liệu', value: escapeHtml(params.periodLabel) },
+    ]) +
+    (params.message ? renderCallout(escapeHtml(params.message), 'info') : '') +
+    (params.fileNames.length
+      ? renderParagraph('Các tệp đính kèm:') + renderList(params.fileNames.map((n) => escapeHtml(n)))
+      : renderParagraph('Tệp báo cáo không đính kèm được vào email này.')) +
+    (params.note ? renderCallout(escapeHtml(params.note), 'warning') : '') +
+    (params.appUrl ? renderParagraph(`Bạn cũng có thể xem trên hệ thống: ${escapeHtml(params.appUrl)}`) : '');
+  return renderEmailLayout({ heading: 'Báo cáo định kỳ', bodyHtml });
+}

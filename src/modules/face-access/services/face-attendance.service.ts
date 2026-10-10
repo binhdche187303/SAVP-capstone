@@ -1,10 +1,14 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import {
   FaceVerifyHook,
   FaceVerifyInput,
 } from '../../../common/ports/face-verify-hook.js';
+import {
+  VISITOR_FACE_EVENT_HOOK,
+  type VisitorFaceEventHook,
+} from '../../../common/ports/visitor-face-event-hook.js';
 import { WebsocketService } from '../../websocket/websocket.service.js';
 import { PersonWatchlistCheckService } from '../../alerts/services/person-watchlist-check.service.js';
 import { getAttendanceLateGraceMinutes } from '../../attendance/utils/get-late-grace-minutes.util.js';
@@ -41,6 +45,8 @@ export class FaceAttendanceService implements FaceVerifyHook {
     private readonly configService: ConfigService,
     private readonly websocketService: WebsocketService,
     private readonly personWatchlistCheckService: PersonWatchlistCheckService,
+    // VIS-BE-001: phân hệ Khách (tùy chọn). Mapping nguồn 'visitor' đi sang đây, không điểm danh họp.
+    @Optional() @Inject(VISITOR_FACE_EVENT_HOOK) private readonly visitorHook?: VisitorFaceEventHook,
   ) {}
 
   async onVerify(input: FaceVerifyInput): Promise<void> {
@@ -55,7 +61,7 @@ export class FaceAttendanceService implements FaceVerifyHook {
       );
       return;
     }
-    const { userId, meetingId } = resolved;
+    const { userId, meetingId, visitId } = resolved;
 
     // PWL-001: đối chiếu danh sách đối tượng theo dõi — MỌI lần nhận diện ra user,
     // kể cả khi mapping không gắn cuộc họp. NotThrow bên trong → không phá điểm danh.
@@ -64,6 +70,23 @@ export class FaceAttendanceService implements FaceVerifyHook {
       deviceId,
       roomId,
     });
+
+    // VIS-BE-001: khách đến làm việc — FaceGate đã tự kiểm khung giờ/khu vực; chỉ ghi nhận vào/ra.
+    if (visitId) {
+      if (!this.visitorHook) return;
+      try {
+        await this.visitorHook.onFaceGateVerify({
+          visitId,
+          deviceId,
+          zoneId: await this.zoneOf(deviceId),
+          direction: direction === 'out' ? 'out' : 'in',
+          verifyTime,
+        });
+      } catch (e) {
+        this.logger.warn(`visitor hook lỗi (device=${deviceId}): ${this.msgOf(e)}`);
+      }
+      return;
+    }
 
     if (!meetingId) {
       this.logger.warn(
@@ -296,7 +319,7 @@ export class FaceAttendanceService implements FaceVerifyHook {
     deviceId: string,
     personId: string | null,
     personName: string | null,
-  ): Promise<{ userId: string; meetingId: string | null } | null> {
+  ): Promise<{ userId: string; meetingId: string | null; visitId: string | null } | null> {
     // Chỉ match mapping ĐANG hiệu lực: sync_status='synced' + chưa soft-delete.
     // Mapping đã 'deleted' (sau deprovision) KHÔNG resolve → không ghi điểm danh
     // dù còn mặt sót trên cam.
@@ -323,9 +346,24 @@ export class FaceAttendanceService implements FaceVerifyHook {
     if (!row) return null;
 
     const bookingId = row.metadata_json?.['bookingId'];
+    const visitId = row.metadata_json?.['source'] === 'visitor' ? row.metadata_json?.['visitId'] : null;
     return {
       userId: row.user_id,
       meetingId: typeof bookingId === 'string' && bookingId ? bookingId : null,
+      visitId: typeof visitId === 'string' && visitId ? visitId : null,
     };
+  }
+
+  /** Khu vực của thiết bị (iot_devices.zone_id); null nếu thiết bị gắn theo phòng. */
+  private async zoneOf(deviceId: string): Promise<string | null> {
+    const rows: Array<{ zone_id: string | null }> = await this.dataSource.manager.query(
+      `SELECT zone_id FROM iot_devices WHERE id = $1 LIMIT 1`,
+      [deviceId],
+    );
+    return rows?.[0]?.zone_id ?? null;
+  }
+
+  private msgOf(e: unknown): string {
+    return e instanceof Error ? e.message : String(e);
   }
 }
