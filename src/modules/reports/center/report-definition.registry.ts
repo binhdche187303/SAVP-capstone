@@ -133,8 +133,7 @@ export const REPORT_DEFINITIONS: Record<ReportType, ReportDefinition> = {
     "type": "student-attendance",
     "title": "Chuyên cần sinh viên",
     "description": "Có mặt, đi muộn, vắng của sinh viên theo lớp học phần, môn học và học kỳ.",
-    "available": false,
-    "unavailableReason": "Chờ phân hệ 2.7 có dữ liệu điểm danh từng buổi học",
+    "available": true,
     "hasDepartmentScope": true,
     "filters": [
       {

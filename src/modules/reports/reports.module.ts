@@ -86,6 +86,7 @@ import { VehicleReportProvider } from './center/providers/vehicle.provider.js';
 import { VisitorReportProvider } from './center/providers/visitor.provider.js';
 import { StaffAttendanceReportProvider } from './center/providers/staff-attendance.provider.js';
 import { RoomUtilizationReportProvider } from './center/providers/room-utilization.provider.js';
+import { StudentAttendanceReportProvider } from './center/providers/student-attendance.provider.js';
 import { SecurityAlertReportProvider } from './center/providers/security-alert.provider.js';
 
 // BE-04 (Đợt P1): user export
@@ -167,11 +168,12 @@ import { UserExportDataService } from './services/user-export-data.service.js';
     RoomUtilizationReportProvider,
     SecurityAlertReportProvider,
     StaffAttendanceReportProvider,
+    StudentAttendanceReportProvider,
     VisitorReportProvider,
     {
       provide: REPORT_PROVIDERS,
       useFactory: (...providers: ReportProvider[]): ReportProvider[] => providers,
-      inject: [GateAccessReportProvider, VehicleReportProvider, RoomUtilizationReportProvider, SecurityAlertReportProvider, StaffAttendanceReportProvider, VisitorReportProvider],
+      inject: [GateAccessReportProvider, VehicleReportProvider, RoomUtilizationReportProvider, SecurityAlertReportProvider, StaffAttendanceReportProvider, StudentAttendanceReportProvider, VisitorReportProvider],
     },
     MeetingActivityReportService,
     MeetingActivityReportDataService,

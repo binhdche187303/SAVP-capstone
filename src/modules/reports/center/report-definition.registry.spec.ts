@@ -30,12 +30,11 @@ describe('ReportDefinitionRegistry ↔ FE reportDefinitions.js', () => {
     });
   });
 
-  it('student-attendance chưa khả dụng và có lý do; 6 loại còn lại khả dụng', () => {
-    expect(REPORT_DEFINITIONS['student-attendance'].available).toBe(false);
-    expect(REPORT_DEFINITIONS['student-attendance'].unavailableReason).toBeTruthy();
-    const others = REPORT_TYPE_ORDER.filter((t) => t !== 'student-attendance');
-    expect(others.every((t) => REPORT_DEFINITIONS[t].available)).toBe(true);
-    expect(others).toHaveLength(6);
+  it('student-attendance khả dụng từ khi phân hệ 2.7 có điểm danh từng buổi; cả 7 loại đều khả dụng', () => {
+    expect(REPORT_DEFINITIONS['student-attendance'].available).toBe(true);
+    expect(REPORT_DEFINITIONS['student-attendance'].unavailableReason).toBeUndefined();
+    expect(REPORT_TYPE_ORDER.every((t) => REPORT_DEFINITIONS[t].available)).toBe(true);
+    expect(REPORT_TYPE_ORDER).toHaveLength(7);
   });
 
   it('vehicle và security-alert không có chiều đơn vị', () => {
