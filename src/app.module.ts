@@ -39,6 +39,7 @@ import { SchedulingModule } from './modules/scheduling/scheduling.module';
 import { TranscriptionModule } from './modules/transcription/transcription.module';
 import { UtilizationModule } from './modules/utilization/utilization.module';
 import { IvssModule } from './modules/ivss/ivss.module';
+import { HgvisionModule } from './modules/hgvision/hgvision.module';
 import { AnprModule } from './modules/anpr/anpr.module';
 import { ZonesModule } from './modules/zones/zones.module';
 import { AcademicModule } from './modules/academic/academic.module';
@@ -131,6 +132,7 @@ void loadDevModule; // suppress unused warning
     ReportsModule,
     AnalyticsModule,
     IvssModule,
+    HgvisionModule,
     AnprModule,
     ZonesModule, // schema-only: đăng ký entity scope Zone (SAVP)
     AcademicModule, // schema-only: đăng ký entity Học vụ (ACD-001, nền điểm danh phòng học #23)

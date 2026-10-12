@@ -100,6 +100,12 @@ import { IvssPresenceConfigService } from './services/ivss-presence-config.servi
     // — AuditLogsService inject trực tiếp (AdministrationModule @Global(), không cần import).
     IvssPresenceConfigService,
   ],
-  exports: [IVSS_BRIDGE, IvssPersonSyncService, IvssPortraitSyncService],
+  // IVSS_EVENT_HANDLER export cho HgvisionModule (nguồn camera HGVision dùng chung pipeline).
+  exports: [
+    IVSS_BRIDGE,
+    IVSS_EVENT_HANDLER,
+    IvssPersonSyncService,
+    IvssPortraitSyncService,
+  ],
 })
 export class IvssModule {}
