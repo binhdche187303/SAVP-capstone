@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Minh họa camera – SAVP + HGVision</title>
+<style>
+  body { font-family: "Segoe UI", Arial, sans-serif; background: #eef2f7; margin: 0; padding: 28px; color: #1f2937; }
+  h1 { font-size: 22px; margin: 0 0 20px; }
+  .card { background: #fff; border-radius: 14px; padding: 18px; margin-bottom: 24px; box-shadow: 0 2px 6px rgba(0,0,0,.08); }
+  .card h2 { font-size: 17px; margin: 0 0 10px; }
+  svg { width: 100%; height: auto; display: block; }
+  .lbl { font-size: 13px; font-weight: 600; fill: #1f2937; }
+  .small { font-size: 11px; fill: #475569; }
+  .ok { fill: #16a34a; font-weight: 700; font-size: 13px; }
+  .bad { fill: #dc2626; font-weight: 700; font-size: 13px; }
+</style>
+</head>
+<body>
+<h1>Minh họa camera trong trường</h1>
+
+<!-- ============ 1. TOÀN CẢNH ============ -->
+<div class="card">
+<h2>1. Toàn cảnh: camera → server AI → phần mềm SAVP → màn hình</h2>
+<svg viewBox="0 0 1100 330">
+  <defs>
+    <marker id="ar" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#64748b"/></marker>
+    <g id="bullet">
+      <rect x="-28" y="-10" width="56" height="20" rx="9" fill="#e5e7eb" stroke="#475569" stroke-width="2"/>
+      <circle cx="-28" cy="0" r="9" fill="#1e293b"/><circle cx="-28" cy="0" r="4" fill="#38bdf8"/>
+      <rect x="-4" y="10" width="6" height="14" fill="#475569"/>
+    </g>
+    <g id="dome">
+      <rect x="-26" y="-6" width="52" height="8" rx="3" fill="#cbd5e1" stroke="#475569" stroke-width="2"/>
+      <path d="M-20,2 A20,18 0 0 0 20,2 z" fill="#1e293b" opacity=".85"/>
+      <circle cx="0" cy="10" r="5" fill="#38bdf8"/>
+    </g>
+  </defs>
+
+  <!-- cameras -->
+  <g transform="translate(90,55)"><use href="#bullet"/></g>
+  <text x="40" y="100" class="small">Camera cổng (khuôn mặt)</text>
+  <g transform="translate(90,150)"><use href="#bullet"/></g>
+  <text x="45" y="195" class="small">Camera cổng xe (biển số)</text>
+  <g transform="translate(90,245)"><use href="#dome"/></g>
+  <text x="35" y="290" class="small">Camera hành lang / lớp học</text>
+
+  <!-- cables -->
+  <path d="M150,60 C220,60 220,165 290,165" stroke="#64748b" stroke-width="2.5" fill="none" marker-end="url(#ar)"/>
+  <path d="M150,155 L290,165" stroke="#64748b" stroke-width="2.5" fill="none" marker-end="url(#ar)"/>
+  <path d="M150,250 C220,250 220,170 290,170" stroke="#64748b" stroke-width="2.5" fill="none" marker-end="url(#ar)"/>
+  <text x="185" y="140" class="small">dây mạng</text>
+
+  <!-- HGVision server rack -->
+  <g transform="translate(300,85)">
+    <rect width="130" height="160" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="3"/>
+    <rect x="15" y="18" width="100" height="26" rx="4" fill="#7c3aed"/><circle cx="100" cy="31" r="4" fill="#a7f3d0"/>
+    <rect x="15" y="54" width="100" height="26" rx="4" fill="#7c3aed"/><circle cx="100" cy="67" r="4" fill="#a7f3d0"/>
+    <rect x="15" y="90" width="100" height="26" rx="4" fill="#7c3aed"/><circle cx="100" cy="103" r="4" fill="#a7f3d0"/>
+    <text x="65" y="140" text-anchor="middle" font-size="22">🧠</text>
+  </g>
+  <text x="365" y="270" text-anchor="middle" class="lbl">Server HGVision</text>
+  <text x="365" y="287" text-anchor="middle" class="small">AI nhận diện mặt, biển số</text>
+
+  <path d="M440,165 L560,165" stroke="#64748b" stroke-width="2.5" stroke-dasharray="7 5" fill="none" marker-end="url(#ar)"/>
+  <text x="500" y="155" text-anchor="middle" class="small">API · 5 giây/lần</text>
+
+  <!-- SAVP server -->
+  <g transform="translate(570,95)">
+    <rect width="120" height="140" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="3"/>
+    <rect x="15" y="18" width="90" height="22" rx="4" fill="#16a34a"/>
+    <rect x="15" y="50" width="90" height="22" rx="4" fill="#16a34a"/>
+    <ellipse cx="60" cy="98" rx="32" ry="8" fill="#86efac" stroke="#16a34a" stroke-width="2"/>
+    <path d="M28,98 v22 a32,8 0 0 0 64,0 v-22" fill="#86efac" stroke="#16a34a" stroke-width="2"/>
+  </g>
+  <text x="630" y="260" text-anchor="middle" class="lbl">Phần mềm SAVP</text>
+  <text x="630" y="277" text-anchor="middle" class="small">Điểm danh, cảnh báo, báo cáo</text>
+
+  <path d="M700,140 L820,70" stroke="#64748b" stroke-width="2.5" fill="none" marker-end="url(#ar)"/>
+  <path d="M700,165 L820,165" stroke="#64748b" stroke-width="2.5" fill="none" marker-end="url(#ar)"/>
+  <path d="M700,190 L820,260" stroke="#64748b" stroke-width="2.5" fill="none" marker-end="url(#ar)"/>
+
+  <!-- screens -->
+  <g transform="translate(830,35)">
+    <rect width="110" height="70" rx="6" fill="#0f172a"/><rect x="6" y="6" width="98" height="58" fill="#f0f9ff"/>
+    <rect x="12" y="12" width="40" height="8" fill="#0284c7"/><rect x="12" y="26" width="86" height="5" fill="#cbd5e1"/><rect x="12" y="36" width="86" height="5" fill="#cbd5e1"/><rect x="12" y="46" width="60" height="5" fill="#fca5a5"/>
+    <rect x="45" y="70" width="20" height="10" fill="#334155"/>
+  </g>
+  <text x="960" y="75" class="lbl">🛡️ Bảo vệ</text>
+  <g transform="translate(830,130)">
+    <rect width="110" height="70" rx="6" fill="#0f172a"/><rect x="6" y="6" width="98" height="58" fill="#f0f9ff"/>
+    <rect x="14" y="40" width="12" height="18" fill="#0284c7"/><rect x="32" y="28" width="12" height="30" fill="#0284c7"/><rect x="50" y="18" width="12" height="40" fill="#0284c7"/><rect x="68" y="32" width="12" height="26" fill="#0284c7"/>
+    <rect x="45" y="70" width="20" height="10" fill="#334155"/>
+  </g>
+  <text x="960" y="170" class="lbl">👔 Quản lý</text>
+  <g transform="translate(845,225)">
+    <rect width="50" height="90" rx="8" fill="#0f172a"/><rect x="5" y="10" width="40" height="66" fill="#f0f9ff"/>
+    <circle cx="25" cy="34" r="10" fill="#16a34a"/><text x="25" y="39" text-anchor="middle" fill="#fff" font-size="13">✓</text>
+    <rect x="11" y="52" width="28" height="5" fill="#cbd5e1"/>
+  </g>
+  <text x="960" y="275" class="lbl">🎓 SV / GV</text>
+</svg>
+</div>
+
+<!-- ============ 2. CỔNG NGƯỜI ============ -->
+<div class="card">
+<h2>2. Cổng người đi bộ – camera khuôn mặt + cổng xoay</h2>
+<svg viewBox="0 0 1100 360">
+  <defs>
+    <g id="person">
+      <circle cx="0" cy="-70" r="16" fill="#fcd34d" stroke="#92400e" stroke-width="2"/>
+      <rect x="-18" y="-52" width="36" height="52" rx="10" fill="#3b82f6"/>
+      <rect x="-15" y="0" width="12" height="44" fill="#1e3a8a"/><rect x="3" y="0" width="12" height="44" fill="#1e3a8a"/>
+      <rect x="-30" y="-48" width="10" height="38" rx="5" fill="#3b82f6"/><rect x="20" y="-48" width="10" height="38" rx="5" fill="#3b82f6"/>
+    </g>
+    <g id="terminal">
+      <rect x="-5" y="0" width="10" height="120" fill="#94a3b8"/>
+      <rect x="-26" y="-70" width="52" height="76" rx="8" fill="#0f172a"/>
+      <circle cx="0" cy="-60" r="4" fill="#38bdf8"/>
+      <rect x="-20" y="-50" width="40" height="48" rx="3" fill="#22c55e" opacity=".9"/>
+    </g>
+    <g id="turnstile">
+      <rect x="-40" y="0" width="80" height="80" rx="8" fill="#cbd5e1" stroke="#64748b" stroke-width="2"/>
+      <rect x="-4" y="-10" width="8" height="20" fill="#64748b"/>
+    </g>
+  </defs>
+  <rect x="0" y="300" width="1100" height="60" fill="#e2e8f0"/>
+
+  <!-- step 1 -->
+  <g transform="translate(110,0)">
+    <g transform="translate(-50,256)"><use href="#person"/></g>
+    <g transform="translate(40,180)"><use href="#terminal"/></g>
+    <path d="M14,145 L-30,185" stroke="#38bdf8" stroke-width="3" stroke-dasharray="4 4"/>
+    <g transform="translate(90,220)"><use href="#turnstile"/></g>
+    <path d="M86,215 L150,215" stroke="#ef4444" stroke-width="6" stroke-linecap="round"/>
+    <text x="40" y="340" text-anchor="middle" class="lbl">① Đứng trước camera</text>
+  </g>
+
+  <!-- step 2 -->
+  <g transform="translate(450,0)">
+    <rect x="-70" y="90" width="140" height="120" rx="10" fill="#ede9fe" stroke="#7c3aed" stroke-width="3"/>
+    <circle cx="-30" cy="140" r="22" fill="#fcd34d" stroke="#92400e" stroke-width="2"/>
+    <text x="0" y="146" text-anchor="middle" font-size="22">=</text>
+    <circle cx="30" cy="140" r="22" fill="#fcd34d" stroke="#92400e" stroke-width="2"/>
+    <text x="0" y="195" text-anchor="middle" class="ok">Khớp: SV001</text>
+    <text x="0" y="80" text-anchor="middle" class="lbl">② HGVision so khớp</text>
+    <text x="0" y="230" text-anchor="middle" class="small">ảnh chụp ↔ kho khuôn mặt</text>
+  </g>
+
+  <!-- step 3 -->
+  <g transform="translate(760,0)">
+    <g transform="translate(-40,180)"><use href="#terminal"/></g>
+    <g transform="translate(10,220)"><use href="#turnstile"/></g>
+    <path d="M6,215 L6,160" stroke="#22c55e" stroke-width="6" stroke-linecap="round"/>
+    <g transform="translate(90,256)"><use href="#person"/></g>
+    <text x="0" y="340" text-anchor="middle" class="lbl">③ Cổng mở ngay, đi qua</text>
+  </g>
+
+  <!-- step 4 -->
+  <g transform="translate(990,0)">
+    <rect x="-55" y="110" width="110" height="74" rx="6" fill="#0f172a"/><rect x="-49" y="116" width="98" height="62" fill="#f0fdf4"/>
+    <text x="0" y="138" text-anchor="middle" font-size="11" fill="#15803d" font-weight="700">SV001 · 07:12</text>
+    <text x="0" y="156" text-anchor="middle" font-size="11" fill="#15803d">Cổng chính · Vào</text>
+    <text x="0" y="172" text-anchor="middle" font-size="11" fill="#15803d">Đúng giờ ✓</text>
+    <text x="0" y="215" text-anchor="middle" class="lbl">④ SAVP ghi nhận</text>
+    <text x="0" y="232" text-anchor="middle" class="small">vài giây sau</text>
+  </g>
+  <path d="M190,150 L370,150" stroke="#94a3b8" stroke-width="2" marker-end="url(#ar)"/>
+  <path d="M530,150 L700,150" stroke="#94a3b8" stroke-width="2" marker-end="url(#ar)"/>
+  <path d="M860,150 L925,150" stroke="#94a3b8" stroke-width="2" marker-end="url(#ar)"/>
+</svg>
+</div>
+
+<!-- ============ 3. NGƯỜI LẠ ============ -->
+<div class="card">
+<h2>3. Người lạ đến cổng</h2>
+<svg viewBox="0 0 1100 300">
+  <rect x="0" y="250" width="1100" height="50" fill="#e2e8f0"/>
+  <g transform="translate(120,0)">
+    <g transform="translate(-50,206)">
+      <circle cx="0" cy="-70" r="16" fill="#9ca3af" stroke="#374151" stroke-width="2"/>
+      <text x="0" y="-64" text-anchor="middle" font-size="16" fill="#fff">?</text>
+      <rect x="-18" y="-52" width="36" height="52" rx="10" fill="#6b7280"/>
+      <rect x="-15" y="0" width="12" height="44" fill="#374151"/><rect x="3" y="0" width="12" height="44" fill="#374151"/>
+    </g>
+    <g transform="translate(40,130)"><use href="#terminal"/></g>
+    <rect x="15" y="85" width="50" height="40" fill="#ef4444" opacity=".9"/>
+    <g transform="translate(90,170)"><use href="#turnstile"/></g>
+    <path d="M86,165 L150,165" stroke="#ef4444" stroke-width="6" stroke-linecap="round"/>
+    <text x="40" y="285" text-anchor="middle" class="bad">Không khớp ai → cổng không mở</text>
+  </g>
+  <path d="M290,130 L480,130" stroke="#94a3b8" stroke-width="2" marker-end="url(#ar)"/>
+  <g transform="translate(600,0)">
+    <rect x="-90" y="60" width="180" height="120" rx="8" fill="#0f172a"/><rect x="-82" y="68" width="164" height="104" fill="#fef2f2"/>
+    <text x="0" y="92" text-anchor="middle" font-size="14" fill="#dc2626" font-weight="700">⚠ NGƯỜI LẠ</text>
+    <rect x="-70" y="102" width="50" height="58" fill="#d1d5db"/><circle cx="-45" cy="122" r="12" fill="#9ca3af"/>
+    <text x="-10" y="120" font-size="11" fill="#374151">Cổng chính</text>
+    <text x="-10" y="138" font-size="11" fill="#374151">07:45</text>
+    <text x="0" y="205" text-anchor="middle" class="lbl">Màn hình bảo vệ báo đỏ</text>
+  </g>
+  <path d="M700,130 L860,130" stroke="#94a3b8" stroke-width="2" marker-end="url(#ar)"/>
+  <g transform="translate(950,206)">
+    <circle cx="0" cy="-70" r="16" fill="#fcd34d" stroke="#92400e" stroke-width="2"/>
+    <rect x="-18" y="-52" width="36" height="52" rx="10" fill="#1e3a8a"/>
+    <rect x="-15" y="0" width="12" height="44" fill="#0f172a"/><rect x="3" y="0" width="12" height="44" fill="#0f172a"/>
+    <path d="M-16,-86 h32 v-6 h-32z" fill="#1e3a8a"/>
+  </g>
+  <text x="950" y="285" text-anchor="middle" class="lbl">Bảo vệ ra kiểm tra</text>
+</svg>
+</div>
+
+<!-- ============ 4. CỔNG XE ============ -->
+<div class="card">
+<h2>4. Cổng xe – camera đọc biển số + barrier</h2>
+<svg viewBox="0 0 1100 300">
+  <rect x="0" y="230" width="1100" height="70" fill="#9ca3af"/>
+  <path d="M0,265 H1100" stroke="#fff" stroke-width="4" stroke-dasharray="30 20"/>
+  <!-- pole + camera -->
+  <rect x="520" y="70" width="10" height="160" fill="#64748b"/>
+  <g transform="translate(490,70)"><use href="#bullet"/></g>
+  <path d="M462,74 L330,190" stroke="#38bdf8" stroke-width="3" stroke-dasharray="5 5"/>
+  <!-- barrier -->
+  <rect x="560" y="180" width="30" height="50" fill="#475569"/>
+  <rect x="590" y="185" width="200" height="10" fill="#ef4444"/>
+  <rect x="630" y="185" width="25" height="10" fill="#fff"/><rect x="700" y="185" width="25" height="10" fill="#fff"/>
+  <!-- car -->
+  <g transform="translate(200,170)">
+    <rect x="0" y="20" width="200" height="45" rx="12" fill="#2563eb"/>
+    <path d="M40,20 L70,-10 H140 L170,20z" fill="#3b82f6"/>
+    <rect x="80" y="-4" width="25" height="20" fill="#bfdbfe"/><rect x="110" y="-4" width="25" height="20" fill="#bfdbfe"/>
+    <circle cx="45" cy="68" r="17" fill="#111827"/><circle cx="160" cy="68" r="17" fill="#111827"/>
+    <rect x="160" y="34" width="44" height="18" fill="#fff" stroke="#111" stroke-width="1.5"/>
+    <text x="182" y="47" text-anchor="middle" font-size="9" font-weight="700">30A-123.45</text>
+  </g>
+  <!-- popup -->
+  <g transform="translate(880,40)">
+    <rect width="200" height="120" rx="8" fill="#0f172a"/><rect x="7" y="7" width="186" height="106" fill="#f8fafc"/>
+    <rect x="20" y="18" width="80" height="26" fill="#fff" stroke="#111" stroke-width="2"/>
+    <text x="60" y="36" text-anchor="middle" font-size="12" font-weight="700">30A-123.45</text>
+    <text x="20" y="64" font-size="12" fill="#15803d" font-weight="700">✓ Xe đã đăng ký</text>
+    <text x="20" y="82" font-size="11" fill="#374151">Chủ xe: Nguyễn Văn A</text>
+    <text x="20" y="100" font-size="11" fill="#374151">Vào lúc 07:30</text>
+  </g>
+  <path d="M800,120 L875,100" stroke="#94a3b8" stroke-width="2" marker-end="url(#ar)"/>
+  <text x="525" y="290" text-anchor="middle" class="lbl">Camera chụp biển → HGVision đọc biển số → SAVP đối chiếu xe đăng ký / xe lạ / danh sách đen</text>
+</svg>
+</div>
+
+<!-- ============ 5. LỚP HỌC + HÀNH LANG ============ -->
+<div class="card">
+<h2>5. Phòng học và hành lang</h2>
+<svg viewBox="0 0 1100 330">
+  <!-- classroom -->
+  <rect x="20" y="20" width="520" height="280" rx="10" fill="#fefce8" stroke="#a16207" stroke-width="2"/>
+  <rect x="40" y="40" width="200" height="60" fill="#14532d"/><text x="140" y="76" text-anchor="middle" fill="#fff" font-size="14">Bảng</text>
+  <rect x="470" y="160" width="50" height="120" fill="#92400e"/><circle cx="480" cy="220" r="4" fill="#fcd34d"/>
+  <g transform="translate(495,140)"><use href="#bullet"/></g>
+  <text x="440" y="120" class="small">camera cửa lớp</text>
+  <g fill="#3b82f6">
+    <circle cx="110" cy="170" r="12" fill="#fcd34d"/><rect x="95" y="182" width="30" height="30" rx="6"/>
+    <circle cx="190" cy="170" r="12" fill="#fcd34d"/><rect x="175" y="182" width="30" height="30" rx="6"/>
+    <circle cx="270" cy="170" r="12" fill="#fcd34d"/><rect x="255" y="182" width="30" height="30" rx="6"/>
+    <circle cx="350" cy="170" r="12" fill="#fcd34d"/><rect x="335" y="182" width="30" height="30" rx="6"/>
+  </g>
+  <rect x="80" y="215" width="300" height="12" fill="#a16207"/>
+  <g transform="translate(150,255)">
+    <rect width="250" height="38" rx="6" fill="#fff" stroke="#16a34a" stroke-width="2"/>
+    <text x="12" y="16" font-size="11" fill="#15803d" font-weight="700">Lớp SE1801 · Phòng A201</text>
+    <text x="12" y="31" font-size="11" fill="#374151">Có mặt 28 · Muộn 2 · Vắng 1</text>
+  </g>
+  <text x="280" y="320" text-anchor="middle" class="lbl">SV vào lớp → camera cửa nhận diện → tự điểm danh</text>
+
+  <!-- corridor -->
+  <rect x="580" y="20" width="500" height="280" rx="10" fill="#f1f5f9" stroke="#64748b" stroke-width="2"/>
+  <rect x="580" y="20" width="500" height="20" fill="#cbd5e1"/>
+  <g transform="translate(830,48)"><use href="#dome"/></g>
+  <path d="M830,60 L650,250 L1010,250 Z" fill="#38bdf8" opacity=".15"/>
+  <path d="M640,200 H1020" stroke="#f59e0b" stroke-width="3" stroke-dasharray="10 6"/>
+  <text x="1025" y="196" class="small">vạch đếm</text>
+  <g fill="#3b82f6">
+    <circle cx="700" cy="215" r="10" fill="#fcd34d"/><rect x="690" y="225" width="20" height="30" rx="5"/>
+    <circle cx="790" cy="175" r="10" fill="#fcd34d"/><rect x="780" y="185" width="20" height="30" rx="5"/>
+    <circle cx="880" cy="225" r="10" fill="#fcd34d"/><rect x="870" y="235" width="20" height="30" rx="5"/>
+    <circle cx="960" cy="180" r="10" fill="#fcd34d"/><rect x="950" y="190" width="20" height="30" rx="5"/>
+  </g>
+  <rect x="890" y="80" width="170" height="50" rx="6" fill="#fff" stroke="#0284c7" stroke-width="2"/>
+  <text x="975" y="101" text-anchor="middle" font-size="12" fill="#0369a1" font-weight="700">Hành lang tầng 1</text>
+  <text x="975" y="119" text-anchor="middle" font-size="12" fill="#0369a1">👥 42 người · Bình thường</text>
+  <text x="830" y="320" text-anchor="middle" class="lbl">Camera trần đếm người → mật độ, cảnh báo đông, vùng cấm</text>
+</svg>
+</div>
+
+</body>
+</html>

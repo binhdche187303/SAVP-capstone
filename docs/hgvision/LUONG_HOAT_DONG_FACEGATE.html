@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Luồng hoạt động FaceGate – SAVP + HGVision</title>
+<style>
+  body { font-family: "Segoe UI", Arial, sans-serif; background: #f5f7fa; color: #1f2937; margin: 0; padding: 32px; }
+  h1 { font-size: 24px; margin: 0 0 6px; }
+  .sub { color: #6b7280; margin-bottom: 24px; }
+  .legend { display: flex; gap: 18px; margin-bottom: 28px; font-size: 14px; flex-wrap: wrap; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
+  section { background: #fff; border-radius: 12px; padding: 22px 24px; margin-bottom: 26px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  h2 { font-size: 18px; margin: 0 0 4px; }
+  .desc { color: #6b7280; font-size: 14px; margin-bottom: 18px; }
+  .flow { display: flex; align-items: stretch; flex-wrap: wrap; gap: 0; row-gap: 14px; }
+  .step { width: 165px; border-radius: 10px; padding: 12px; font-size: 13px; border: 2px solid; background: #fff; display: flex; flex-direction: column; }
+  .step b { font-size: 14px; margin-bottom: 4px; }
+  .step .who { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; font-weight: 600; margin-bottom: 6px; }
+  .arrow { align-self: center; font-size: 22px; color: #9ca3af; padding: 0 6px; }
+  .hw   { border-color: #64748b; background: #f1f5f9; } .hw .who { color: #475569; }
+  .hg   { border-color: #7c3aed; background: #f5f3ff; } .hg .who { color: #6d28d9; }
+  .ok   { border-color: #16a34a; background: #f0fdf4; } .ok .who { color: #15803d; }
+  .todo { border-color: #ea580c; background: #fff7ed; border-style: dashed; } .todo .who { color: #c2410c; }
+  .user { border-color: #0284c7; background: #f0f9ff; } .user .who { color: #0369a1; }
+  .branch { margin-top: 14px; padding: 12px 14px; border-left: 4px solid #dc2626; background: #fef2f2; border-radius: 6px; font-size: 13px; }
+  .note { margin-top: 14px; padding: 12px 14px; border-left: 4px solid #2563eb; background: #eff6ff; border-radius: 6px; font-size: 13px; }
+  .arch { display: grid; grid-template-columns: 1fr 40px 1fr 40px 1fr 40px 1fr; align-items: center; }
+  .arch .col { display: flex; flex-direction: column; gap: 10px; }
+  .arch .step { width: auto; }
+  .arch .arrow { text-align: center; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border: 1px solid #e5e7eb; padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: #f9fafb; }
+  .tag { padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+  .t-ok { background: #dcfce7; color: #15803d; } .t-todo { background: #ffedd5; color: #c2410c; } .t-hg { background: #ede9fe; color: #6d28d9; }
+</style>
+</head>
+<body>
+
+<h1>Luồng hoạt động FaceGate – SAVP + HGVision</h1>
+<div class="sub">Minh họa cách camera HK, server HGVision và hệ thống SAVP phối hợp với nhau.</div>
+
+<div class="legend">
+  <span><i class="dot" style="background:#64748b"></i>Thiết bị tại trường</span>
+  <span><i class="dot" style="background:#7c3aed"></i>Server HGVision (AI của đơn vị camera)</span>
+  <span><i class="dot" style="background:#16a34a"></i>SAVP – đã có code</span>
+  <span><i class="dot" style="background:#ea580c"></i>SAVP – chưa có code (nét đứt)</span>
+  <span><i class="dot" style="background:#0284c7"></i>Người dùng</span>
+</div>
+
+<!-- 0. Kiến trúc -->
+<section>
+  <h2>0. Bức tranh tổng thể</h2>
+  <div class="desc">Ai làm việc gì. SAVP không nối trực tiếp tới camera, chỉ lấy kết quả từ HGVision.</div>
+  <div class="arch">
+    <div class="col">
+      <div class="step hw"><span class="who">Tại trường</span><b>Camera HK khuôn mặt</b>Cổng, phòng học, phòng họp</div>
+      <div class="step hw"><span class="who">Tại trường</span><b>Camera HK biển số</b>Cổng xe, bãi xe</div>
+      <div class="step hw"><span class="who">Tại trường</span><b>Camera hành lang / sảnh</b>Đếm người, vùng cấm</div>
+      <div class="step hw"><span class="who">Tại trường</span><b>Cổng xoay / barrier</b>Mở cửa khi nhận diện hợp lệ</div>
+    </div>
+    <div class="arrow">➜</div>
+    <div class="col">
+      <div class="step hg"><span class="who">HGVision</span><b>AI nhận diện</b>Khuôn mặt, biển số, đếm người</div>
+      <div class="step hg"><span class="who">HGVision</span><b>Kho khuôn mặt</b>Ảnh đã đăng ký của từng người</div>
+      <div class="step hg"><span class="who">HGVision</span><b>Lịch sử sự kiện</b>Ai / xe nào, camera nào, lúc nào</div>
+    </div>
+    <div class="arrow">➜<br><small style="font-size:11px">API<br>mỗi 5 giây</small></div>
+    <div class="col">
+      <div class="step ok"><span class="who">SAVP Backend</span><b>Bộ đọc sự kiện</b>Lấy sự kiện mới từ HGVision</div>
+      <div class="step ok"><span class="who">SAVP Backend</span><b>Xử lý nghiệp vụ</b>Điểm danh, hành trình, cảnh báo, báo cáo</div>
+      <div class="step ok"><span class="who">SAVP Database</span><b>Lưu trữ</b>Người dùng, phòng, khu vực, lịch sử</div>
+    </div>
+    <div class="arrow">➜</div>
+    <div class="col">
+      <div class="step user"><span class="who">Web SAVP</span><b>Bảo vệ</b>Nhật ký cổng, người lạ</div>
+      <div class="step user"><span class="who">Web SAVP</span><b>Quản lý / Admin</b>Dashboard, báo cáo</div>
+      <div class="step user"><span class="who">Web SAVP</span><b>Giảng viên / SV / NV</b>Chuyên cần cá nhân</div>
+    </div>
+  </div>
+  <div class="note"><b>Quan trọng:</b> việc <b>mở cổng</b> do thiết bị FaceGate / HGVision quyết định ngay tại chỗ. SAVP nhận sự kiện sau vài giây để ghi nhận và cảnh báo, <b>không điều khiển barrier</b>.</div>
+</section>
+
+<!-- 1. Chuẩn bị -->
+<section>
+  <h2>1. Luồng chuẩn bị (làm một lần)</h2>
+  <div class="desc">Trước khi chạy thật.</div>
+  <div class="flow">
+    <div class="step hw"><span class="who">Nhà trường</span><b>Lắp camera</b>Đúng góc, đủ sáng, có mạng</div>
+    <div class="arrow">➜</div>
+    <div class="step hg"><span class="who">Đơn vị camera</span><b>Thêm camera vào HGVision</b>Đặt tên, nhóm, bật AI</div>
+    <div class="arrow">➜</div>
+    <div class="step hg"><span class="who">Đơn vị camera</span><b>Tạo tài khoản API</b>client_id / secret</div>
+    <div class="arrow">➜</div>
+    <div class="step ok"><span class="who">Đội triển khai</span><b>Cấu hình kết nối</b>Điền .env, bật CAMERA_PROVIDER=hgvision</div>
+    <div class="arrow">➜</div>
+    <div class="step todo"><span class="who">SAVP – chưa có</span><b>Đồng bộ danh sách camera</b>Tự lấy từ GET /api/cameras</div>
+    <div class="arrow">➜</div>
+    <div class="step ok"><span class="who">Đội triển khai</span><b>Gắn camera vào phòng / khu vực</b>Và chiều vào / ra</div>
+  </div>
+</section>
+
+<!-- 2. Đăng ký khuôn mặt -->
+<section>
+  <h2>2. Luồng đăng ký khuôn mặt</h2>
+  <div class="desc">Một người phải có ảnh trong kho mặt HGVision thì camera mới nhận ra.</div>
+  <div class="flow">
+    <div class="step user"><span class="who">Sinh viên / cán bộ</span><b>Ký đồng ý</b>Cho phép dùng khuôn mặt</div>
+    <div class="arrow">➜</div>
+    <div class="step ok"><span class="who">Web SAVP</span><b>Tải ảnh chân dung</b>1–3 ảnh rõ mặt</div>
+    <div class="arrow">➜</div>
+    <div class="step ok"><span class="who">Admin SAVP</span><b>Duyệt ảnh</b>Màn hình Duyệt ảnh sinh trắc học</div>
+    <div class="arrow">➜</div>
+    <div class="step todo"><span class="who">SAVP – chưa có</span><b>Đẩy ảnh sang HGVision</b>Gọi API faces:write</div>
+    <div class="arrow">➜</div>
+    <div class="step hg"><span class="who">HGVision</span><b>Lưu vào kho mặt</b>Trả về mã khuôn mặt</div>
+    <div class="arrow">➜</div>
+    <div class="step ok"><span class="who">SAVP</span><b>Lưu liên kết</b>Mã khuôn mặt ↔ tài khoản</div>
+  </div>
+  <div class="note"><b>Đường tạm khi chưa có code:</b> đơn vị camera nhập ảnh trực tiếp trên admin HGVision, đội triển khai gắn mã khuôn mặt với tài khoản bằng tay.</div>
+</section>
+
+<!-- 3. Người qua cổng -->
+<section>
+  <h2>3. Luồng người đi qua cổng</h2>
+  <div class="desc">Ví dụ: sinh viên đi vào cổng chính buổi sáng.</div>
+  <div class="flow">
+    <div class="step user"><span class="who">Sinh viên</span><b>Đứng trước camera cổng</b></div>
+    <div class="arrow">➜</div>
+    <div class="step hw"><span class="who">Camera HK</span><b>Chụp khuôn mặt</b>Gửi về HGVision</div>
+    <div class="arrow">➜</div>
+    <div class="step hg"><span class="who">HGVision</span><b>So khớp kho mặt</b>Nhận ra "SV001"</div>
+    <div class="arrow">➜</div>
+    <div class="step hw"><span class="who">FaceGate</span><b>Mở cổng</b>Ngay lập tức</div>
+    <div class="arrow">➜</div>
+    <div class="step ok"><span class="who">SAVP (≤ 5 giây sau)</span><b>Đọc sự kiện</b>SV001 – Cổng chính – 07:12</div>
+    <div class="arrow">➜</div>
+    <div class="step ok"><span class="who">SAVP</span><b>Ghi nhận</b>Lượt vào, hiện diện, hành trình, đúng giờ / muộn</div>
+    <div class="arrow">➜</div>
+    <div class="step user"><span class="who">Web SAVP</span><b>Hiển thị</b>Nhật ký bảo vệ, chuyên cần cá nhân</div>
+  </div>
+  <div class="branch"><b>Nhánh người lạ:</b> HGVision không khớp ai → cổng <b>không mở</b> → SAVP nhận sự kiện "người lạ" kèm ảnh → <b>cảnh báo cho bảo vệ</b> trên web.</div>
+  <div class="branch"><b>Nhánh danh sách đen:</b> khớp người trong danh sách giám sát → SAVP tạo <b>cảnh báo an ninh</b> gửi người phụ trách.</div>
+</section>
+
+<!-- 4. Xe qua cổng -->
+<section>
+  <h2>4. Luồng xe qua cổng</h2>
+  <div class="desc">Camera biển số ở cổng xe.</div>
+  <div class="flow">
+    <div class="step user"><span class="who">Xe</span><b>Đi vào làn</b></div>
+    <div class="arrow">➜</div>
+    <div class="step hw"><span class="who">Camera HK biển số</span><b>Chụp biển</b></div>
+    <div class="arrow">➜</div>
+    <div class="step hg"><span class="who">HGVision</span><b>Đọc biển số</b>30A-123.45</div>
+    <div class="arrow">➜</div>
+    <div class="step todo"><span class="who">SAVP – chưa nối</span><b>Đọc sự kiện biển số</b>Module biển số đã có, chưa nối nguồn HGVision</div>
+    <div class="arrow">➜</div>
+    <div class="step ok"><span class="who">SAVP</span><b>Đối chiếu</b>Xe đăng ký / xe lạ / danh sách đen</div>
+    <div class="arrow">➜</div>
+    <div class="step user"><span class="who">Web SAVP</span><b>Nhật ký xe, cảnh báo</b></div>
+  </div>
+</section>
+
+<!-- 5. Điểm danh lớp -->
+<section>
+  <h2>5. Luồng điểm danh phòng học</h2>
+  <div class="desc">Camera đặt tại cửa phòng học.</div>
+  <div class="flow">
+    <div class="step ok"><span class="who">SAVP</span><b>Thời khóa biểu</b>Lớp nào, phòng nào, giờ nào</div>
+    <div class="arrow">➜</div>
+    <div class="step user"><span class="who">Sinh viên</span><b>Vào phòng học</b></div>
+    <div class="arrow">➜</div>
+    <div class="step hg"><span class="who">HGVision</span><b>Nhận diện</b>Camera cửa phòng A201</div>
+    <div class="arrow">➜</div>
+    <div class="step ok"><span class="who">SAVP</span><b>Đọc sự kiện</b>Camera → phòng A201</div>
+    <div class="arrow">➜</div>
+    <div class="step ok"><span class="who">SAVP</span><b>Đối chiếu lớp đang học</b>Có mặt / muộn / vắng</div>
+    <div class="arrow">➜</div>
+    <div class="step todo"><span class="who">Web – còn dữ liệu mẫu</span><b>Giảng viên, sinh viên xem</b>Cần nối API thật</div>
+  </div>
+</section>
+
+<!-- 6. Camera mất tín hiệu -->
+<section>
+  <h2>6. Luồng camera mất tín hiệu</h2>
+  <div class="flow">
+    <div class="step hw"><span class="who">Camera HK</span><b>Mất điện / mất mạng</b></div>
+    <div class="arrow">➜</div>
+    <div class="step hg"><span class="who">HGVision</span><b>Trạng thái Offline</b>API /cameras/statuses</div>
+    <div class="arrow">➜</div>
+    <div class="step todo"><span class="who">SAVP – chưa nối</span><b>Đọc trạng thái camera</b>Cảnh báo offline đã có, chưa lấy từ HGVision</div>
+    <div class="arrow">➜</div>
+    <div class="step user"><span class="who">Admin</span><b>Nhận cảnh báo bảo trì</b></div>
+  </div>
+</section>
+
+<!-- Tổng hợp -->
+<section>
+  <h2>Tổng hợp tình trạng</h2>
+  <table>
+    <tr><th>Luồng</th><th>Phần HGVision</th><th>Phần SAVP</th></tr>
+    <tr><td>Kết nối, đọc sự kiện khuôn mặt</td><td><span class="tag t-hg">Có API</span></td><td><span class="tag t-ok">Đã có</span> chưa thử với server thật</td></tr>
+    <tr><td>Đồng bộ danh sách camera</td><td><span class="tag t-hg">Có API</span></td><td><span class="tag t-todo">Chưa có</span></td></tr>
+    <tr><td>Đẩy ảnh khuôn mặt sang HGVision</td><td><span class="tag t-hg">Có API</span></td><td><span class="tag t-todo">Chưa có</span></td></tr>
+    <tr><td>Người qua cổng, người lạ, danh sách đen</td><td><span class="tag t-hg">Có API</span></td><td><span class="tag t-ok">Đã có</span></td></tr>
+    <tr><td>Xe qua cổng (biển số)</td><td><span class="tag t-hg">Có API</span></td><td><span class="tag t-todo">Chưa nối nguồn</span> logic đã có</td></tr>
+    <tr><td>Điểm danh phòng học</td><td><span class="tag t-hg">Có API</span></td><td><span class="tag t-ok">BE đã có</span> <span class="tag t-todo">FE còn dữ liệu mẫu</span></td></tr>
+    <tr><td>Camera mất tín hiệu</td><td><span class="tag t-hg">Có API</span></td><td><span class="tag t-todo">Chưa nối nguồn</span> logic đã có</td></tr>
+  </table>
+</section>
+
+</body>
+</html>
