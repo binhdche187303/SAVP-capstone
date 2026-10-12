@@ -268,6 +268,22 @@ export const envValidationSchema = Joi.object({
     .min(1000)
     .max(30000)
     .default(8000),
+  // HGVision (Camera AI, docs/hgvision): nguồn camera chạy song song IVSS.
+  // CAMERA_PROVIDER=hgvision ⇒ bật poller GET /api/history (HGVision không có webhook).
+  CAMERA_PROVIDER: Joi.string().valid('ivss', 'hgvision').default('ivss'),
+  HGVISION_BASE_URL: Joi.string().allow('').default(''),
+  HGVISION_CLIENT_ID: Joi.string().allow('').default(''),
+  HGVISION_CLIENT_SECRET: Joi.string().allow('').default(''),
+  HGVISION_TIMEOUT_MS: Joi.number()
+    .integer()
+    .min(1000)
+    .max(30000)
+    .default(8000),
+  HGVISION_POLL_INTERVAL_MS: Joi.number()
+    .integer()
+    .min(1000)
+    .max(60000)
+    .default(5000),
   // IPS-001 (#37): cron đồng bộ person IVSS (gated default OFF) + lead/grace (phút).
   SCHEDULER_IVSS_SYNC_ENABLED: Joi.boolean().default(false),
   // KPI-001 (#10): cron rollup KPI theo giờ + đối soát 01:00 (gated default OFF).

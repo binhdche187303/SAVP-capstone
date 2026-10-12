@@ -592,9 +592,10 @@ export class IvssPresenceIngestionService implements IvssEventHandlerPort {
   }
 
   /**
-   * Nhận diện từ CẢ 2 nguồn mapping:
+   * Nhận diện từ CẢ 3 nguồn mapping:
    * - 'ivss'     — person-sync group "1", vòng đời theo cuộc họp.
    * - 'portrait' — portrait-sync group "USERS", thường trực theo account/ảnh.
+   * - 'hgvision' — device_person_id = face_ident trên HGVision (HgvisionModule).
    * Nguồn ghi giữ nguyên source riêng (khác vòng đời xoá); chỉ mở đường đọc.
    * ORDER BY để mapping mới nhất thắng khi 1 người có cả 2 nguồn (tránh phụ
    * thuộc thứ tự vật lý của bảng).
@@ -606,7 +607,7 @@ export class IvssPresenceIngestionService implements IvssEventHandlerPort {
     const rows: UserRow[] = await this.dataSource.manager.query(
       `SELECT user_id FROM device_user_mappings
        WHERE device_person_id = $1
-         AND metadata_json->>'source' IN ('ivss', 'portrait')
+         AND metadata_json->>'source' IN ('ivss', 'portrait', 'hgvision')
          AND deleted_at IS NULL
        ORDER BY last_synced_at DESC NULLS LAST, created_at DESC
        LIMIT 1`,
