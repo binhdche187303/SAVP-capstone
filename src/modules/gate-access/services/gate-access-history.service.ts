@@ -36,7 +36,7 @@ const SESSION_FILTER = `(l.direction = 'enter' OR l.paired_log_id IS NULL)`;
  * CTE materialize xong thì `check_in_time`/`check_out_time` trở thành cột thật, dùng được ở
  * WHERE/ORDER BY của SELECT bên ngoài.
  */
-const SESSIONS_CTE = `
+export const SESSIONS_CTE = `
   WITH sessions AS (
     SELECT
       l.id, l.zone_id, z.zone_code, z.zone_name, l.user_id, l.plate_number, l.metadata_json,

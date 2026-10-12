@@ -37,6 +37,7 @@ export const envValidationSchema = Joi.object({
   DB_SYNCHRONIZE: Joi.boolean().default(false),
   DB_LOGGING: Joi.boolean().default(false),
   DB_MIGRATIONS_RUN: Joi.boolean().default(false),
+  DB_SCHEMA_SYNC_BEFORE_MIGRATIONS: Joi.boolean().default(false),
 
   // ─── C. Redis ────────────────────────────────────────────────────────────────
   REDIS_HOST: Joi.string().required(),
@@ -230,6 +231,7 @@ export const envValidationSchema = Joi.object({
   // REC-002: ffmpeg + nơi lưu file recording.
   FFMPEG_PATH: Joi.string().default('ffmpeg'),
   RECORDING_STORAGE_PATH: Joi.string().default('./storage/recordings'),
+  MOCK_RECORDING_ENABLED: Joi.boolean().default(false),
   // REC-005: ffprobe trích metadata media (best-effort).
   FFPROBE_PATH: Joi.string().default('ffprobe'),
   // NSC-001 (#31): token nội bộ cho POST /internal/no-show-cases (fail-closed nếu rỗng).
@@ -288,6 +290,14 @@ export const envValidationSchema = Joi.object({
   SCHEDULER_IVSS_SYNC_ENABLED: Joi.boolean().default(false),
   // KPI-001 (#10): cron rollup KPI theo giờ + đối soát 01:00 (gated default OFF).
   SCHEDULER_KPI_ROLLUP_ENABLED: Joi.boolean().default(false),
+  // VIS-BE-001 (2.10 Khách đến làm việc): bật module, cron, và đẩy khuôn mặt xuống FaceGate (đều mặc định TẮT).
+  VISITORS_ENABLED: Joi.boolean().default(false),
+  SCHEDULER_VISITOR_ENABLED: Joi.boolean().default(false),
+  VISITOR_FACEGATE_ENABLED: Joi.boolean().default(false),
+  // RPT-CENTER-BE-001 (2.13 Trung tâm báo cáo): bật route và cron lịch gửi (mặc định TẮT).
+  REPORT_CENTER_ENABLED: Joi.boolean().default(false),
+  SCHEDULER_REPORT_SCHEDULE_ENABLED: Joi.boolean().default(false),
+  SCHEDULER_DEVICE_MAINTENANCE_ENABLED: Joi.boolean().default(false),
   // KPI-001: đọc bảng tổng hợp ở API zone traffic / vehicle stats. false ⇒ quay về 100% raw.
   KPI_ROLLUP_READ_ENABLED: Joi.boolean().default(true),
   IVSS_SYNC_LEAD_MINUTES: Joi.number().integer().min(1).default(5),

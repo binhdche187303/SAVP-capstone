@@ -43,6 +43,8 @@ export class SecurityAlertAutoResolveService {
               resolved_at = NOW(),
               resolution_note = 'Tự động đóng do không tái phát trong ' || $1::int || ' phút'
         WHERE status <> 'resolved'
+          -- device_maintenance: DeviceMaintenanceAlertService tự đóng khi camera online lại.
+          AND alert_type <> 'device_maintenance'
           AND COALESCE(last_seen_at, triggered_at) < NOW() - ($1::int * INTERVAL '1 minute')
           -- device_error: KHÔNG tự đóng khi còn camera trong alert vẫn offline (offline chỉ
           -- ghi 1 lần lúc chuyển trạng thái → last_seen_at không cập nhật). Đóng khi online lại.

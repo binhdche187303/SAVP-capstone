@@ -7,7 +7,8 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { DataSource, IsNull, ILike, In, Repository } from 'typeorm';
+import { DataSource, IsNull, ILike, In, Not, Repository } from 'typeorm';
+import { VISITOR_DEPARTMENT_ID } from '../../visitors/constants/visit-status.constant.js';
 
 import { DepartmentEntity } from '../entities/department.entity.js';
 import { PARTNER_DEPARTMENT_CODE } from '../../../common/utils/partner-account.util.js';
@@ -797,7 +798,8 @@ export class DepartmentsService {
     const search = query.search?.trim();
 
     const repo = this.dataSource.getRepository(DepartmentEntity);
-    const base: Record<string, unknown> = { deletedAt: IsNull() };
+    // Đơn vị VISITOR chỉ phục vụ tài khoản khách ẩn (VIS-BE-001): không hiện trong danh sách.
+    const base: Record<string, unknown> = { deletedAt: IsNull(), id: Not(VISITOR_DEPARTMENT_ID) };
     if (query.parentId) {
       base.parentDepartmentId = query.parentId;
     }

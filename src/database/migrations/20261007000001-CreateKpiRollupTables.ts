@@ -14,7 +14,7 @@ export class CreateKpiRollupTables20261007000001 implements MigrationInterface {
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
-      CREATE TABLE "kpi_zone_hourly" (
+      CREATE TABLE IF NOT EXISTS "kpi_zone_hourly" (
         "zone_id" uuid NOT NULL,
         "bucket_hour" timestamptz NOT NULL,
         "event_count" integer NOT NULL,
@@ -29,11 +29,11 @@ export class CreateKpiRollupTables20261007000001 implements MigrationInterface {
       )
     `);
     await queryRunner.query(
-      `CREATE INDEX "IDX_kpi_zone_hourly_bucket" ON "kpi_zone_hourly" ("bucket_hour")`,
+      `CREATE INDEX IF NOT EXISTS "IDX_kpi_zone_hourly_bucket" ON "kpi_zone_hourly" ("bucket_hour")`,
     );
 
     await queryRunner.query(`
-      CREATE TABLE "kpi_vehicle_hourly" (
+      CREATE TABLE IF NOT EXISTS "kpi_vehicle_hourly" (
         "id" bigserial NOT NULL,
         "bucket_hour" timestamptz NOT NULL,
         "zone_id" uuid NULL,
@@ -46,11 +46,11 @@ export class CreateKpiRollupTables20261007000001 implements MigrationInterface {
       )
     `);
     await queryRunner.query(
-      `CREATE INDEX "IDX_kpi_vehicle_hourly_bucket" ON "kpi_vehicle_hourly" ("bucket_hour")`,
+      `CREATE INDEX IF NOT EXISTS "IDX_kpi_vehicle_hourly_bucket" ON "kpi_vehicle_hourly" ("bucket_hour")`,
     );
 
     await queryRunner.query(`
-      CREATE TABLE "kpi_vehicle_plate_hourly" (
+      CREATE TABLE IF NOT EXISTS "kpi_vehicle_plate_hourly" (
         "id" bigserial NOT NULL,
         "bucket_hour" timestamptz NOT NULL,
         "zone_id" uuid NULL,
@@ -60,11 +60,11 @@ export class CreateKpiRollupTables20261007000001 implements MigrationInterface {
       )
     `);
     await queryRunner.query(
-      `CREATE INDEX "IDX_kpi_vehicle_plate_hourly_bucket" ON "kpi_vehicle_plate_hourly" ("bucket_hour")`,
+      `CREATE INDEX IF NOT EXISTS "IDX_kpi_vehicle_plate_hourly_bucket" ON "kpi_vehicle_plate_hourly" ("bucket_hour")`,
     );
 
     await queryRunner.query(`
-      CREATE TABLE "kpi_rollup_watermarks" (
+      CREATE TABLE IF NOT EXISTS "kpi_rollup_watermarks" (
         "rollup_name" varchar(50) NOT NULL,
         "covered_from" timestamptz NOT NULL,
         "covered_until" timestamptz NOT NULL,

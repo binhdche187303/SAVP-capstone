@@ -16,6 +16,7 @@ export interface GateAccessLogResponse {
   vehicle_registration_id: string | null;
   paired_log_id: string | null;
   duration_seconds: number | null;
+  metadata_json: Record<string, unknown> | null;
 }
 
 export function toGateAccessLogResponse(
@@ -32,6 +33,7 @@ export function toGateAccessLogResponse(
     vehicle_registration_id: entity.vehicleRegistrationId,
     paired_log_id: entity.pairedLogId,
     duration_seconds: entity.durationSeconds,
+    metadata_json: entity.metadataJson,
   };
 }
 
@@ -46,6 +48,8 @@ export interface AdminGateAccessLogOwner {
   user_id: string;
   full_name: string;
   email: string;
+  employee_code?: string | null;
+  position_title?: string | null;
 }
 
 export interface AdminGateAccessLogResponse extends GateAccessLogResponse {
@@ -65,6 +69,8 @@ export function toAdminGateAccessLogResponse(
           user_id: entity.user.id,
           full_name: entity.user.fullName,
           email: entity.user.email,
+          employee_code: entity.user.employeeCode,
+          position_title: entity.user.positionTitle,
         }
       : null,
   };

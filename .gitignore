@@ -92,3 +92,5 @@ database_v4_current_41_tables.sql
 x.ts 
 .env.bak_local
 clean_demo_seed.sql
+# sinh ra khi đo coverage
+/test/.superpowers/

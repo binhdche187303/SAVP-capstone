@@ -1,0 +1,968 @@
+{
+  "order": [
+    "staff-attendance",
+    "student-attendance",
+    "gate-access",
+    "room-utilization",
+    "vehicle",
+    "visitor",
+    "security-alert"
+  ],
+  "definitions": {
+    "staff-attendance": {
+      "title": "Chuyên cần cán bộ",
+      "description": "Ngày công, đi muộn, về sớm và giờ hiện diện của cán bộ theo đơn vị.",
+      "filters": [
+        {
+          "key": "departmentId",
+          "label": "Đơn vị",
+          "lookup": "departments"
+        },
+        {
+          "key": "staffId",
+          "label": "Cán bộ",
+          "lookup": "staff"
+        }
+      ],
+      "kpis": [
+        {
+          "key": "attendanceRate",
+          "label": "Tỷ lệ chuyên cần",
+          "format": "percent"
+        },
+        {
+          "key": "lateCount",
+          "label": "Lượt đi muộn",
+          "format": "number"
+        },
+        {
+          "key": "earlyLeaveCount",
+          "label": "Lượt về sớm",
+          "format": "number"
+        },
+        {
+          "key": "absentDays",
+          "label": "Ngày vắng",
+          "format": "number"
+        },
+        {
+          "key": "avgHoursPerDay",
+          "label": "Giờ hiện diện TB/ngày",
+          "format": "hours"
+        }
+      ],
+      "charts": [
+        {
+          "key": "daily",
+          "title": "Tỷ lệ chuyên cần theo ngày",
+          "kind": "line",
+          "xKey": "date",
+          "series": [
+            {
+              "key": "rate",
+              "label": "Tỷ lệ (%)"
+            }
+          ]
+        },
+        {
+          "key": "byDepartment",
+          "title": "So sánh theo đơn vị",
+          "kind": "bar",
+          "xKey": "name",
+          "series": [
+            {
+              "key": "rate",
+              "label": "Tỷ lệ (%)"
+            }
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "key": "employeeCode",
+          "label": "Mã CB",
+          "format": "text"
+        },
+        {
+          "key": "fullName",
+          "label": "Họ tên",
+          "format": "text"
+        },
+        {
+          "key": "departmentName",
+          "label": "Đơn vị",
+          "format": "text"
+        },
+        {
+          "key": "workDays",
+          "label": "Ngày công",
+          "format": "number"
+        },
+        {
+          "key": "onTime",
+          "label": "Đúng giờ",
+          "format": "number"
+        },
+        {
+          "key": "late",
+          "label": "Đi muộn",
+          "format": "number"
+        },
+        {
+          "key": "earlyLeave",
+          "label": "Về sớm",
+          "format": "number"
+        },
+        {
+          "key": "absent",
+          "label": "Vắng",
+          "format": "number"
+        },
+        {
+          "key": "totalHours",
+          "label": "Tổng giờ hiện diện",
+          "format": "hours"
+        },
+        {
+          "key": "rate",
+          "label": "Tỷ lệ",
+          "format": "percent"
+        }
+      ]
+    },
+    "student-attendance": {
+      "title": "Chuyên cần sinh viên",
+      "description": "Có mặt, đi muộn, vắng của sinh viên theo lớp học phần, môn học và học kỳ.",
+      "filters": [
+        {
+          "key": "semesterId",
+          "label": "Học kỳ",
+          "lookup": "semesters"
+        },
+        {
+          "key": "subjectId",
+          "label": "Môn học",
+          "lookup": "subjects"
+        },
+        {
+          "key": "classSectionId",
+          "label": "Lớp học phần",
+          "lookup": "classSections"
+        }
+      ],
+      "kpis": [
+        {
+          "key": "attendanceRate",
+          "label": "Tỷ lệ chuyên cần",
+          "format": "percent"
+        },
+        {
+          "key": "sessionCount",
+          "label": "Số buổi",
+          "format": "number"
+        },
+        {
+          "key": "absentCount",
+          "label": "Lượt vắng",
+          "format": "number"
+        },
+        {
+          "key": "lateCount",
+          "label": "Lượt muộn",
+          "format": "number"
+        },
+        {
+          "key": "atRiskStudents",
+          "label": "SV vắng quá 20%",
+          "format": "number"
+        }
+      ],
+      "charts": [
+        {
+          "key": "weekly",
+          "title": "Tỷ lệ chuyên cần theo tuần",
+          "kind": "line",
+          "xKey": "week",
+          "series": [
+            {
+              "key": "rate",
+              "label": "Tỷ lệ (%)"
+            }
+          ]
+        },
+        {
+          "key": "bySection",
+          "title": "So sánh theo lớp học phần",
+          "kind": "bar",
+          "xKey": "name",
+          "series": [
+            {
+              "key": "rate",
+              "label": "Tỷ lệ (%)"
+            }
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "key": "studentCode",
+          "label": "MSSV",
+          "format": "text"
+        },
+        {
+          "key": "fullName",
+          "label": "Họ tên",
+          "format": "text"
+        },
+        {
+          "key": "classSectionName",
+          "label": "Lớp học phần",
+          "format": "text"
+        },
+        {
+          "key": "subjectName",
+          "label": "Môn",
+          "format": "text"
+        },
+        {
+          "key": "sessions",
+          "label": "Số buổi",
+          "format": "number"
+        },
+        {
+          "key": "present",
+          "label": "Có mặt",
+          "format": "number"
+        },
+        {
+          "key": "late",
+          "label": "Muộn",
+          "format": "number"
+        },
+        {
+          "key": "absent",
+          "label": "Vắng",
+          "format": "number"
+        },
+        {
+          "key": "rate",
+          "label": "Tỷ lệ",
+          "format": "percent"
+        },
+        {
+          "key": "warning",
+          "label": "Cảnh báo",
+          "format": "text"
+        }
+      ]
+    },
+    "gate-access": {
+      "title": "Ra vào khuôn viên",
+      "description": "Lượt vào, lượt ra và thời gian lưu trú tại các cổng theo đối tượng.",
+      "filters": [
+        {
+          "key": "zoneId",
+          "label": "Cổng",
+          "lookup": "gates"
+        },
+        {
+          "key": "departmentId",
+          "label": "Đơn vị",
+          "lookup": "departments"
+        },
+        {
+          "key": "subjectType",
+          "label": "Đối tượng",
+          "options": [
+            {
+              "value": "staff",
+              "label": "Cán bộ"
+            },
+            {
+              "value": "student",
+              "label": "Sinh viên"
+            },
+            {
+              "value": "visitor",
+              "label": "Khách"
+            },
+            {
+              "value": "unknown",
+              "label": "Vãng lai"
+            }
+          ]
+        }
+      ],
+      "kpis": [
+        {
+          "key": "entries",
+          "label": "Lượt vào",
+          "format": "number"
+        },
+        {
+          "key": "exits",
+          "label": "Lượt ra",
+          "format": "number"
+        },
+        {
+          "key": "onSite",
+          "label": "Đang trong khuôn viên",
+          "format": "number"
+        },
+        {
+          "key": "avgStayMinutes",
+          "label": "Lưu trú TB",
+          "format": "minutes"
+        }
+      ],
+      "charts": [
+        {
+          "key": "hourly",
+          "title": "Lượt vào/ra theo giờ",
+          "kind": "bar",
+          "xKey": "hour",
+          "series": [
+            {
+              "key": "entries",
+              "label": "Lượt vào"
+            },
+            {
+              "key": "exits",
+              "label": "Lượt ra"
+            }
+          ]
+        },
+        {
+          "key": "byZone",
+          "title": "Theo cổng",
+          "kind": "bar",
+          "xKey": "name",
+          "series": [
+            {
+              "key": "entries",
+              "label": "Lượt vào"
+            }
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "key": "zoneName",
+          "label": "Khu vực",
+          "format": "text"
+        },
+        {
+          "key": "code",
+          "label": "Mã",
+          "format": "text"
+        },
+        {
+          "key": "fullName",
+          "label": "Họ tên",
+          "format": "text"
+        },
+        {
+          "key": "departmentName",
+          "label": "Đơn vị",
+          "format": "text"
+        },
+        {
+          "key": "plateNumber",
+          "label": "Biển số",
+          "format": "text"
+        },
+        {
+          "key": "checkInTime",
+          "label": "Giờ vào",
+          "format": "datetime"
+        },
+        {
+          "key": "checkOutTime",
+          "label": "Giờ ra",
+          "format": "datetime"
+        },
+        {
+          "key": "durationSeconds",
+          "label": "Thời lượng",
+          "format": "duration"
+        }
+      ]
+    },
+    "room-utilization": {
+      "title": "Sử dụng phòng họp",
+      "description": "Số cuộc họp, giờ đặt, giờ thực dùng và tỷ lệ không đến của từng phòng.",
+      "filters": [
+        {
+          "key": "building",
+          "label": "Tòa nhà",
+          "lookup": "buildings"
+        },
+        {
+          "key": "roomId",
+          "label": "Phòng",
+          "lookup": "rooms"
+        }
+      ],
+      "kpis": [
+        {
+          "key": "meetingCount",
+          "label": "Số cuộc họp",
+          "format": "number"
+        },
+        {
+          "key": "utilizationRate",
+          "label": "Tỷ lệ sử dụng",
+          "format": "percent"
+        },
+        {
+          "key": "noShowRate",
+          "label": "Tỷ lệ không đến",
+          "format": "percent"
+        },
+        {
+          "key": "usedHours",
+          "label": "Tổng giờ dùng",
+          "format": "hours"
+        }
+      ],
+      "charts": [
+        {
+          "key": "daily",
+          "title": "Giờ sử dụng theo ngày",
+          "kind": "line",
+          "xKey": "date",
+          "series": [
+            {
+              "key": "usedHours",
+              "label": "Giờ sử dụng"
+            }
+          ]
+        },
+        {
+          "key": "byRoom",
+          "title": "Tỷ lệ sử dụng theo phòng",
+          "kind": "bar",
+          "xKey": "name",
+          "series": [
+            {
+              "key": "utilizationRate",
+              "label": "Tỷ lệ sử dụng (%)"
+            }
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "key": "roomName",
+          "label": "Phòng",
+          "format": "text"
+        },
+        {
+          "key": "building",
+          "label": "Tòa nhà",
+          "format": "text"
+        },
+        {
+          "key": "capacity",
+          "label": "Sức chứa",
+          "format": "number"
+        },
+        {
+          "key": "meetingCount",
+          "label": "Số cuộc họp",
+          "format": "number"
+        },
+        {
+          "key": "bookedHours",
+          "label": "Giờ đặt",
+          "format": "hours"
+        },
+        {
+          "key": "usedHours",
+          "label": "Giờ thực dùng",
+          "format": "hours"
+        },
+        {
+          "key": "utilizationRate",
+          "label": "Tỷ lệ sử dụng",
+          "format": "percent"
+        },
+        {
+          "key": "noShowCount",
+          "label": "Không đến",
+          "format": "number"
+        }
+      ]
+    },
+    "vehicle": {
+      "title": "Phương tiện",
+      "description": "Lượt xe qua cổng theo loại xe, trạng thái đăng ký và danh sách kiểm soát.",
+      "filters": [
+        {
+          "key": "zoneId",
+          "label": "Cổng",
+          "lookup": "gates"
+        },
+        {
+          "key": "vehicleType",
+          "label": "Loại xe",
+          "options": [
+            {
+              "value": "car",
+              "label": "Ô tô"
+            },
+            {
+              "value": "motorbike",
+              "label": "Xe máy"
+            }
+          ]
+        },
+        {
+          "key": "registrationStatus",
+          "label": "Trạng thái",
+          "options": [
+            {
+              "value": "registered",
+              "label": "Đã đăng ký"
+            },
+            {
+              "value": "unregistered",
+              "label": "Chưa đăng ký"
+            },
+            {
+              "value": "watchlist",
+              "label": "Danh sách kiểm soát"
+            }
+          ]
+        }
+      ],
+      "kpis": [
+        {
+          "key": "total",
+          "label": "Tổng lượt",
+          "format": "number"
+        },
+        {
+          "key": "cars",
+          "label": "Ô tô",
+          "format": "number"
+        },
+        {
+          "key": "motorbikes",
+          "label": "Xe máy",
+          "format": "number"
+        },
+        {
+          "key": "unregistered",
+          "label": "Chưa đăng ký",
+          "format": "number"
+        },
+        {
+          "key": "watchlist",
+          "label": "Thuộc danh sách kiểm soát",
+          "format": "number"
+        }
+      ],
+      "charts": [
+        {
+          "key": "hourly",
+          "title": "Lưu lượng theo giờ",
+          "kind": "bar",
+          "xKey": "hour",
+          "series": [
+            {
+              "key": "count",
+              "label": "Lượt xe"
+            }
+          ]
+        },
+        {
+          "key": "byType",
+          "title": "Cơ cấu loại xe",
+          "kind": "pie",
+          "xKey": "name",
+          "series": [
+            {
+              "key": "count",
+              "label": "Lượt xe"
+            }
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "key": "plateNumber",
+          "label": "Biển số",
+          "format": "text"
+        },
+        {
+          "key": "vehicleTypeLabel",
+          "label": "Loại xe",
+          "format": "text"
+        },
+        {
+          "key": "ownerName",
+          "label": "Chủ xe",
+          "format": "text"
+        },
+        {
+          "key": "departmentName",
+          "label": "Đơn vị",
+          "format": "text"
+        },
+        {
+          "key": "zoneName",
+          "label": "Cổng",
+          "format": "text"
+        },
+        {
+          "key": "checkInTime",
+          "label": "Giờ vào",
+          "format": "datetime"
+        },
+        {
+          "key": "checkOutTime",
+          "label": "Giờ ra",
+          "format": "datetime"
+        },
+        {
+          "key": "durationSeconds",
+          "label": "Thời lượng",
+          "format": "duration"
+        },
+        {
+          "key": "statusLabel",
+          "label": "Trạng thái",
+          "format": "text"
+        }
+      ]
+    },
+    "visitor": {
+      "title": "Khách đến làm việc",
+      "description": "Lượt khách theo đơn vị tiếp, mục đích, thời gian lưu trú và tỷ lệ không đến.",
+      "filters": [
+        {
+          "key": "departmentId",
+          "label": "Đơn vị tiếp",
+          "lookup": "departments"
+        },
+        {
+          "key": "purpose",
+          "label": "Mục đích",
+          "lookup": "purposes"
+        },
+        {
+          "key": "status",
+          "label": "Trạng thái",
+          "options": [
+            {
+              "value": "checked_in",
+              "label": "Đang trong khuôn viên"
+            },
+            {
+              "value": "checked_out",
+              "label": "Đã rời"
+            },
+            {
+              "value": "expired",
+              "label": "Không đến"
+            }
+          ]
+        }
+      ],
+      "kpis": [
+        {
+          "key": "totalVisits",
+          "label": "Tổng lượt",
+          "format": "number"
+        },
+        {
+          "key": "uniqueVisitors",
+          "label": "Khách duy nhất",
+          "format": "number"
+        },
+        {
+          "key": "avgStayMinutes",
+          "label": "Lưu trú TB",
+          "format": "minutes"
+        },
+        {
+          "key": "overstayCount",
+          "label": "Lượt quá giờ",
+          "format": "number"
+        },
+        {
+          "key": "noShowRate",
+          "label": "Tỷ lệ không đến",
+          "format": "percent"
+        }
+      ],
+      "charts": [
+        {
+          "key": "daily",
+          "title": "Lượt khách theo ngày",
+          "kind": "line",
+          "xKey": "date",
+          "series": [
+            {
+              "key": "count",
+              "label": "Lượt khách"
+            }
+          ]
+        },
+        {
+          "key": "byDepartment",
+          "title": "Theo đơn vị tiếp",
+          "kind": "bar",
+          "xKey": "name",
+          "series": [
+            {
+              "key": "count",
+              "label": "Lượt khách"
+            }
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "key": "code",
+          "label": "Mã lượt",
+          "format": "text"
+        },
+        {
+          "key": "visitorName",
+          "label": "Khách",
+          "format": "text"
+        },
+        {
+          "key": "organization",
+          "label": "Đơn vị công tác",
+          "format": "text"
+        },
+        {
+          "key": "hostName",
+          "label": "Người gặp",
+          "format": "text"
+        },
+        {
+          "key": "departmentName",
+          "label": "Đơn vị tiếp",
+          "format": "text"
+        },
+        {
+          "key": "purpose",
+          "label": "Mục đích",
+          "format": "text"
+        },
+        {
+          "key": "checkInTime",
+          "label": "Giờ vào",
+          "format": "datetime"
+        },
+        {
+          "key": "checkOutTime",
+          "label": "Giờ ra",
+          "format": "datetime"
+        },
+        {
+          "key": "durationSeconds",
+          "label": "Thời lượng",
+          "format": "duration"
+        },
+        {
+          "key": "statusLabel",
+          "label": "Trạng thái",
+          "format": "text"
+        }
+      ]
+    },
+    "security-alert": {
+      "title": "Sự kiện an ninh",
+      "description": "Cảnh báo theo loại, mức độ, khu vực và thời gian xử lý.",
+      "filters": [
+        {
+          "key": "alertType",
+          "label": "Loại",
+          "options": [
+            {
+              "value": "stranger",
+              "label": "Người lạ"
+            },
+            {
+              "value": "watchlist_person",
+              "label": "Người thuộc danh sách kiểm soát"
+            },
+            {
+              "value": "vehicle",
+              "label": "Phương tiện bất thường"
+            },
+            {
+              "value": "intrusion",
+              "label": "Xâm nhập khu vực cấm"
+            },
+            {
+              "value": "crowd",
+              "label": "Tụ tập đông người"
+            },
+            {
+              "value": "camera_offline",
+              "label": "Camera mất tín hiệu"
+            },
+            {
+              "value": "visitor_overstay",
+              "label": "Khách quá giờ"
+            },
+            {
+              "value": "visitor_must_leave",
+              "label": "Khách phải rời"
+            },
+            {
+              "value": "visitor_zone_violation",
+              "label": "Khách vào sai khu vực"
+            }
+          ]
+        },
+        {
+          "key": "severity",
+          "label": "Mức độ",
+          "options": [
+            {
+              "value": "low",
+              "label": "Thấp"
+            },
+            {
+              "value": "medium",
+              "label": "Trung bình"
+            },
+            {
+              "value": "high",
+              "label": "Cao"
+            },
+            {
+              "value": "critical",
+              "label": "Nghiêm trọng"
+            }
+          ]
+        },
+        {
+          "key": "zoneId",
+          "label": "Khu vực",
+          "lookup": "zones"
+        },
+        {
+          "key": "status",
+          "label": "Trạng thái",
+          "options": [
+            {
+              "value": "open",
+              "label": "Chưa xử lý"
+            },
+            {
+              "value": "acknowledged",
+              "label": "Đã tiếp nhận"
+            },
+            {
+              "value": "resolved",
+              "label": "Đã xử lý"
+            }
+          ]
+        }
+      ],
+      "kpis": [
+        {
+          "key": "total",
+          "label": "Tổng sự kiện",
+          "format": "number"
+        },
+        {
+          "key": "critical",
+          "label": "Mức nghiêm trọng",
+          "format": "number"
+        },
+        {
+          "key": "resolved",
+          "label": "Đã xử lý",
+          "format": "number"
+        },
+        {
+          "key": "avgResolveMinutes",
+          "label": "Thời gian xử lý TB",
+          "format": "minutes"
+        }
+      ],
+      "charts": [
+        {
+          "key": "daily",
+          "title": "Sự kiện theo ngày",
+          "kind": "bar",
+          "xKey": "date",
+          "series": [
+            {
+              "key": "count",
+              "label": "Sự kiện"
+            }
+          ]
+        },
+        {
+          "key": "byType",
+          "title": "Cơ cấu theo loại",
+          "kind": "pie",
+          "xKey": "name",
+          "series": [
+            {
+              "key": "count",
+              "label": "Sự kiện"
+            }
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "key": "occurredAt",
+          "label": "Thời gian",
+          "format": "datetime"
+        },
+        {
+          "key": "typeLabel",
+          "label": "Loại",
+          "format": "text"
+        },
+        {
+          "key": "severityLabel",
+          "label": "Mức độ",
+          "format": "text"
+        },
+        {
+          "key": "zoneName",
+          "label": "Khu vực",
+          "format": "text"
+        },
+        {
+          "key": "cameraName",
+          "label": "Camera",
+          "format": "text"
+        },
+        {
+          "key": "subject",
+          "label": "Đối tượng",
+          "format": "text"
+        },
+        {
+          "key": "statusLabel",
+          "label": "Trạng thái",
+          "format": "text"
+        },
+        {
+          "key": "handlerName",
+          "label": "Người xử lý",
+          "format": "text"
+        },
+        {
+          "key": "resolveMinutes",
+          "label": "Thời gian xử lý",
+          "format": "minutes"
+        }
+      ]
+    }
+  }
+}

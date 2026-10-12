@@ -49,16 +49,24 @@ import { GateAccessModule } from './modules/gate-access/gate-access.module';
 import { RestrictedZoneModule } from './modules/restricted-zone/restricted-zone.module';
 import { CampusDashboardModule } from './modules/campus-dashboard/campus-dashboard.module';
 import { CrowdAlertModule } from './modules/crowd-alert/crowd-alert.module';
+import { CameraGroupsModule } from './modules/camera-groups/camera-groups.module';
 import { DeviceAlertModule } from './modules/device-alert/device-alert.module';
 import { SearchModule } from './modules/search/search.module';
 import { GuestAccessModule } from './modules/guest-access/guest-access.module';
+import { VisitorsModule } from './modules/visitors/visitors.module';
+import { VisitorHooksModule } from './modules/visitors/visitor-hooks.module';
+
+const mockRecordingEnabled =
+  String(process.env['MOCK_RECORDING_ENABLED'] ?? '').toLowerCase() === 'true';
+const shouldLoadDevModule =
+  process.env['NODE_ENV'] === 'development' || mockRecordingEnabled;
 
 /**
- * Dev-only module — chỉ load khi NODE_ENV=development.
- * Tránh import static để không bị tree-shake sai hoặc load ở production.
+ * Dev/demo module — load khi chạy development hoặc khi bật mock recording để demo.
+ * Tránh import static để không bị tree-shake sai ở production.
  */
 async function loadDevModule(): Promise<(new () => unknown)[]> {
-  if (process.env['NODE_ENV'] === 'development') {
+  if (shouldLoadDevModule) {
     const { DevModule } = await import('./modules/dev/dev.module.js');
     return [DevModule];
   }
@@ -67,7 +75,7 @@ async function loadDevModule(): Promise<(new () => unknown)[]> {
 
 // Resolve dev modules synchronously at module definition time
 const devModules =
-  process.env['NODE_ENV'] === 'development'
+  shouldLoadDevModule
     ? (() => {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { DevModule } = require('./modules/dev/dev.module');
@@ -134,9 +142,13 @@ void loadDevModule; // suppress unused warning
     RestrictedZoneModule, // Bước 3 SAVP (ARZ-001/UC-124): cron xâm nhập khu vực hạn chế
     CampusDashboardModule, // Bước 4 SAVP (CDB-001/UC-126, ZPT-001/UC-119, ZTH-001/UC-120): dashboard + timeline + heatmap khu vực
     CrowdAlertModule, // Bước 4 SAVP (ACR-001/UC-121): cron cảnh báo tụ tập đông người
+    CameraGroupsModule, // CAMG-001 — nhóm camera
     DeviceAlertModule, // Camera online → offline → security_alerts device_error + thông báo SA/BA
     SearchModule, // SRCH-01: tìm kiếm tổng hợp đa nguồn (zone/device/vehicle/user/meeting)
-    GuestAccessModule, // GLA-001: khách ngoài công ty truy cập live-meeting qua magic link + OTP
+    GuestAccessModule,
+    // GLA-001: khách ngoài công ty truy cập live-meeting qua magic link + OTP
+    VisitorsModule, // VIS-BE-001 — gate bằng VISITORS_ENABLED (mặc định tắt)
+    VisitorHooksModule, // cầu nối ivss/face-access → phân hệ Khách (token VISITOR_FACE_EVENT_HOOK)
     // ─── Dev-only (conditionally loaded) ───────────────────────────────────────
     ...devModules,
   ],

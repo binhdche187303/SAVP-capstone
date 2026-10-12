@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return */
 import { Test, TestingModule } from '@nestjs/testing';
+import { VISITOR_FACE_EVENT_HOOK } from '../../../common/ports/visitor-face-event-hook.js';
 import { DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { FaceAttendanceService } from './face-attendance.service.js';
@@ -494,5 +495,74 @@ describe('FaceAttendanceService (FAT-001)', () => {
     expect(
       calls(dsMock.manager.query, 'check_in_time, check_out_time').length,
     ).toBe(0);
+  });
+
+  // ── VIS-BE-001: mapping của khách (source='visitor') đi sang phân hệ Khách, không điểm danh họp ──
+  describe('khách đến làm việc', () => {
+    const VISIT = '33333333-3333-4333-8333-333333333333';
+    const buildWithHook = async (hook?: unknown) => {
+      const m: TestingModule = await Test.createTestingModule({
+        providers: [
+          FaceAttendanceService,
+          { provide: DataSource, useValue: dsMock },
+          { provide: ConfigService, useValue: { get: (_k: string, d?: unknown) => d } },
+          { provide: WebsocketService, useValue: wsMock },
+          { provide: PersonWatchlistCheckService, useValue: watchlistMock },
+          ...(hook ? [{ provide: VISITOR_FACE_EVENT_HOOK, useValue: hook }] : []),
+        ],
+      }).compile();
+      return m.get(FaceAttendanceService);
+    };
+    const visitorMapping = [{ user_id: 'visitor-user', metadata_json: { source: 'visitor', visitId: VISIT } }];
+
+    it('chuyển sang hook Khách với visitId, thiết bị, khu vực và hướng; KHÔNG ghi điểm danh', async () => {
+      const hook = { onFaceGateVerify: jest.fn().mockResolvedValue(undefined), onIvssFaceEvent: jest.fn() };
+      const svc = await buildWithHook(hook);
+      dsMock.manager.query.mockImplementation((sql: string) => {
+        if (sql.includes('device_person_id = $2')) return Promise.resolve(visitorMapping);
+        if (sql.includes('FROM iot_devices')) return Promise.resolve([{ zone_id: 'zone-gate' }]);
+        return Promise.resolve(undefined);
+      });
+      await svc.onVerify(input({ direction: 'in' }));
+      expect(hook.onFaceGateVerify).toHaveBeenCalledWith({
+        visitId: VISIT, deviceId: 'dev1', zoneId: 'zone-gate', direction: 'in', verifyTime: input().verifyTime,
+      });
+      expect(calls(dsMock.manager.query, 'attendance_records').length).toBe(0);
+      expect(calls(dsMock.manager.query, 'FROM meetings').length).toBe(0);
+    });
+
+    it('chiều ra cũng chuyển sang hook', async () => {
+      const hook = { onFaceGateVerify: jest.fn().mockResolvedValue(undefined), onIvssFaceEvent: jest.fn() };
+      const svc = await buildWithHook(hook);
+      dsMock.manager.query.mockImplementation((sql: string) => {
+        if (sql.includes('device_person_id = $2')) return Promise.resolve(visitorMapping);
+        if (sql.includes('FROM iot_devices')) return Promise.resolve([{ zone_id: null }]);
+        return Promise.resolve(undefined);
+      });
+      await svc.onVerify(input({ direction: 'out' }));
+      expect(hook.onFaceGateVerify).toHaveBeenCalledWith(expect.objectContaining({ direction: 'out', zoneId: null }));
+    });
+
+    it('hook lỗi → onVerify không ném', async () => {
+      const hook = { onFaceGateVerify: jest.fn().mockRejectedValue(new Error('visitor boom')), onIvssFaceEvent: jest.fn() };
+      const svc = await buildWithHook(hook);
+      dsMock.manager.query.mockImplementation((sql: string) => (sql.includes('device_person_id = $2') ? Promise.resolve(visitorMapping) : Promise.resolve([])));
+      await expect(svc.onVerify(input())).resolves.toBeUndefined();
+    });
+
+    it('không có hook (module Khách vắng) → bỏ qua, không điểm danh', async () => {
+      dsMock.manager.query.mockImplementation((sql: string) => (sql.includes('device_person_id = $2') ? Promise.resolve(visitorMapping) : Promise.resolve([])));
+      await expect(service.onVerify(input())).resolves.toBeUndefined();
+      expect(calls(dsMock.manager.query, 'INSERT INTO attendance_records').length).toBe(0);
+    });
+
+    it('mapping họp thường không bị ảnh hưởng', async () => {
+      const hook = { onFaceGateVerify: jest.fn(), onIvssFaceEvent: jest.fn() };
+      const svc = await buildWithHook(hook);
+      dsMock.manager.query.mockImplementation(router());
+      await svc.onVerify(input());
+      expect(hook.onFaceGateVerify).not.toHaveBeenCalled();
+      expect(calls(dsMock.manager.query, 'INSERT INTO attendance_records').length).toBe(1);
+    });
   });
 });

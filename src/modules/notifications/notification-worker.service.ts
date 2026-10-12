@@ -36,6 +36,8 @@ interface SendEmailJobData {
   payloadJson?: Record<string, unknown>;
   /** File đính kèm (VD: PDF biên bản gửi khách ngoài) — tải bytes từ storage ngay trước khi gửi. */
   attachment?: SendEmailJobAttachment;
+  /** Nhiều tệp đính kèm (RPT-CENTER: báo cáo định kỳ). Gộp với `attachment` cũ, bỏ trùng storageKey. */
+  attachments?: SendEmailJobAttachment[];
 }
 
 @Injectable()
@@ -71,6 +73,7 @@ export class NotificationWorkerService extends WorkerHost {
       content,
       emailHtml,
       attachment,
+      attachments: attachmentList,
     } = job.data;
 
     const notification = await this.notificationRepo.findOne({
@@ -111,17 +114,16 @@ export class NotificationWorkerService extends WorkerHost {
     let attachments:
       | { filename: string; content: Buffer; contentType?: string }[]
       | undefined;
-    if (attachment) {
-      const buffer = await this.storageService.downloadFile(
-        attachment.storageKey,
-      );
-      attachments = [
-        {
-          filename: attachment.fileName,
-          content: buffer,
-          contentType: attachment.mimeType,
-        },
-      ];
+    const sources: SendEmailJobAttachment[] = [];
+    for (const a of [...(attachment ? [attachment] : []), ...(attachmentList ?? [])]) {
+      if (!sources.some((x) => x.storageKey === a.storageKey)) sources.push(a);
+    }
+    if (sources.length > 0) {
+      // Một tệp tải lỗi → ném lỗi để BullMQ thử lại, tuyệt đối không gửi email thiếu tệp.
+      attachments = [];
+      for (const a of sources) {
+        attachments.push({ filename: a.fileName, content: await this.storageService.downloadFile(a.storageKey), contentType: a.mimeType });
+      }
     }
 
     const result = await this.mailService.sendMail({

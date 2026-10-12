@@ -15,6 +15,8 @@ import { LiveMeetingModule } from '../live-meeting/live-meeting.module.js';
 import { MeetingsModule } from '../meetings/meetings.module.js';
 import { RecordingModule } from '../recording/recording.module.js';
 import { PresenceModule } from '../presence/presence.module.js';
+import { ReportsModule } from '../reports/reports.module.js';
+import { VisitorsModule } from '../visitors/visitors.module.js';
 import { KpiRollupModule } from '../kpi-rollup/kpi-rollup.module.js';
 
 /**
@@ -66,6 +68,11 @@ import { KpiRollupModule } from '../kpi-rollup/kpi-rollup.module.js';
     // KPI-001: cron kpi-rollup inject KpiRollupJobService. Cạnh scheduler → kpi-rollup MỘT
     // CHIỀU (kpi-rollup không import module nghiệp vụ nào) ⇒ không circular.
     KpiRollupModule,
+    // VIS-BE-001: 3 cron khách (visitor-sweep / face-reconcile / photo-retention) inject VisitorSweepService.
+    // Scheduler → visitors MỘT CHIỀU (visitors không import scheduler) ⇒ không circular.
+    VisitorsModule,
+    // RPT-CENTER-BE-001: cron report-schedule-dispatch inject ReportScheduleDispatchService. Scheduler → reports MỘT CHIỀU.
+    ReportsModule,
   ],
   providers: [SchedulerService],
   exports: [SchedulerService],

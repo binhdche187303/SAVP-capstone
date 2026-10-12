@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { GateAccessLogEntity } from '../entities/gate-access-log.entity.js';
@@ -31,6 +31,13 @@ export interface WriteGateLogInput {
 export type WriteGateLogResult =
   | { written: true; logId: string }
   | { written: false; skipReason: 'zone_not_gate' | 'duplicate' };
+
+interface GuardDashboardScanInput {
+  gateId?: string;
+  direction?: 'in' | 'out' | 'enter' | 'leave';
+  scenario?: 'authorized' | 'unknown' | 'plate_mismatch';
+  snapshotImageBase64?: string;
+}
 
 /**
  * GateAccessLogService (GAL-001 / UC-107) — đọc lịch sử ra/vào cổng (read-only).
@@ -119,6 +126,106 @@ export class GateAccessLogService {
     };
   }
 
+  async scanFromGuardDashboard(
+    currentUserId: string,
+    input: GuardDashboardScanInput,
+  ) {
+    const roles = await this.getRoleCodes(currentUserId);
+    if (
+      !roles.some((role) =>
+        ['GUARD', 'SYSTEM_ADMIN', 'ADMIN', 'BUSINESS_ADMIN'].includes(role),
+      )
+    ) {
+      throw new ForbiddenException('Bạn không có quyền ghi nhận lượt qua cổng.');
+    }
+
+    const direction =
+      input.direction === 'out' ||
+      input.direction === 'leave' ||
+      input.gateId?.includes('out')
+        ? 'leave'
+        : 'enter';
+    const gate = await this.resolveGuardDashboardGate(input.gateId);
+    const scenario = input.scenario ?? 'authorized';
+    const status =
+      scenario === 'unknown' || scenario === 'plate_mismatch'
+        ? 'denied'
+        : 'authorized';
+    const person =
+      scenario === 'unknown'
+        ? null
+        : await this.resolveGuardDashboardPerson(currentUserId, direction);
+    const plateNumber =
+      scenario === 'unknown'
+        ? '59X00000'
+        : scenario === 'plate_mismatch'
+          ? '98A99999'
+          : person?.plate_number ?? '30A12345';
+    const now = new Date();
+    const reason =
+      status === 'authorized'
+        ? 'FaceID và biển số hợp lệ, được phép ra/vào khuôn viên.'
+        : scenario === 'plate_mismatch'
+          ? 'FaceID hợp lệ nhưng biển số không khớp hồ sơ.'
+          : 'Không nhận diện được hồ sơ hợp lệ.';
+
+    const written = await this.writeGateLog({
+      zoneId: gate.id,
+      direction,
+      accessTime: now,
+      userId: person?.id ?? null,
+      plateNumber: normalizePlate(plateNumber),
+      metadata: {
+        source: 'guard-dashboard',
+        accessStatus: status,
+        scenario,
+        reason,
+        gateId: input.gateId ?? null,
+        snapshotImageBase64: input.snapshotImageBase64 ?? null,
+        personCode: person?.person_code ?? (scenario === 'unknown' ? 'UNK-001' : null),
+        personRole: person?.person_role ?? (scenario === 'unknown' ? 'Người lạ' : null),
+      },
+    });
+
+    if (!written.written) {
+      return {
+        success: false,
+        warning: true,
+        message:
+          written.skipReason === 'zone_not_gate'
+            ? 'Cổng chưa được cấu hình đúng trong backend.'
+            : 'Lượt qua cổng đã được ghi nhận trước đó.',
+      };
+    }
+
+    return {
+      success: true,
+      message:
+        status === 'authorized'
+          ? 'Đã ghi nhận lượt qua cổng vào backend.'
+          : 'Đã ghi nhận cảnh báo qua cổng vào backend.',
+      event: {
+        id: written.logId,
+        user_id: person?.id ?? null,
+        person_code: person?.person_code ?? 'UNK-001',
+        person_name: person?.full_name ?? 'Người lạ chưa xác định',
+        person_role: person?.person_role ?? 'Người lạ',
+        zone_id: gate.id,
+        zone_name: gate.zone_name,
+        zone_code: gate.zone_code,
+        direction,
+        access_time: now,
+        plate_number: normalizePlate(plateNumber),
+        metadata_json: {
+          accessStatus: status,
+          scenario,
+          reason,
+          snapshotImageBase64: input.snapshotImageBase64 ?? null,
+        },
+      },
+    };
+  }
+
   /**
    * Filter dùng chung (mutate qb): from/to/direction/zone_id — chỉ thêm khi có giá trị
    * (cấm undefined lọt where), bound param (SEC-03). KHÔNG deletedAt.
@@ -139,6 +246,98 @@ export class GateAccessLogService {
     if (query.zoneId) {
       qb.andWhere('gal.zoneId = :zoneId', { zoneId: query.zoneId });
     }
+  }
+
+  private async getRoleCodes(userId: string): Promise<string[]> {
+    const rows = (await this.dataSource.manager.query(
+      `SELECT r.role_code
+         FROM user_roles ur
+         JOIN roles r ON r.id = ur.role_id
+        WHERE ur.user_id = $1
+          AND ur.is_active = true
+          AND r.is_active = true`,
+      [userId],
+    )) as Array<{ role_code: string }>;
+    return rows.map((row) => row.role_code);
+  }
+
+  private async resolveGuardDashboardGate(gateId?: string) {
+    const preferredCode = gateId?.includes('side') ? 'GATE_SIDE' : 'GATE_MAIN';
+    const rows = (await this.dataSource.manager.query(
+      `
+      SELECT id, zone_code, zone_name
+        FROM zones
+       WHERE deleted_at IS NULL
+         AND zone_type = 'gate'
+       ORDER BY CASE WHEN zone_code = $1 THEN 0 ELSE 1 END, zone_code ASC
+       LIMIT 1
+      `,
+      [preferredCode],
+    )) as Array<{ id: string; zone_code: string; zone_name: string }>;
+    if (!rows[0]) {
+      throw new BadRequestException('Chưa có zone loại gate để ghi log ra/vào.');
+    }
+    return rows[0];
+  }
+
+  private async resolveGuardDashboardPerson(
+    currentUserId: string,
+    direction: 'enter' | 'leave',
+  ) {
+    const rows = (await this.dataSource.manager.query(
+      `
+      SELECT u.id,
+             u.full_name,
+             COALESCE(st.student_code, u.employee_code, u.email) AS person_code,
+             CASE
+               WHEN st.id IS NOT NULL THEN 'Sinh viên'
+               WHEN EXISTS (
+                 SELECT 1 FROM user_roles ur
+                 JOIN roles r ON r.id = ur.role_id
+                 WHERE ur.user_id = u.id
+                   AND ur.is_active = true
+                   AND r.role_code = 'TEACHER'
+               ) THEN 'Giảng viên'
+               ELSE COALESCE(u.position_title, 'Nhân viên')
+             END AS person_role,
+             vr.plate_number
+        FROM users u
+        LEFT JOIN students st ON st.user_id = u.id AND st.deleted_at IS NULL
+        LEFT JOIN LATERAL (
+          SELECT plate_number
+            FROM vehicle_registrations
+           WHERE user_id = u.id
+             AND deleted_at IS NULL
+           ORDER BY created_at DESC
+           LIMIT 1
+        ) vr ON true
+       WHERE u.deleted_at IS NULL
+         AND u.account_status = 'active'
+         AND u.id <> $1
+         AND EXISTS (
+           SELECT 1 FROM user_roles ur
+           JOIN roles r ON r.id = ur.role_id
+           WHERE ur.user_id = u.id
+             AND ur.is_active = true
+             AND r.role_code IN ('STUDENT', 'TEACHER', 'EMPLOYEE', 'BUSINESS_ADMIN')
+         )
+       ORDER BY
+         CASE WHEN $2 = 'leave' THEN u.updated_at ELSE u.created_at END DESC NULLS LAST,
+         u.full_name ASC
+       LIMIT 1
+      `,
+      [currentUserId, direction],
+    )) as Array<{
+      id: string;
+      full_name: string;
+      person_code: string | null;
+      person_role: string | null;
+      plate_number: string | null;
+    }>;
+    if (!rows[0]) {
+      throw new BadRequestException('Chưa có người dùng demo để ghi nhận lượt qua cổng.');
+    }
+    return rows[0];
   }
 
   /**

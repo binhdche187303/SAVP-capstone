@@ -397,7 +397,7 @@ export class FaceProvisioningService {
          -- loại trừ mọi mapping không thuộc FMP. Thiếu 'portrait' ⇒ mapping kho-mặt-thường-trực
          -- lọt vào đây, findDeviceById trả bridge row (ip_address NULL) → gọi SDK face-terminal
          -- vào IP rỗng, fail + log rác mỗi tick. Chỉ là filter, KHÔNG đổi logic FMP.
-         AND COALESCE(metadata_json->>'source', '') NOT IN ('ivss', 'portrait')
+         AND COALESCE(metadata_json->>'source', '') NOT IN ('ivss', 'portrait', 'visitor')
        LIMIT 500`,
     );
     for (const mp of synced) {

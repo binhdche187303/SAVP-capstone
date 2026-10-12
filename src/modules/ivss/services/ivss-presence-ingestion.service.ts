@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import type {
@@ -15,6 +15,7 @@ import {
   type PresenceSkippedReason,
 } from '../constants/zone-presence.constant.js';
 import { IvssPresenceConfigService } from './ivss-presence-config.service.js';
+import { VISITOR_FACE_EVENT_HOOK, type VisitorFaceEventHook } from '../../../common/ports/visitor-face-event-hook.js';
 
 /** Subfolder storage cho snapshot ảnh sự kiện IVSS (mọi matchState có imageBase64). */
 const SNAPSHOT_FOLDER = 'stranger-snapshots';
@@ -105,6 +106,8 @@ export class IvssPresenceIngestionService implements IvssEventHandlerPort {
     private readonly storageService: StorageService,
     private readonly restrictedZoneIntrusionService: RestrictedZoneIntrusionService,
     private readonly ivssPresenceConfigService: IvssPresenceConfigService,
+    // VIS-BE-001: phân hệ Khách (tùy chọn — không có thì bỏ qua). Hook KHÔNG ném lỗi, không chặn webhook.
+    @Optional() @Inject(VISITOR_FACE_EVENT_HOOK) private readonly visitorHook?: VisitorFaceEventHook,
   ) {
     this.realtimeEnabled = this.configService.get<boolean>(
       'IVSS_REALTIME_ENABLED',
@@ -343,6 +346,13 @@ export class IvssPresenceIngestionService implements IvssEventHandlerPort {
         return;
       }
       const sourceEventId = insertResult.sourceEventId;
+
+      // VIS-BE-001: khách đến làm việc — check-in/out, nhật ký cổng, cảnh báo. Fire-and-forget như nhánh restricted-zone.
+      if (userId && this.visitorHook) {
+        void this.visitorHook
+          .onIvssFaceEvent({ userId, zoneId: presenceZoneId, direction, eventTime, similarity: evt.similarity ?? null, sourceEventId, deviceId })
+          .catch((e: unknown) => this.logger.warn(`visitor hook lỗi (channel=${evt.channelId}): ${e instanceof Error ? e.message : 'unknown'}`));
+      }
 
       if (matchState !== 'matched') {
         // OQ-5: log + metric (đếm qua log); vẫn đã persist row unmatched.
