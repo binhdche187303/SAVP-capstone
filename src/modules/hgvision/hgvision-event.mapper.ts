@@ -1,4 +1,6 @@
 import type { IvssFaceEvent } from '../../common/ports/ivss-event-hook.js';
+import type { VehicleEvent } from '../../common/ports/vehicle-event-hook.js';
+import { normalizePlate } from '../anpr/utils/normalize-plate.js';
 import type { HgvisionHistoryObject } from './hgvision.client.js';
 
 /**
@@ -32,6 +34,33 @@ export function toIvssFaceEvent(
     name: personUid,
     similarity: obj.confidence,
     utc: new Date(ts * 1000).toISOString(),
+  };
+}
+
+/**
+ * Đổi 1 sự kiện lịch sử HGVision có biển số (lp_text) → VehicleEvent để đi chung
+ * pipeline ANPR (VehicleResolveService) như webhook IVSS. Trả null nếu không có
+ * biển số hoặc camera chưa ánh xạ.
+ */
+export function toVehicleEvent(
+  obj: HgvisionHistoryObject,
+  cameraChannelMap: Record<string, number>,
+): VehicleEvent | null {
+  const plateRaw = obj.lp_text?.trim();
+  if (!plateRaw) return null;
+
+  const channelId = cameraChannelMap[obj.camera_id];
+  if (channelId === undefined) return null;
+
+  const ts = obj.first_timestamp ?? obj.last_timestamp;
+  if (ts === undefined) return null;
+
+  return {
+    plateRaw,
+    plateNumber: normalizePlate(plateRaw),
+    channelId,
+    utc: new Date(ts * 1000).toISOString(),
+    vehicleType: obj.object_type,
   };
 }
 

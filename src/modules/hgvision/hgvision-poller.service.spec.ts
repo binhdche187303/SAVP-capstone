@@ -14,14 +14,18 @@ describe('HgvisionPollerService', () => {
   });
 
   let searchHistory: jest.Mock;
+  let fetchImageBase64: jest.Mock;
   let onFaceEvent: jest.Mock;
+  let onVehicleEvent: jest.Mock;
   let provider: string;
   let service: HgvisionPollerService;
 
   beforeEach(() => {
     jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
     searchHistory = jest.fn();
+    fetchImageBase64 = jest.fn().mockResolvedValue('QUJD');
     onFaceEvent = jest.fn().mockResolvedValue(undefined);
+    onVehicleEvent = jest.fn().mockResolvedValue(undefined);
     provider = 'hgvision';
     const config = {
       get: jest.fn((key: string, def?: unknown) =>
@@ -36,8 +40,9 @@ describe('HgvisionPollerService', () => {
       },
     } as unknown as DataSource;
     service = new HgvisionPollerService(
-      { searchHistory } as unknown as HgvisionClient,
+      { searchHistory, fetchImageBase64 } as unknown as HgvisionClient,
       { onFaceEvent },
+      { onVehicleEvent },
       dataSource,
       config,
     );
@@ -67,7 +72,7 @@ describe('HgvisionPollerService', () => {
     await service.tick();
 
     expect(searchHistory).toHaveBeenCalledWith(
-      expect.objectContaining({ hasFace: true, page: 1 }),
+      expect.objectContaining({ page: 1 }),
     );
     expect(onFaceEvent).toHaveBeenCalledTimes(1);
     expect(onFaceEvent).toHaveBeenCalledWith(
@@ -144,5 +149,35 @@ describe('HgvisionPollerService', () => {
     });
     onFaceEvent.mockRejectedValueOnce(new Error('db'));
     await expect(service.tick()).resolves.toBeUndefined();
+  });
+
+  it('sự kiện có biển số → đẩy vào vehicle handler (biển đã chuẩn hóa)', async () => {
+    searchHistory.mockResolvedValue({
+      total: 1,
+      page: 1,
+      page_size: 100,
+      data: [
+        {
+          object_id: 'v1',
+          camera_id: 'Phong C401',
+          object_type: 'car',
+          lp_text: '30a-123.45',
+          object_image_path: 'OBJECT_IMAGE/1/v1.jpg',
+          first_timestamp: Math.floor(Date.now() / 1000) - 5,
+        },
+      ],
+    });
+    service.onModuleInit();
+    await service.tick();
+    expect(onFaceEvent).not.toHaveBeenCalled();
+    expect(onVehicleEvent).toHaveBeenCalledTimes(1);
+    expect(onVehicleEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        plateRaw: '30a-123.45',
+        channelId: 3,
+        imageBase64: 'QUJD',
+      }),
+    );
+    expect(fetchImageBase64).toHaveBeenCalledWith('OBJECT_IMAGE/1/v1.jpg');
   });
 });

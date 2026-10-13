@@ -22,6 +22,8 @@ export interface HgvisionHistoryObject {
   face_ident_text?: string;
   face_image_path?: string;
   lp_text?: string;
+  lp_image_path?: string;
+  object_image_path?: string;
   first_timestamp?: number;
   last_timestamp?: number;
   confidence?: number;
@@ -77,15 +79,35 @@ export class HgvisionClient {
     return this.get<HgvisionHistoryPage>(`/api/history?${params.toString()}`);
   }
 
+  /**
+   * Tải ảnh `*_image_path` qua GET /api/media/images/{image_path} → base64 (không kèm
+   * tiền tố data URL). Giữ nguyên dấu `/` trong path, chỉ encode từng đoạn.
+   */
+  async fetchImageBase64(imagePath: string): Promise<string> {
+    const encoded = imagePath
+      .replace(/^\/+/, '')
+      .split('/')
+      .map(encodeURIComponent)
+      .join('/');
+    const res = await this.authedGet(`/api/media/images/${encoded}`, 'image/*');
+    if (!res.ok) throw await this.toError(res);
+    return Buffer.from(await res.arrayBuffer()).toString('base64');
+  }
+
   private async get<T>(path: string): Promise<T> {
-    let res = await this.send(path, await this.accessToken());
+    const res = await this.authedGet(path, 'application/json');
+    if (!res.ok) throw await this.toError(res);
+    return (await res.json()) as T;
+  }
+
+  private async authedGet(path: string, accept: string): Promise<Response> {
+    let res = await this.send(path, await this.accessToken(), accept);
     if (res.status === 401) {
       // Token bị thu hồi/hết hạn sớm → lấy token mới, thử lại đúng 1 lần.
       this.token = null;
-      res = await this.send(path, await this.accessToken());
+      res = await this.send(path, await this.accessToken(), accept);
     }
-    if (!res.ok) throw await this.toError(res);
-    return (await res.json()) as T;
+    return res;
   }
 
   private async accessToken(): Promise<string> {
@@ -114,10 +136,10 @@ export class HgvisionClient {
     return this.token;
   }
 
-  private send(path: string, token: string): Promise<Response> {
+  private send(path: string, token: string, accept: string): Promise<Response> {
     return this.fetchWithTimeout(path, {
       method: 'GET',
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      headers: { Authorization: `Bearer ${token}`, Accept: accept },
     });
   }
 
