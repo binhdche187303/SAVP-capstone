@@ -97,13 +97,15 @@ describe('VehicleUnknownService (VUN-001 / UC6)', () => {
     expect(r.items[0].id).toBe('a1b2c3d4-1111-2222-3333-444455556666');
   });
 
-  it('C1-isolation: SQL chứa event_type=ivss_vehicle_event + matchState=unmatched (KHÔNG face)', async () => {
+  it('C1-isolation: SQL chứa event_type IN (ivss/camera_vehicle_event) + matchState=unmatched (KHÔNG face)', async () => {
     wire();
     await service.listUnknown(q());
-    const sql = rowsCall()!.sql;
-    expect(sql).toContain(
-      "iot_device_events.event_type = 'ivss_vehicle_event'",
-    );
+    const { sql, params } = rowsCall()!;
+    expect(sql).toContain('iot_device_events.event_type IN ($1, $2)');
+    expect(params.slice(0, 2)).toEqual([
+      'ivss_vehicle_event',
+      'camera_vehicle_event',
+    ]);
     expect(sql).toContain(
       "iot_device_events.payload_json->>'matchState' = 'unmatched'",
     );
@@ -172,45 +174,65 @@ describe('VehicleUnknownService (VUN-001 / UC6)', () => {
     });
   });
 
+  // $1, $2 luôn là 2 event_type xe (ivss_vehicle_event, camera_vehicle_event).
   describe('time-range build động + bind index đúng (4 tổ hợp)', () => {
-    it('không-from-không-to → KHÔNG event_time, params=[limit,offset]', async () => {
+    it('không-from-không-to → KHÔNG event_time, params=[types,limit,offset]', async () => {
       wire();
       await service.listUnknown(q({ page: 1, limit: 20 }));
       const c = rowsCall()!;
       expect(c.sql).not.toContain('event_time >=');
       expect(c.sql).not.toContain('event_time <=');
-      expect(c.sql).toContain('LIMIT $1 OFFSET $2');
-      expect(c.params).toEqual([20, 0]);
+      expect(c.sql).toContain('LIMIT $3 OFFSET $4');
+      expect(c.params).toEqual([
+        'ivss_vehicle_event',
+        'camera_vehicle_event',
+        20,
+        0,
+      ]);
     });
 
-    it('chỉ-from → event_time >= $1, LIMIT $2 OFFSET $3', async () => {
+    it('chỉ-from → event_time >= $3, LIMIT $4 OFFSET $5', async () => {
       wire();
       await service.listUnknown(q({ from: '2026-06-01T00:00:00.000Z' }));
       const c = rowsCall()!;
-      expect(c.sql).toContain('iot_device_events.event_time >= $1');
-      expect(c.sql).toContain('LIMIT $2 OFFSET $3');
-      expect(c.params).toEqual(['2026-06-01T00:00:00.000Z', 20, 0]);
+      expect(c.sql).toContain('iot_device_events.event_time >= $3');
+      expect(c.sql).toContain('LIMIT $4 OFFSET $5');
+      expect(c.params).toEqual([
+        'ivss_vehicle_event',
+        'camera_vehicle_event',
+        '2026-06-01T00:00:00.000Z',
+        20,
+        0,
+      ]);
     });
 
-    it('chỉ-to → event_time <= $1, LIMIT $2 OFFSET $3', async () => {
+    it('chỉ-to → event_time <= $3, LIMIT $4 OFFSET $5', async () => {
       wire();
       await service.listUnknown(q({ to: '2026-06-30T00:00:00.000Z' }));
       const c = rowsCall()!;
-      expect(c.sql).toContain('iot_device_events.event_time <= $1');
-      expect(c.sql).toContain('LIMIT $2 OFFSET $3');
-      expect(c.params).toEqual(['2026-06-30T00:00:00.000Z', 20, 0]);
+      expect(c.sql).toContain('iot_device_events.event_time <= $3');
+      expect(c.sql).toContain('LIMIT $4 OFFSET $5');
+      expect(c.params).toEqual([
+        'ivss_vehicle_event',
+        'camera_vehicle_event',
+        '2026-06-30T00:00:00.000Z',
+        20,
+        0,
+      ]);
     });
 
-    it('cả-hai → >= $1 AND <= $2, LIMIT $3 OFFSET $4 (bind index không lệch)', async () => {
+    it('cả-hai → >= $3 AND <= $4, LIMIT $5 OFFSET $6 (bind index không lệch)', async () => {
       wire();
       await service.listUnknown(
         q({ from: '2026-06-01T00:00:00.000Z', to: '2026-06-30T00:00:00.000Z' }),
       );
       const c = rowsCall()!;
-      expect(c.sql).toContain('iot_device_events.event_time >= $1');
-      expect(c.sql).toContain('iot_device_events.event_time <= $2');
-      expect(c.sql).toContain('LIMIT $3 OFFSET $4');
+      expect(c.sql).toContain('iot_device_events.event_time >= $3');
+      expect(c.sql).toContain('iot_device_events.event_time <= $4');
+      expect(c.sql).toContain('LIMIT $5 OFFSET $6');
       expect(c.params).toEqual([
+        'ivss_vehicle_event',
+        'camera_vehicle_event',
         '2026-06-01T00:00:00.000Z',
         '2026-06-30T00:00:00.000Z',
         20,
@@ -218,6 +240,8 @@ describe('VehicleUnknownService (VUN-001 / UC6)', () => {
       ]);
       // COUNT dùng CÙNG WHERE params (KHÔNG limit/offset).
       expect(countCall()!.params).toEqual([
+        'ivss_vehicle_event',
+        'camera_vehicle_event',
         '2026-06-01T00:00:00.000Z',
         '2026-06-30T00:00:00.000Z',
       ]);
