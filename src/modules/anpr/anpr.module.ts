@@ -87,6 +87,8 @@ import {
     TypeOrmModule,
     VehicleRegistrationService,
     VehicleControlAlertService,
+    // HGVision poller đẩy sự kiện biển số vào cùng handler với webhook IVSS.
+    VEHICLE_EVENT_HANDLER,
   ],
 })
 export class AnprModule {}

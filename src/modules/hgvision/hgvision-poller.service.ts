@@ -9,11 +9,15 @@ import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { IVSS_EVENT_HANDLER } from '../../common/ports/ivss-event-hook.js';
 import type { IvssEventHandlerPort } from '../../common/ports/ivss-event-hook.js';
+import { VEHICLE_EVENT_HANDLER } from '../../common/ports/vehicle-event-hook.js';
+import type { VehicleEventHandlerPort } from '../../common/ports/vehicle-event-hook.js';
 import { HgvisionClient } from './hgvision.client.js';
+import type { HgvisionHistoryObject } from './hgvision.client.js';
 import { HGVISION_CLIENT } from './hgvision.constants.js';
 import {
   parseCameraChannelMap,
   toIvssFaceEvent,
+  toVehicleEvent,
 } from './hgvision-event.mapper.js';
 
 interface ConfigRow {
@@ -30,8 +34,9 @@ const MAX_PAGES_PER_TICK = 20;
 
 /**
  * HgvisionPollerService — HGVision không có webhook nên BE tự poll GET /api/history
- * mỗi HGVISION_POLL_INTERVAL_MS, đổi sự kiện khuôn mặt → IvssFaceEvent rồi đẩy vào
- * IVSS_EVENT_HANDLER (cùng pipeline với IVSS bridge).
+ * mỗi HGVISION_POLL_INTERVAL_MS rồi chia sự kiện:
+ * - khuôn mặt → IvssFaceEvent → IVSS_EVENT_HANDLER (cùng pipeline presence với IVSS bridge);
+ * - biển số (lp_text) → VehicleEvent → VEHICLE_EVENT_HANDLER (cùng pipeline ANPR với webhook IVSS).
  *
  * Chỉ chạy khi CAMERA_PROVIDER=hgvision (mặc định 'ivss' ⇒ không làm gì).
  * Cursor giữ trong bộ nhớ: khởi động lại thì bắt đầu từ "bây giờ − overlap"
@@ -48,6 +53,8 @@ export class HgvisionPollerService implements OnModuleInit, OnModuleDestroy {
   constructor(
     @Inject(HGVISION_CLIENT) private readonly client: HgvisionClient,
     @Inject(IVSS_EVENT_HANDLER) private readonly handler: IvssEventHandlerPort,
+    @Inject(VEHICLE_EVENT_HANDLER)
+    private readonly vehicleHandler: VehicleEventHandlerPort,
     private readonly dataSource: DataSource,
     private readonly config: ConfigService,
   ) {}
@@ -95,7 +102,6 @@ export class HgvisionPollerService implements OnModuleInit, OnModuleDestroy {
       const res = await this.client.searchHistory({
         startTime,
         endTime: nowSec,
-        hasFace: true,
         page,
         pageSize: PAGE_SIZE,
       });
@@ -106,16 +112,15 @@ export class HgvisionPollerService implements OnModuleInit, OnModuleDestroy {
         if (this.seen.has(obj.object_id)) continue;
         this.seen.set(obj.object_id, Date.now());
 
-        const evt = toIvssFaceEvent(obj, cameraMap);
-        if (!evt) continue;
-        try {
-          await this.handler.onFaceEvent(evt);
-        } catch (e) {
-          // SEC-01: chỉ metadata.
-          this.logger.warn(
-            `HGVision event ${obj.object_id} xử lý lỗi (camera=${obj.camera_id}): ${
-              e instanceof Error ? e.message : 'unknown'
-            }`,
+        const faceEvt = toIvssFaceEvent(obj, cameraMap);
+        if (faceEvt) {
+          await this.dispatch(obj, () => this.handler.onFaceEvent(faceEvt));
+        }
+        const vehicleEvt = toVehicleEvent(obj, cameraMap);
+        if (vehicleEvt) {
+          vehicleEvt.imageBase64 = await this.loadVehicleImage(obj);
+          await this.dispatch(obj, () =>
+            this.vehicleHandler.onVehicleEvent(vehicleEvt),
           );
         }
       }
@@ -131,6 +136,43 @@ export class HgvisionPollerService implements OnModuleInit, OnModuleDestroy {
       Math.min(maxTs, nowSec) - POLL_OVERLAP_SEC,
     );
     this.evictSeen();
+  }
+
+  /**
+   * Ảnh toàn cảnh xe (object_image_path), thiếu thì lấy ảnh cắt biển (lp_image_path).
+   * Tải lỗi → bỏ ảnh, sự kiện vẫn được ghi.
+   */
+  private async loadVehicleImage(
+    obj: HgvisionHistoryObject,
+  ): Promise<string | undefined> {
+    const path = obj.object_image_path || obj.lp_image_path;
+    if (!path) return undefined;
+    try {
+      return await this.client.fetchImageBase64(path);
+    } catch (e) {
+      this.logger.warn(
+        `HGVision tải ảnh ${obj.object_id} lỗi: ${
+          e instanceof Error ? e.message : 'unknown'
+        }`,
+      );
+      return undefined;
+    }
+  }
+
+  /** Handler lỗi không làm dừng lượt poll. SEC-01: chỉ log metadata. */
+  private async dispatch(
+    obj: HgvisionHistoryObject,
+    run: () => Promise<void>,
+  ): Promise<void> {
+    try {
+      await run();
+    } catch (e) {
+      this.logger.warn(
+        `HGVision event ${obj.object_id} xử lý lỗi (camera=${obj.camera_id}): ${
+          e instanceof Error ? e.message : 'unknown'
+        }`,
+      );
+    }
   }
 
   private evictSeen(): void {
