@@ -118,7 +118,13 @@ export class HgvisionPollerService implements OnModuleInit, OnModuleDestroy {
         }
         const vehicleEvt = toVehicleEvent(obj, cameraMap);
         if (vehicleEvt) {
-          vehicleEvt.imageBase64 = await this.loadVehicleImage(obj);
+          // Mặc định chỉ lưu đường dẫn ảnh (xem qua BE proxy) — tránh đầy ổ đĩa.
+          vehicleEvt.remoteImagePath = obj.object_image_path || undefined;
+          vehicleEvt.remotePlateImagePath = obj.lp_image_path || undefined;
+          // Biển nằm trong control-list → tải ảnh về lưu làm bằng chứng (HGVision có thể xoá ảnh cũ).
+          if (await this.isControlListed(vehicleEvt.plateNumber)) {
+            vehicleEvt.imageBase64 = await this.loadVehicleImage(obj);
+          }
           await this.dispatch(obj, () =>
             this.vehicleHandler.onVehicleEvent(vehicleEvt),
           );
@@ -156,6 +162,20 @@ export class HgvisionPollerService implements OnModuleInit, OnModuleDestroy {
         }`,
       );
       return undefined;
+    }
+  }
+
+  /** Biển đang active trong vehicle_control_list (blocklist/watchlist). Lỗi DB → coi như không. */
+  private async isControlListed(plateNumber: string): Promise<boolean> {
+    try {
+      const rows: unknown[] = await this.dataSource.manager.query(
+        `SELECT 1 FROM vehicle_control_list
+         WHERE plate_number = $1 AND active = true AND deleted_at IS NULL LIMIT 1`,
+        [plateNumber],
+      );
+      return rows.length > 0;
+    } catch {
+      return false;
     }
   }
 

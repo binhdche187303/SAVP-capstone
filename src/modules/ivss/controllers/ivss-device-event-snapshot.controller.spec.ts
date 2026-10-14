@@ -25,7 +25,7 @@ describe('IvssDeviceEventSnapshotController (F-F fix)', () => {
     });
     const res = mkRes();
     await controller.snapshot(EVENT_ID, CALLER, res as any);
-    expect(snapshotSvc.getSnapshot).toHaveBeenCalledWith(EVENT_ID, 'caller-1');
+    expect(snapshotSvc.getSnapshot).toHaveBeenCalledWith(EVENT_ID, 'caller-1', 'full');
     expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'image/jpeg');
     expect(res.setHeader).toHaveBeenCalledWith(
       'Content-Disposition',

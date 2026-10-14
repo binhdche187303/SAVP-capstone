@@ -13,6 +13,7 @@ describe('HgvisionPollerService', () => {
     confidence: 0.9,
   });
 
+  let controlListRows: unknown[] = [];
   let searchHistory: jest.Mock;
   let fetchImageBase64: jest.Mock;
   let onFaceEvent: jest.Mock;
@@ -23,6 +24,7 @@ describe('HgvisionPollerService', () => {
   beforeEach(() => {
     jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
     searchHistory = jest.fn();
+    controlListRows = [];
     fetchImageBase64 = jest.fn().mockResolvedValue('QUJD');
     onFaceEvent = jest.fn().mockResolvedValue(undefined);
     onVehicleEvent = jest.fn().mockResolvedValue(undefined);
@@ -34,9 +36,13 @@ describe('HgvisionPollerService', () => {
     } as unknown as ConfigService;
     const dataSource = {
       manager: {
-        query: jest
-          .fn()
-          .mockResolvedValue([{ config_json: { 'Phong C401': 3 } }]),
+        query: jest.fn((sql: string) =>
+          Promise.resolve(
+            sql.includes('vehicle_control_list')
+              ? controlListRows
+              : [{ config_json: { 'Phong C401': 3 } }],
+          ),
+        ),
       },
     } as unknown as DataSource;
     service = new HgvisionPollerService(
@@ -175,9 +181,38 @@ describe('HgvisionPollerService', () => {
       expect.objectContaining({
         plateRaw: '30a-123.45',
         channelId: 3,
-        imageBase64: 'QUJD',
+        remoteImagePath: 'OBJECT_IMAGE/1/v1.jpg',
       }),
     );
-    expect(fetchImageBase64).toHaveBeenCalledWith('OBJECT_IMAGE/1/v1.jpg');
+    // Biển thường: chỉ lưu đường dẫn, KHÔNG tải ảnh.
+    expect(fetchImageBase64).not.toHaveBeenCalled();
+  });
+
+  it('biển trong control-list → vẫn tải ảnh về làm bằng chứng', async () => {
+    controlListRows = [{ '?column?': 1 }];
+    searchHistory.mockResolvedValue({
+      total: 1,
+      page: 1,
+      page_size: 100,
+      data: [
+        {
+          object_id: 'v2',
+          camera_id: 'Phong C401',
+          lp_text: '30A12345',
+          object_image_path: 'OBJECT_IMAGE/1/v2.jpg',
+          lp_image_path: 'LP_IMAGE/1/v2.jpg',
+          first_timestamp: Math.floor(Date.now() / 1000) - 5,
+        },
+      ],
+    });
+    service.onModuleInit();
+    await service.tick();
+    expect(fetchImageBase64).toHaveBeenCalledWith('OBJECT_IMAGE/1/v2.jpg');
+    expect(onVehicleEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        imageBase64: 'QUJD',
+        remotePlateImagePath: 'LP_IMAGE/1/v2.jpg',
+      }),
+    );
   });
 });

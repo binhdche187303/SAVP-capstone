@@ -12,12 +12,16 @@ describe('DeviceEventSnapshotService (F-F)', () => {
   let dsMock: any;
   let storageMock: any;
   let authzMock: any;
+  let hgClient: any;
+  let moduleRefMock: any;
 
   const wire = (
     over: {
       event?: Array<{
         snapshot_file_id: string | null;
         owner_user_id?: string | null;
+        remote_image_path?: string | null;
+        remote_plate_image_path?: string | null;
       }>;
       media?: Array<{
         storage_key: string;
@@ -64,7 +68,14 @@ describe('DeviceEventSnapshotService (F-F)', () => {
         .fn()
         .mockResolvedValue({ roles: ['SYSTEM_ADMIN'], permissions: [] }),
     };
-    service = new DeviceEventSnapshotService(dsMock, storageMock, authzMock);
+    hgClient = { fetchImageBase64: jest.fn().mockResolvedValue('UkVN') };
+    moduleRefMock = { get: jest.fn().mockReturnValue(hgClient) };
+    service = new DeviceEventSnapshotService(
+      dsMock,
+      storageMock,
+      authzMock,
+      moduleRefMock,
+    );
   });
 
   it('event có snapshot_file_id + media tồn tại → trả buffer/mimeType/fileName', async () => {
@@ -186,6 +197,56 @@ describe('DeviceEventSnapshotService (F-F)', () => {
       });
       const result = await service.getSnapshot(EVENT_ID, 'sa-1');
       expect(result.buffer).toEqual(Buffer.from('IMG'));
+    });
+  });
+
+  describe('HGVision: ảnh chỉ lưu đường dẫn → proxy qua BE', () => {
+    const remoteEvent = {
+      snapshot_file_id: null,
+      owner_user_id: null,
+      remote_image_path: '/data/img/full.jpg',
+      remote_plate_image_path: '/data/img/plate.jpg',
+    };
+
+    it('không có snapshot_file_id → lấy ảnh toàn cảnh từ HGVision, remote=true', async () => {
+      wire({ event: [remoteEvent] });
+      const r = await service.getSnapshot(EVENT_ID, ADMIN_CALLER);
+      expect(hgClient.fetchImageBase64).toHaveBeenCalledWith(
+        '/data/img/full.jpg',
+      );
+      expect(storageMock.downloadFile).not.toHaveBeenCalled();
+      expect(r).toEqual({
+        buffer: Buffer.from('REM'),
+        mimeType: 'image/jpeg',
+        fileName: 'full.jpg',
+        remote: true,
+      });
+    });
+
+    it('type=plate → ảnh cắt biển, kể cả khi event đã có ảnh lưu MinIO', async () => {
+      wire({ event: [{ ...remoteEvent, snapshot_file_id: MEDIA_ID }] });
+      await service.getSnapshot(EVENT_ID, ADMIN_CALLER, 'plate');
+      expect(hgClient.fetchImageBase64).toHaveBeenCalledWith(
+        '/data/img/plate.jpg',
+      );
+      expect(storageMock.downloadFile).not.toHaveBeenCalled();
+    });
+
+    it('HGVision lỗi/xoá ảnh → 404', async () => {
+      wire({ event: [remoteEvent] });
+      hgClient.fetchImageBase64.mockRejectedValue(new Error('HTTP 404'));
+      await expect(
+        service.getSnapshot(EVENT_ID, ADMIN_CALLER),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('EMPLOYEE không phải chủ → 403, KHÔNG gọi HGVision', async () => {
+      wire({ event: [remoteEvent] });
+      roleOf('EMPLOYEE');
+      await expect(
+        service.getSnapshot(EVENT_ID, 'emp-1'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(hgClient.fetchImageBase64).not.toHaveBeenCalled();
     });
   });
 });

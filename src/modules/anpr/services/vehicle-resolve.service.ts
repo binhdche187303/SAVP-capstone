@@ -169,6 +169,11 @@ export class VehicleResolveService implements VehicleEventHandlerPort {
         // bằng chính lần đọc này); mergeIntoRecentEvent() nối thêm khi gộp lần đọc
         // sau. plateNumber gốc ở trên KHÔNG đổi khi gộp — vẫn là lần đọc ĐẦU TIÊN.
         rawReads: [evt.plateNumber],
+        // HGVision: đường dẫn ảnh trên server HGVision (xem qua BE proxy, không lưu ảnh).
+        ...(evt.remoteImagePath && { remoteImagePath: evt.remoteImagePath }),
+        ...(evt.remotePlateImagePath && {
+          remotePlateImagePath: evt.remotePlateImagePath,
+        }),
       };
 
       // RACE FIX (bằng chứng thật production 2026-08-08): 2 event cùng biển/channel,
