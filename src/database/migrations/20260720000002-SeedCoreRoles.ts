@@ -31,27 +31,27 @@ export class SeedCoreRoles20260720000002 implements MigrationInterface {
   }> = [
     {
       code: 'SYSTEM_ADMIN',
-      name: 'Quan tri he thong',
+      name: 'Quản trị hệ thống',
       description:
-        'Toan quyen tren toan bo he thong, khong gioi han theo phong ban (demo seed data)',
+        'Toàn quyền trên toàn bộ hệ thống, không giới hạn theo phòng ban',
     },
     {
       code: 'BUSINESS_ADMIN',
-      name: 'Quan tri nghiep vu',
+      name: 'Quản trị nghiệp vụ',
       description:
-        'Quan tri trong pham vi phong ban duoc giao (demo seed data)',
+        'Quản trị trong phạm vi phòng ban được giao',
     },
     {
       code: 'MANAGER',
-      name: 'Truong nhom / Quan ly',
+      name: 'Trưởng nhóm / Quản lý',
       description:
-        'Quan ly nhan su truc thuoc, duyet yeu cau, xem bao cao (demo seed data)',
+        'Quản lý nhân sự trực thuộc, duyệt yêu cầu, xem báo cáo',
     },
     {
       code: 'EMPLOYEE',
-      name: 'Nhan vien',
+      name: 'Nhân viên',
       description:
-        'Nguoi dung noi bo thong thuong, tao va tham gia cuoc hop (demo seed data)',
+        'Người dùng nội bộ thông thường, tạo và tham gia cuộc họp',
     },
   ];
 
