@@ -1,5 +1,9 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import {
+  AuditLogEntity,
+  AuditLogSeverity,
+} from '../../administration/entities/audit-log.entity.js';
 import type {
   UserJourneyEventDto,
   UserJourneyResponseDto,
@@ -119,7 +123,7 @@ const vnDayBounds = (col: string) => `
  * ⭐ Nguồn 3 KHÔNG hard-code zone/cam: lọc theo `user_id`, lấy mọi `zone_id`. Lắp thêm
  * camera zone mới ⇒ chỉ khác `zone_id`, cùng bảng ⇒ endpoint TỰ có, không phải sửa code.
  *
- * 100% READ-ONLY: chỉ SELECT, không đụng webhook/ingest/writeGateLog/writeAppearEvent.
+ * READ-ONLY với dữ liệu hành trình (ngoại lệ duy nhất: ghi audit_logs khi xem hộ người khác). Không đụng webhook/ingest/writeGateLog/writeAppearEvent.
  * SEC-03: bind $1/$2 (tên timezone là hằng nội bộ, không phải input người dùng).
  */
 @Injectable()
@@ -127,6 +131,51 @@ export class UserJourneyService {
   private readonly logger = new Logger(UserJourneyService.name);
 
   constructor(private readonly dataSource: DataSource) {}
+
+  /** Role được xem hành trình của MỌI người; role khác (MANAGER…) chỉ trong phạm vi phòng ban. */
+  private static readonly FULL_SCOPE_ROLES = ['SYSTEM_ADMIN', 'ADMIN', 'BUSINESS_ADMIN'];
+
+  /**
+   * Quyền riêng tư khi xem hành trình người KHÁC (route admin):
+   * - SYSTEM_ADMIN / BUSINESS_ADMIN: xem mọi người.
+   * - Còn lại (MANAGER): chỉ người cùng phòng ban hoặc cấp dưới trực tiếp; ngoài phạm vi ⇒ 403.
+   * Mọi lượt xem hộ người khác đều ghi audit_logs (best-effort, lỗi ghi không chặn đọc).
+   */
+  async authorizeView(callerId: string, targetUserId: string, date?: string): Promise<void> {
+    if (callerId !== targetUserId) {
+      const roleRows = (await this.dataSource.query(
+        `SELECT r.role_code FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+          WHERE ur.user_id = $1 AND ur.is_active = true AND r.is_active = true`,
+        [callerId],
+      )) as Array<{ role_code: string }>;
+      const fullScope = roleRows.some((r) => UserJourneyService.FULL_SCOPE_ROLES.includes(r.role_code));
+      if (!fullScope) {
+        const scoped = (await this.dataSource.query(
+          `SELECT 1 FROM users t JOIN users c ON c.id = $1
+            WHERE t.id = $2 AND t.deleted_at IS NULL
+              AND (t.direct_manager_id = c.id
+                   OR (c.department_id IS NOT NULL AND t.department_id = c.department_id))`,
+          [callerId, targetUserId],
+        )) as unknown[];
+        if (scoped.length === 0) {
+          throw new ForbiddenException('Bạn chỉ được xem hành trình của nhân viên thuộc phòng ban mình.');
+        }
+      }
+    }
+
+    try {
+      await this.dataSource.manager.insert(AuditLogEntity, {
+        userId: callerId,
+        actionType: 'user_journey.view',
+        entityType: 'user',
+        entityId: targetUserId,
+        severity: AuditLogSeverity.INFO,
+        metadataJson: { date: date ?? 'today' },
+      });
+    } catch (err) {
+      this.logger.warn(`Không ghi được audit user_journey.view: ${(err as Error).message}`);
+    }
+  }
 
   /** YYYY-MM-DD hôm nay THEO GIỜ VN — không phụ thuộc timezone tiến trình (EC2 chạy UTC). */
   private todayStr(): string {

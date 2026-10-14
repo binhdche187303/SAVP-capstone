@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { MeetingEntity } from '../entities/meeting.entity.js';
 import {
@@ -7,6 +11,7 @@ import {
 } from '../dto/meeting-list-query.dto.js';
 import { MeetingListItemDto } from '../dto/meeting-list-item.dto.js';
 import { TranscriptEntity } from '../../transcription/entities/transcript.entity.js';
+import { AuthzReadRepository } from '../../auth/repositories/authz-read.repository.js';
 
 export interface MeetingListResult {
   data: MeetingListItemDto[];
@@ -30,9 +35,39 @@ const SORT_COLUMN_MAP: Record<MeetingListSortField, string> = {
  */
 @Injectable()
 export class MeetingListService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly authzRepo: AuthzReadRepository,
+  ) {}
 
-  async list(query: MeetingListQueryDto): Promise<MeetingListResult> {
+  /**
+   * Phạm vi xem: có 'meeting.read.all' → toàn bộ (null); MANAGER → id các phòng ban mình quản lý;
+   * còn lại → 403. Trước đây guard chặn cứng 'meeting.read.all' nên màn Chuyên cần phòng ban
+   * của MANAGER luôn 403.
+   */
+  private async resolveDepartmentScope(
+    userId: string,
+  ): Promise<string[] | null> {
+    const { roles, permissions } =
+      await this.authzRepo.getEffectiveRolesAndPermissions(userId);
+    if (permissions.includes('meeting.read.all')) return null;
+    if (roles.includes('MANAGER')) {
+      const rows: Array<{ id: string }> = await this.dataSource.query(
+        `SELECT id FROM departments WHERE manager_user_id = $1 AND is_active = true`,
+        [userId],
+      );
+      return rows.map((r) => r.id);
+    }
+    throw new ForbiddenException({
+      code: 'PERMISSION_DENIED',
+      message: 'Bạn không có quyền xem danh sách cuộc họp.',
+    });
+  }
+
+  async list(
+    query: MeetingListQueryDto,
+    userId: string,
+  ): Promise<MeetingListResult> {
     if (query.from && query.to && new Date(query.from) > new Date(query.to)) {
       throw new BadRequestException({
         code: 'INVALID_DATE_RANGE',
@@ -46,6 +81,28 @@ export class MeetingListService {
       .leftJoin('meeting.organizer', 'organizer')
       .leftJoin('rooms', 'room', 'room.id = meeting.room_id')
       .where('meeting.deleted_at IS NULL');
+
+    const scopeDepartmentIds = await this.resolveDepartmentScope(userId);
+    if (scopeDepartmentIds !== null) {
+      if (scopeDepartmentIds.length === 0) {
+        return {
+          data: [],
+          meta: {
+            page: query.page,
+            limit: query.limit,
+            total: 0,
+            totalPages: 0,
+          },
+        };
+      }
+      // Cuộc họp "của phòng ban": người tổ chức hoặc ít nhất một người tham dự thuộc phòng ban quản lý.
+      qb.andWhere(
+        `(organizer.department_id IN (:...deptIds) OR EXISTS (
+           SELECT 1 FROM meeting_participants mp JOIN users pu ON pu.id = mp.user_id
+           WHERE mp.meeting_id = meeting.id AND pu.department_id IN (:...deptIds)))`,
+        { deptIds: scopeDepartmentIds },
+      );
+    }
 
     if (query.status) {
       qb.andWhere('meeting.status = :status', { status: query.status });

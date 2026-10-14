@@ -25,6 +25,13 @@ export interface VehicleEvent {
   vehicleType?: string;
   /** Ảnh chụp base64 (nếu có) — SEC-01: KHÔNG log/audit. */
   imageBase64?: string;
+  /**
+   * Nguồn HGVision: đường dẫn ảnh trên server HGVision (ảnh toàn cảnh / ảnh cắt biển).
+   * Chỉ lưu đường dẫn vào payload — ảnh xem qua BE proxy (DeviceEventSnapshotService),
+   * không tải về MinIO trừ khi poller đã gửi kèm imageBase64 (sự kiện quan trọng).
+   */
+  remoteImagePath?: string;
+  remotePlateImagePath?: string;
 }
 
 export interface VehicleEventHandlerPort {

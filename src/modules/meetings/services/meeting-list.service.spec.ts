@@ -1,3 +1,4 @@
+import { ForbiddenException } from '@nestjs/common';
 import { BadRequestException } from '@nestjs/common';
 import { MeetingListService } from './meeting-list.service.js';
 import { MeetingListQueryDto } from '../dto/meeting-list-query.dto.js';
@@ -31,6 +32,11 @@ describe('MeetingListService.list', () => {
       { organizer_full_name: 'Nguyen Van A', room_room_name: 'Phong A' },
     ],
     total = 1,
+    access: { roles: string[]; permissions: string[] } = {
+      roles: ['SYSTEM_ADMIN'],
+      permissions: ['meeting.read.all'],
+    },
+    managerDeptIds: string[] = [],
   ) {
     const qb: Record<string, jest.Mock> = {};
     for (const m of [
@@ -51,9 +57,18 @@ describe('MeetingListService.list', () => {
     const repo = { createQueryBuilder: jest.fn(() => qb) };
     const dataSource = {
       getRepository: jest.fn(() => repo),
+      query: jest.fn().mockResolvedValue(managerDeptIds.map((id) => ({ id }))),
     } as unknown as import('typeorm').DataSource;
+    const authzRepo = {
+      getEffectiveRolesAndPermissions: jest.fn().mockResolvedValue(access),
+    } as unknown as import('../../auth/repositories/authz-read.repository.js').AuthzReadRepository;
 
-    const service = new MeetingListService(dataSource);
+    const svc = new MeetingListService(dataSource, authzRepo);
+    // Mặc định gọi bằng admin (có meeting.read.all) để các test lọc/sort cũ giữ nguyên.
+    const service = {
+      list: (query: MeetingListQueryDto, userId = 'admin-1') =>
+        svc.list(query, userId),
+    };
     return { service, qb };
   }
 
@@ -211,5 +226,43 @@ describe('MeetingListService.list', () => {
     );
     const res = await service.list(q());
     expect(res.data[0].hasTranscript).toBe(false);
+  });
+
+  it('MANAGER: chỉ thấy cuộc họp phòng ban mình quản lý', async () => {
+    const { service, qb } = setup(
+      undefined,
+      undefined,
+      undefined,
+      {
+        roles: ['MANAGER'],
+        permissions: [],
+      },
+      ['dept-1'],
+    );
+    await service.list(q(), 'mgr-1');
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      expect.stringContaining('organizer.department_id IN (:...deptIds)'),
+      { deptIds: ['dept-1'] },
+    );
+  });
+
+  it('MANAGER không quản lý phòng ban nào → danh sách rỗng, không query', async () => {
+    const { service, qb } = setup(undefined, undefined, undefined, {
+      roles: ['MANAGER'],
+      permissions: [],
+    });
+    const res = await service.list(q(), 'mgr-1');
+    expect(res.meta.total).toBe(0);
+    expect(qb.getRawAndEntities).not.toHaveBeenCalled();
+  });
+
+  it('không có meeting.read.all và không phải MANAGER → 403', async () => {
+    const { service } = setup(undefined, undefined, undefined, {
+      roles: ['EMPLOYEE'],
+      permissions: [],
+    });
+    await expect(service.list(q(), 'emp-1')).rejects.toThrow(
+      ForbiddenException,
+    );
   });
 });

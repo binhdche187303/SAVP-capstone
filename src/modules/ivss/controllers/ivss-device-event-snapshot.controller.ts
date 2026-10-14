@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Param,
+  Query,
   ParseUUIDPipe,
   Res,
   UseGuards,
@@ -44,11 +45,16 @@ export class IvssDeviceEventSnapshotController {
     @Param('eventId', ParseUUIDPipe) eventId: string,
     @CurrentUser() currentUser: { userId: string },
     @Res() res: Response,
+    @Query('type') type?: string,
   ) {
     const snapshot = await this.deviceEventSnapshotService.getSnapshot(
       eventId,
       currentUser.userId,
+      type === 'plate' ? 'plate' : 'full',
     );
+    // Ảnh HGVision: cho trình duyệt cache để mở lại không gọi HGVision lần nữa.
+    if (snapshot.remote)
+      res.setHeader('Cache-Control', 'private, max-age=3600');
     res.setHeader('Content-Type', snapshot.mimeType);
     res.setHeader(
       'Content-Disposition',

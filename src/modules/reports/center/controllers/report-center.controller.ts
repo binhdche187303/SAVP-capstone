@@ -52,4 +52,10 @@ export class ReportCenterController {
   async recent(@CurrentUser() user: CurrentUserPayload) {
     return { success: true, message: 'OK', data: await this.exporter.recent(user.userId), meta: {} };
   }
+
+  @Get('exports/:jobId/download-url')
+  @RequirePermissions('report.center.export')
+  async downloadUrl(@Param('jobId') jobId: string, @CurrentUser() user: CurrentUserPayload) {
+    return { success: true, message: 'OK', data: await this.exporter.downloadLink(jobId, user.userId), meta: {} };
+  }
 }

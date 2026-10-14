@@ -123,6 +123,8 @@ describe('AttendanceService', () => {
           useValue: {
             findOne: jest.fn(),
             find: jest.fn(),
+            // getDirectReportIds tra phòng ban do user làm trưởng phòng — mặc định không có.
+            manager: { query: jest.fn().mockResolvedValue([]) },
           },
         },
         {

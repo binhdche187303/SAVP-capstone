@@ -28,6 +28,7 @@ describe('chuyển trạng thái', () => {
         ['approved', 'revoke', 'revoked'],
         ['approved', 'cancel', 'cancelled'],
         ['approved', 'expire', 'expired'],
+        ['pending_approval', 'expire', 'expired'],
         ['checked_in', 'check_out', 'checked_out'],
         ['checked_in', 'revoke', 'must_leave'],
         ['checked_in', 'close_manual', 'checked_out'],

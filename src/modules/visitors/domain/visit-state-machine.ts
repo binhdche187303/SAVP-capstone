@@ -22,7 +22,7 @@ export class VisitTransitionError extends Error {
 }
 
 const TRANSITIONS: Partial<Record<VisitStatus, Partial<Record<VisitAction, VisitStatus>>>> = {
-  pending_approval: { approve: 'approved', reject: 'rejected', cancel: 'cancelled' },
+  pending_approval: { approve: 'approved', reject: 'rejected', cancel: 'cancelled', expire: 'expired' },
   approved: { check_in: 'checked_in', revoke: 'revoked', cancel: 'cancelled', expire: 'expired' },
   // Thu hồi khi khách đang ở trong → phải rời nhưng vẫn được theo dõi tới khi ra (spec mockup §12.1).
   checked_in: { check_out: 'checked_out', revoke: 'must_leave', close_manual: 'checked_out', mark_unrecorded: 'exit_unrecorded' },
