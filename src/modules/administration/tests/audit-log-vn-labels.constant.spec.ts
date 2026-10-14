@@ -39,10 +39,31 @@ describe('audit-log-vn-labels.constant', () => {
       expect(translateActionTypeToVn('read_analytics')).toBe('Xem thống kê');
     });
 
-    it('keeps unmapped words untranslated in the fallback path', () => {
-      expect(translateActionTypeToVn('export_audit_logs')).toBe(
-        'Export audit logs',
+    it('maps real action codes stored in audit_logs (same labels as FE)', () => {
+      expect(translateActionTypeToVn('user_create')).toBe('Thêm tài khoản');
+      expect(translateActionTypeToVn('ACCOUNT_LOCK')).toBe('Khóa tài khoản');
+      expect(translateActionTypeToVn('auto_offline')).toBe(
+        'Thiết bị mất kết nối',
       );
+      expect(translateActionTypeToVn('read_analytics_on_time_rate')).toBe(
+        'Xem thống kê tỷ lệ đúng giờ',
+      );
+      expect(translateActionTypeToVn('biometric.download')).toBe(
+        'Tải xuống dữ liệu khuôn mặt',
+      );
+      expect(translateActionTypeToVn('export_audit_logs')).toBe(
+        'Xuất nhật ký hệ thống',
+      );
+    });
+
+    it('translates known prefixes for unmapped codes', () => {
+      expect(translateActionTypeToVn('read_analytics_new_metric')).toBe(
+        'Xem thống kê new metric',
+      );
+    });
+
+    it('keeps unmapped words untranslated in the fallback path', () => {
+      expect(translateActionTypeToVn('foo_bar.baz')).toBe('Foo bar baz');
     });
   });
 

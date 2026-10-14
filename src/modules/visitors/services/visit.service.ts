@@ -3,6 +3,7 @@ import { DataSource, EntityManager } from 'typeorm';
 import { decodeBase64Image } from '../../../common/utils/decode-base64-image.util.js';
 import { resolveNonStaffDepartmentIds } from '../../../common/utils/non-staff-department.util.js';
 import { FaceProfileService } from '../../accounts/services/face-profile.service.js';
+import { detectImageMimeType } from '../../accounts/utils/image-magic-bytes.util.js';
 import { AuditLogsService } from '../../administration/services/audit-logs.service.js';
 import { VisitorConfigService } from '../config/visitor-config.service.js';
 import type { VisitChannel, VisitEventType, VisitStatus } from '../constants/visit-status.constant.js';
@@ -179,7 +180,11 @@ export class VisitService {
     if (rows.length) throw err(409, 'VISIT_OVERLAP', 'Khách đã có một lượt khác đang hiệu lực trong khung giờ này');
   }
 
-  /** Giải mã ảnh data URL (chỉ JPEG/PNG, ≤ 2 MB). Null nếu không có ảnh. */
+  /**
+   * Giải mã ảnh data URL (chỉ JPEG/PNG, ≤ 2 MB). Null nếu không có ảnh.
+   * Kiểm theo chữ ký file thật chứ không tin tiền tố `data:image/...` — endpoint đăng ký khách là công khai,
+   * không có kiểm tra này thì gửi được file bất kỳ (script, html…) lên kho ảnh khuôn mặt.
+   */
   decodePhoto(raw: string | null | undefined) {
     if (!raw) return null;
     if (!/^data:image\/(jpeg|png);base64,/i.test(raw)) throw err(400, 'INVALID_PHOTO', 'Ảnh không hợp lệ');
@@ -188,7 +193,9 @@ export class VisitService {
     if (decoded.buffer.length > MAX_PHOTO_BYTES) {
       throw new PayloadTooLargeException({ success: false, message: 'Ảnh khuôn mặt tối đa 2 MB', error: { code: 'PHOTO_TOO_LARGE', details: {} } });
     }
-    return decoded;
+    const realMime = detectImageMimeType(decoded.buffer);
+    if (!realMime || !ALLOWED_PHOTO_MIME.includes(realMime)) throw err(400, 'INVALID_PHOTO', 'Ảnh không hợp lệ');
+    return { buffer: decoded.buffer, mimeType: realMime };
   }
 
   /** Người được gặp: nhân sự đang hoạt động, không thuộc đơn vị đối tác/khách (BR-V20). */

@@ -371,6 +371,26 @@ describe('VehicleRegistrationService (VPR-001 / UC1)', () => {
       expect(call[1]).toEqual({ uid: 'u9' });
     });
 
+    it('search → OR tên (unaccent) / email / biển số đã normalize', async () => {
+      await service.listAll(q({ search: '30a-12' }));
+      const call = findCall('unaccent(u.fullName)');
+      expect(call).toBeDefined();
+      expect(String(call[0])).toContain('u.email ILIKE :s');
+      expect(String(call[0])).toContain('vr.plateNumber ILIKE :sp');
+      expect(call[1]).toEqual({ s: '%30a-12%', sp: '%30A12%' });
+    });
+
+    it('search không có ký tự biển số → bỏ điều kiện plate; escape % _', async () => {
+      await service.listAll(q({ search: 'Đinh 5%_' }));
+      const call = findCall('unaccent(u.fullName)');
+      expect(String(call[0])).toContain('vr.plateNumber'); // '5' vẫn là ký tự biển số
+      await service.listAll(q({ search: 'Đỗ' }));
+      const last = qb.andWhere.mock.calls.at(-1);
+      expect(String(last[0])).not.toContain('vr.plateNumber');
+      expect(last[1]).toEqual({ s: '%Đỗ%' });
+      expect(call[1].s).toBe('%Đinh 5\\%\\_%');
+    });
+
     it('owner → ILIKE trên full_name OR email, KHÔNG normalize', async () => {
       await service.listAll(q({ owner: 'Nguyen Van' }));
       const call = findCall('u.fullName ILIKE');

@@ -8,6 +8,8 @@ export interface VisitorConfig {
   faceMatchThreshold: number;
   accessBufferMinutes: number;
   maxVisitDays: number;
+  /** Số ngày tối đa từ hôm nay tới giờ hẹn bắt đầu (chặn đăng ký hẹn năm sau trên cổng công khai). */
+  maxAdvanceDays: number;
   overstayEscalateMinutes: number;
   approverMode: ApproverMode;
   defaultZoneCodes: string[];
@@ -23,6 +25,7 @@ export const VISITOR_CONFIG_DEFAULTS: VisitorConfig = {
   faceMatchThreshold: 0.8,
   accessBufferMinutes: 30,
   maxVisitDays: 7,
+  maxAdvanceDays: 90,
   overstayEscalateMinutes: 30,
   approverMode: 'host_or_manager',
   defaultZoneCodes: [],
@@ -110,6 +113,7 @@ export class VisitorConfigService {
       faceMatchThreshold: positiveNumber(get('face_match_threshold'), d.faceMatchThreshold),
       accessBufferMinutes: positiveNumber(get('access_buffer_minutes'), d.accessBufferMinutes, true),
       maxVisitDays: positiveNumber(get('max_visit_days'), d.maxVisitDays),
+      maxAdvanceDays: positiveNumber(get('max_advance_days'), d.maxAdvanceDays),
       overstayEscalateMinutes: positiveNumber(get('overstay_escalate_minutes'), d.overstayEscalateMinutes),
       approverMode: mode === 'manager_only' || mode === 'host_or_manager' ? mode : d.approverMode,
       defaultZoneCodes: asStringArray(get('default_zone_codes'), d.defaultZoneCodes, true),

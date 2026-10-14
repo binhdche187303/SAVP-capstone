@@ -23,6 +23,12 @@ export class VehicleControlListResponseDto {
 
   @ApiPropertyOptional({
     nullable: true,
+    description: 'Loại phương tiện (null = không xác định)',
+  })
+  vehicle_type: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
     description: 'Lý do đưa vào danh sách kiểm soát',
   })
   reason: string | null;
@@ -48,6 +54,7 @@ export function toVehicleControlListResponse(
     plate_number: entity.plateNumber,
     plate_raw: entity.plateRaw,
     list_type: entity.listType,
+    vehicle_type: entity.vehicleType ?? null,
     reason: entity.reason,
     active: entity.active,
     created_by: entity.createdBy,

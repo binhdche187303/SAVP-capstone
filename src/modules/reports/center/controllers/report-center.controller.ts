@@ -20,8 +20,8 @@ export class ReportCenterController {
 
   @Get('catalog')
   @RequirePermissions('report.center.read')
-  async catalog() {
-    return { success: true, message: 'OK', data: await this.center.catalog(), meta: {} };
+  async catalog(@CurrentUser() user: CurrentUserPayload) {
+    return { success: true, message: 'OK', data: await this.center.catalog(user.userId), meta: {} };
   }
 
   @Get('lookups')

@@ -41,7 +41,7 @@ export class ReportCenterService {
     return d;
   }
 
-  async catalog() {
+  async catalog(userId?: string) {
     const schedules: Array<{ report_type: string; n: string }> = await this.dataSource.query(
       `SELECT report_type, count(*) AS n FROM report_schedules WHERE enabled = true AND deleted_at IS NULL GROUP BY report_type`,
     );
@@ -49,18 +49,21 @@ export class ReportCenterService {
       `SELECT input_json->>'type' AS report_type, max(completed_at) AS last FROM background_jobs
         WHERE related_entity_type = 'report_center' AND status = 'completed' GROUP BY 1`,
     );
-    return REPORT_TYPE_ORDER.map((type) => {
+    return Promise.all(REPORT_TYPE_ORDER.map(async (type) => {
       const d = this.effective(type);
+      // Thêm lớp "người này có được xem loại báo cáo này không" (MANAGER không có Phương tiện / Sự kiện an ninh).
+      const scopeReason = d.available && userId ? await this.scope.unavailableReason(userId, d) : null;
+      const available = d.available && scopeReason === null;
       return {
         type,
         title: d.title,
         description: d.description,
-        available: d.available,
-        unavailableReason: d.available ? null : d.unavailableReason ?? null,
+        available,
+        unavailableReason: available ? null : scopeReason ?? d.unavailableReason ?? null,
         activeSchedules: Number(schedules.find((s) => s.report_type === type)?.n ?? 0),
         lastExportAt: exportsOf.find((e) => e.report_type === type)?.last?.toISOString?.() ?? null,
       };
-    });
+    }));
   }
 
   /** Danh sách chọn cho bộ lọc; `departments` và `staff` thu hẹp theo phạm vi của người gọi. */

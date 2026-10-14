@@ -1,6 +1,8 @@
 import { CanActivate, ExecutionContext, HttpException, HttpStatus, Injectable, Logger, SetMetadata } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import type { Request, Response } from 'express';
+import { resolveClientIp } from '../../../common/utils/client-ip.util.js';
 import { RedisService } from '../../redis/redis.service.js';
 import { VisitorConfigService } from '../config/visitor-config.service.js';
 
@@ -12,6 +14,8 @@ export const PublicRateLimit = (bucket: PublicRateLimitBucket) => SetMetadata(PU
 /**
  * Giới hạn theo IP bằng Redis: INCR + EXPIRE ở lần đầu của cửa sổ. Vượt → 429 `RATE_LIMITED` + Retry-After.
  * Redis lỗi → cho qua (ghi cảnh báo): không để sự cố Redis khóa cả cổng đăng ký.
+ * IP lấy qua `resolveClientIp` với `TRUST_PROXY_HOPS` proxy đáng tin: KHÔNG tin phần đầu `X-Forwarded-For` vì
+ * client tự điền được — nếu tin, đổi header mỗi request là né được mọi giới hạn.
  */
 @Injectable()
 export class PublicRateLimitGuard implements CanActivate {
@@ -21,6 +25,7 @@ export class PublicRateLimitGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly redis: RedisService,
     private readonly config: VisitorConfigService,
+    private readonly appConfig: ConfigService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -33,8 +38,7 @@ export class PublicRateLimitGuard implements CanActivate {
     const http = context.switchToHttp();
     const req = http.getRequest<Request>();
     const res = http.getResponse<Response>();
-    const forwarded = String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim();
-    const ip = forwarded || req.ip || 'unknown';
+    const ip = resolveClientIp(req, Number(this.appConfig.get('TRUST_PROXY_HOPS', 1)));
     const [limit, windowSeconds] = (await this.config.get()).publicRateLimit[bucket];
     const key = `visitor:rl:${bucket}:${ip}`;
 

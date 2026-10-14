@@ -99,6 +99,9 @@ export const envValidationSchema = Joi.object({
 
   // ─── F. Rate Limit ───────────────────────────────────────────────────────────
   RATE_LIMIT_ENABLED: Joi.boolean().default(true),
+  // Số reverse proxy đáng tin đứng trước ứng dụng (Render = 1, Cloudflare + Render = 2, chạy trực tiếp = 0).
+  // Dùng để lấy IP khách thật từ X-Forwarded-For cho giới hạn tần suất endpoint công khai.
+  TRUST_PROXY_HOPS: Joi.number().integer().min(0).max(5).default(1),
   AUTH_LOGIN_RATE_LIMIT_MAX_ATTEMPTS: Joi.number().integer().default(5),
   AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS: Joi.number().integer().default(300),
   AUTH_OTP_REQUEST_RATE_LIMIT_MAX_ATTEMPTS: Joi.number().integer().default(3),

@@ -9,8 +9,14 @@ import { computeNextRun, type ScheduleFrequency } from './schedule-next-run.js';
 const PERIODS = ['yesterday', 'last_week', 'last_month'];
 const FREQUENCIES = ['daily', 'weekly', 'monthly'];
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Không nhận khoảng trắng, dấu nháy, ngoặc nhọn (chống `<b>x</b>@a.com`) — những địa chỉ này nhà cung cấp mail đằng nào cũng từ chối.
+const EMAIL_PATTERN = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const MAX_RECIPIENTS = 20;
+// Khớp độ dài cột trong bảng report_schedules (name varchar(150), subject varchar(200)); message là text nhưng cần trần hợp lý.
+export const MAX_NAME_LENGTH = 150;
+export const MAX_SUBJECT_LENGTH = 200;
+export const MAX_MESSAGE_LENGTH = 5000;
 
 export interface ScheduleRecipient { type: 'user' | 'email'; value: string; label: string }
 export interface SchedulePayload {
@@ -43,6 +49,7 @@ export class ReportScheduleService {
     const p = raw ?? {};
     const bad = (m: string) => { throw reportBadRequest(m, 'VALIDATION_ERROR'); };
     if (!String(p.name ?? '').trim()) bad('Vui lòng nhập tên lịch gửi');
+    if (String(p.name).trim().length > MAX_NAME_LENGTH) bad(`Tên lịch gửi tối đa ${MAX_NAME_LENGTH} ký tự`);
     if (typeof p.reportType !== 'string' || !isReportType(p.reportType)) bad('Loại báo cáo không tồn tại');
     if (!PERIODS.includes(p.period as string)) bad('Kỳ dữ liệu không hợp lệ');
     if (!FREQUENCIES.includes(p.frequency as string)) bad('Tần suất không hợp lệ');
@@ -58,6 +65,11 @@ export class ReportScheduleService {
     const badEmail = recipients.find((r) => r.type === 'email' && !EMAIL_PATTERN.test(String(r.value ?? '')));
     if (badEmail) bad(`Email không hợp lệ: ${badEmail.value}`);
     if (recipients.some((r) => r.type !== 'email' && r.type !== 'user')) bad('Loại người nhận không hợp lệ');
+    const badUser = recipients.find((r) => r.type === 'user' && !UUID_PATTERN.test(String(r.value ?? '')));
+    if (badUser) bad(`Người nhận không hợp lệ: ${badUser.value}`);
+    if (String(p.subject ?? '').trim().length > MAX_SUBJECT_LENGTH) bad(`Tiêu đề email tối đa ${MAX_SUBJECT_LENGTH} ký tự`);
+    if (String(p.message ?? '').trim().length > MAX_MESSAGE_LENGTH) bad(`Nội dung email tối đa ${MAX_MESSAGE_LENGTH} ký tự`);
+    if (p.enabled !== undefined && typeof p.enabled !== 'boolean') bad('Trạng thái bật/tắt không hợp lệ');
     // BR-S11: loại chưa khả dụng không tạo được lịch.
     const def = REPORT_DEFINITIONS[p.reportType as keyof typeof REPORT_DEFINITIONS];
     if (!def.available) throw reportConflict(def.unavailableReason ?? 'Báo cáo này chưa khả dụng', 'REPORT_NOT_AVAILABLE');
@@ -97,7 +109,16 @@ export class ReportScheduleService {
     const dayOfWeek = frequency === 'weekly' ? (p.dayOfWeek as number) : null;
     const dayOfMonth = frequency === 'monthly' ? (p.dayOfMonth as number | 'last') : null;
     const filters = Object.fromEntries(Object.entries((p.filters ?? {}) as Record<string, unknown>).filter(([, v]) => v !== '' && v !== null && v !== undefined));
-    const recipients = (p.recipients as Array<{ type: 'user' | 'email'; value: string; label?: string }>).map((r) => ({ type: r.type, value: String(r.value), label: String(r.label ?? r.value) }));
+    // Một người chỉ nhận một bản: loại trùng (email so sánh không phân biệt hoa/thường) để khỏi gửi hai thư giống hệt.
+    const seen = new Set<string>();
+    const recipients = (p.recipients as Array<{ type: 'user' | 'email'; value: string; label?: string }>)
+      .map((r) => ({ type: r.type, value: String(r.value), label: String(r.label ?? r.value) }))
+      .filter((r) => {
+        const key = `${r.type}:${r.value.toLowerCase()}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
     return {
       name: String(p.name).trim(), reportType: p.reportType as string, filters, period: p.period as string, frequency, time: p.time as string,
       dayOfWeek, dayOfMonth: dayOfMonth === 'last' ? null : dayOfMonth, lastDay: dayOfMonth === 'last', formats: [...(p.formats as string[])], recipients,
@@ -111,9 +132,23 @@ export class ReportScheduleService {
     return rows.map((r) => this.toView(r));
   }
 
+  /** Người nhận loại `user` phải là tài khoản có thật và còn hoạt động — tránh lưu lịch gửi tới người không tồn tại. */
+  private async assertUserRecipientsExist(recipients: ScheduleRecipient[]): Promise<void> {
+    const users = recipients.filter((r) => r.type === 'user');
+    if (users.length === 0) return;
+    const found: Array<{ id: string }> = await this.dataSource.query(
+      `SELECT id FROM users WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL AND account_status = 'active'`,
+      [users.map((r) => r.value)],
+    );
+    const ok = new Set(found.map((r) => r.id));
+    const missing = users.find((r) => !ok.has(r.value));
+    if (missing) throw reportBadRequest(`Người nhận không tồn tại hoặc đã bị khóa: ${missing.label}`, 'VALIDATION_ERROR');
+  }
+
   async create(payload: SchedulePayload, userId: string, now = new Date()) {
     this.validate(payload);
     const c = this.columns(payload, now);
+    await this.assertUserRecipientsExist(c.recipients);
     const rows: ScheduleRow[] = await this.dataSource.query(
       `INSERT INTO report_schedules (name, report_type, filters_json, period, frequency, send_time, day_of_week, day_of_month, last_day_of_month,
                                      formats, recipients_json, subject, message, enabled, next_run_at, owner_user_id)
@@ -130,6 +165,7 @@ export class ReportScheduleService {
     await this.find(id);
     this.validate(payload);
     const c = this.columns(payload, now);
+    await this.assertUserRecipientsExist(c.recipients);
     await this.dataSource.query(
       `UPDATE report_schedules SET name=$2, report_type=$3, filters_json=$4, period=$5, frequency=$6, send_time=$7, day_of_week=$8, day_of_month=$9,
               last_day_of_month=$10, formats=$11::text[], recipients_json=$12, subject=$13, message=$14, enabled=$15, next_run_at=$16, updated_at=now()
@@ -155,7 +191,7 @@ export class ReportScheduleService {
     const rows: Array<{ id: string }> = await this.dataSource.query(
       `INSERT INTO report_schedules (name, report_type, filters_json, period, frequency, send_time, day_of_week, day_of_month, last_day_of_month,
                                      formats, recipients_json, subject, message, enabled, next_run_at, owner_user_id)
-       SELECT name || ' (bản sao)', report_type, filters_json, period, frequency, send_time, day_of_week, day_of_month, last_day_of_month,
+       SELECT left(name, 139) || ' (bản sao)', report_type, filters_json, period, frequency, send_time, day_of_week, day_of_month, last_day_of_month,
               formats, recipients_json, subject, message, false, NULL, $2
          FROM report_schedules WHERE id = $1 RETURNING id`,
       [src.id, userId],
