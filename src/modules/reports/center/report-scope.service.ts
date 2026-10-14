@@ -17,6 +17,18 @@ export class ReportScopeService {
     private readonly authz: AuthzReadRepository,
   ) {}
 
+  /**
+   * Lý do người này KHÔNG dùng được loại báo cáo (null = dùng được). Cùng điều kiện với `resolve()` để danh mục
+   * không mời MANAGER mở thẻ "Phương tiện" / "Sự kiện an ninh" rồi mới gặp khối lỗi 403.
+   */
+  async unavailableReason(userId: string, definition: ReportDefinition): Promise<string | null> {
+    const { roles } = await this.authz.getEffectiveRolesAndPermissions(userId);
+    if (roles.includes('SYSTEM_ADMIN') || roles.includes('BUSINESS_ADMIN')) return null;
+    if (!roles.includes('MANAGER')) return 'Bạn không có quyền xem báo cáo này.';
+    if (!definition.hasDepartmentScope) return 'Báo cáo này không có phạm vi theo đơn vị của bạn.';
+    return null;
+  }
+
   async resolve(userId: string, definition: ReportDefinition, filters: ReportFilters): Promise<ResolvedScope> {
     const { roles } = await this.authz.getEffectiveRolesAndPermissions(userId);
     if (roles.includes('SYSTEM_ADMIN') || roles.includes('BUSINESS_ADMIN')) {

@@ -62,4 +62,33 @@ describe('ReportScopeService', () => {
     await p.catch((e) => expect(code(e).error.code).toBe('PERMISSION_DENIED'));
     await expect(p).rejects.toBeInstanceOf(ForbiddenException);
   });
+
+  describe('unavailableReason — danh mục báo cáo theo vai trò', () => {
+    it('quản trị: mọi loại đều dùng được', async () => {
+      for (const role of ['SYSTEM_ADMIN', 'BUSINESS_ADMIN']) {
+        for (const def of Object.values(REPORT_DEFINITIONS)) {
+          await expect(make([role]).unavailableReason('u', def)).resolves.toBeNull();
+        }
+      }
+    });
+
+    it('MANAGER: loại có chiều đơn vị dùng được, loại không có thì có lý do để ẩn khỏi danh mục', async () => {
+      await expect(make(['MANAGER'], ['d1']).unavailableReason('u', REPORT_DEFINITIONS['staff-attendance'])).resolves.toBeNull();
+      for (const type of ['vehicle', 'security-alert'] as const) {
+        await expect(make(['MANAGER'], ['d1']).unavailableReason('u', REPORT_DEFINITIONS[type])).resolves.toBe(
+          'Báo cáo này không có phạm vi theo đơn vị của bạn.',
+        );
+      }
+    });
+
+    it('vai trò khác: không loại nào dùng được', async () => {
+      await expect(make(['EMPLOYEE']).unavailableReason('u', REPORT_DEFINITIONS.visitor)).resolves.toBe('Bạn không có quyền xem báo cáo này.');
+    });
+
+    it('khớp với resolve(): cùng điều kiện thì resolve ném, unavailableReason trả lý do', async () => {
+      const svc = make(['MANAGER'], ['d1']);
+      await expect(svc.resolve('u', REPORT_DEFINITIONS.vehicle, { from: 'a', to: 'b' })).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(svc.unavailableReason('u', REPORT_DEFINITIONS.vehicle)).resolves.not.toBeNull();
+    });
+  });
 });

@@ -14,10 +14,11 @@ const ctx = (headers: Record<string, string> = {}, ip = '1.1.1.1') => {
   return { context, res, handler };
 };
 
-const make = (bucket: string | undefined, redis: Partial<Record<'incr' | 'expire' | 'ttl', jest.Mock>>) => {
+const make = (bucket: string | undefined, redis: Partial<Record<'incr' | 'expire' | 'ttl', jest.Mock>>, hops = 1) => {
   const reflector = { getAllAndOverride: jest.fn(() => bucket) } as unknown as Reflector;
   const config = { get: jest.fn(async () => VISITOR_CONFIG_DEFAULTS) };
-  return new PublicRateLimitGuard(reflector, redis as never, config as never);
+  const appConfig = { get: jest.fn((_key: string, fallback: unknown) => (_key === 'TRUST_PROXY_HOPS' ? hops : fallback)) };
+  return new PublicRateLimitGuard(reflector, redis as never, config as never, appConfig as never);
 };
 
 describe('PublicRateLimitGuard', () => {
@@ -32,10 +33,24 @@ describe('PublicRateLimitGuard', () => {
     expect(redis.expire).toHaveBeenCalledTimes(1); // chỉ đặt hạn ở lần đầu
   });
 
-  it('khóa theo IP: lấy phần tử đầu của X-Forwarded-For', async () => {
+  it('khóa theo IP do proxy đáng tin nối thêm (phần tử cuối), không theo phần client tự điền', async () => {
     const redis = { incr: jest.fn(async () => 1), expire: jest.fn(), ttl: jest.fn() };
     await make('lookup', redis).canActivate(ctx({ 'x-forwarded-for': '9.9.9.9, 10.0.0.1' }).context);
-    expect(redis.incr).toHaveBeenCalledWith('visitor:rl:lookup:9.9.9.9');
+    expect(redis.incr).toHaveBeenCalledWith('visitor:rl:lookup:10.0.0.1');
+  });
+
+  it('giả X-Forwarded-For mỗi lần KHÔNG né được giới hạn: lần 6 từ cùng IP thật vẫn bị 429', async () => {
+    const counts = new Map<string, number>();
+    const redis = {
+      incr: jest.fn(async (k: string) => { counts.set(k, (counts.get(k) ?? 0) + 1); return counts.get(k) as number; }),
+      expire: jest.fn(async () => undefined),
+      ttl: jest.fn(async () => 300),
+    };
+    const guard = make('register', redis);
+    for (let i = 0; i < 5; i += 1) {
+      await expect(guard.canActivate(ctx({ 'x-forwarded-for': `10.9.9.${i}, 203.0.113.7` }).context)).resolves.toBe(true);
+    }
+    await expect(guard.canActivate(ctx({ 'x-forwarded-for': '10.9.9.99, 203.0.113.7' }).context)).rejects.toMatchObject({ status: 429 });
   });
 
   it('Redis lỗi → cho qua', async () => {

@@ -10,14 +10,15 @@ const make = (rows: unknown[] | Error) => {
 };
 
 describe('VisitorConfigService', () => {
-  it('không có dòng cấu hình → 11 giá trị mặc định', async () => {
+  it('không có dòng cấu hình → 12 giá trị mặc định', async () => {
     const { svc } = make([]);
     const cfg = await svc.get();
     expect(cfg).toEqual(VISITOR_CONFIG_DEFAULTS);
-    expect(Object.keys(cfg)).toHaveLength(11);
+    expect(Object.keys(cfg)).toHaveLength(12);
     expect(cfg.faceMatchThreshold).toBe(0.8);
     expect(cfg.accessBufferMinutes).toBe(30);
     expect(cfg.maxVisitDays).toBe(7);
+    expect(cfg.maxAdvanceDays).toBe(90);
     expect(cfg.overstayEscalateMinutes).toBe(30);
     expect(cfg.approverMode).toBe('host_or_manager');
     expect(cfg.photoRetentionDays).toBe(30);

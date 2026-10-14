@@ -1,3 +1,4 @@
+import { PLATE_ALLOWED_CHARS, PLATE_CHARS_MESSAGE, PLATE_FORMAT_MESSAGE, isPlateStructureValid } from '../../anpr/utils/plate-format.js';
 import { isValidVnPhone, normalizeVnPhone } from './phone.util.js';
 import type { VisitChannel } from '../constants/visit-status.constant.js';
 
@@ -22,6 +23,9 @@ export interface VisitPayload {
 }
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** Chặn ký tự đánh dấu HTML ở các trường chữ tự do của khách (endpoint công khai, ai cũng gửi được). */
+const MARKUP = /[<>]/;
+const DEFAULT_MAX_ADVANCE_DAYS = 90;
 const MIN_MS = 60_000;
 const DAY_MS = 86_400_000;
 
@@ -33,11 +37,18 @@ export function validateVisitPayload(
   p: VisitPayload,
   channel: VisitChannel,
   now: Date,
-  cfg: { maxVisitDays: number },
+  cfg: { maxVisitDays: number; maxAdvanceDays?: number },
   hostExists: boolean,
 ): void {
   const v = p.visitor ?? {};
   if (!String(v.fullName ?? '').trim()) throw new VisitValidationError('Vui lòng nhập họ tên khách');
+  if (MARKUP.test(String(v.fullName))) throw new VisitValidationError('Họ tên khách không được chứa ký tự < hoặc >');
+  if (MARKUP.test(String(v.organization ?? ''))) throw new VisitValidationError('Tên đơn vị không được chứa ký tự < hoặc >');
+  const plate = String(v.plateNumber ?? '').trim();
+  if (plate) {
+    if (!PLATE_ALLOWED_CHARS.test(plate)) throw new VisitValidationError(PLATE_CHARS_MESSAGE);
+    if (!isPlateStructureValid(plate)) throw new VisitValidationError(PLATE_FORMAT_MESSAGE);
+  }
   if (!isValidVnPhone(normalizeVnPhone(String(v.phone ?? '')))) throw new VisitValidationError('Số điện thoại không hợp lệ');
   if (channel === 'online' && !EMAIL.test(String(v.email ?? '').trim())) {
     throw new VisitValidationError('Vui lòng nhập email hợp lệ để nhận kết quả');
@@ -51,6 +62,10 @@ export function validateVisitPayload(
   const from = new Date(p.scheduledFrom ?? '').getTime();
   const to = new Date(p.scheduledTo ?? '').getTime();
   if (Number.isNaN(from) || from < now.getTime() - 5 * MIN_MS) throw new VisitValidationError('Thời gian bắt đầu không được ở quá khứ');
+  const maxAdvanceDays = cfg.maxAdvanceDays ?? DEFAULT_MAX_ADVANCE_DAYS;
+  if (from > now.getTime() + maxAdvanceDays * DAY_MS) {
+    throw new VisitValidationError(`Thời gian bắt đầu không được quá ${maxAdvanceDays} ngày kể từ hôm nay`);
+  }
   if (Number.isNaN(to) || to <= from) throw new VisitValidationError('Thời gian kết thúc phải sau thời gian bắt đầu');
   if (to - from > cfg.maxVisitDays * DAY_MS) throw new VisitValidationError(`Khung giờ hẹn tối đa ${cfg.maxVisitDays} ngày`);
 

@@ -46,6 +46,39 @@ describe('validateVisitPayload', () => {
   it('cho phép lệch 5 phút ở quá khứ', () => {
     expect(() => run(base({ scheduledFrom: new Date(NOW.getTime() - 4 * 60_000).toISOString() }))).not.toThrow();
   });
+  describe('đầu vào bẩn ở kênh công khai', () => {
+    it.each<[string, Partial<VisitPayload['visitor']>, string]>([
+      ['họ tên chứa thẻ HTML', { fullName: '<img src=x onerror=alert(1)>' }, 'Họ tên khách không được chứa ký tự < hoặc >'],
+      ['đơn vị chứa thẻ HTML', { organization: '<b>Công ty</b>' }, 'Tên đơn vị không được chứa ký tự < hoặc >'],
+      ['biển số rác', { plateNumber: '<b>@@##</b>' }, 'Biển số chỉ được chứa chữ, số, dấu cách, dấu gạch ngang (-) hoặc dấu chấm (.)'],
+      ['biển số quá ngắn', { plateNumber: '1' }, 'Biển số không đúng định dạng (ví dụ: 30F-256.58)'],
+    ])('%s bị từ chối', (_name, visitor, message) => {
+      expect(() => run(base({ visitor: { ...base().visitor, ...visitor } }))).toThrow(message);
+    });
+
+    it('biển số hợp lệ hoặc để trống đều qua', () => {
+      expect(() => run(base({ visitor: { ...base().visitor, plateNumber: '30F-256.58' } }))).not.toThrow();
+      expect(() => run(base({ visitor: { ...base().visitor, plateNumber: '  ' } }))).not.toThrow();
+    });
+
+    it('tên có dấu tiếng Việt, dấu nháy và gạch nối vẫn qua', () => {
+      expect(() => run(base({ visitor: { ...base().visitor, fullName: "Nguyễn Thị Ánh-Dương O'Neil" } }))).not.toThrow();
+    });
+
+    it('hẹn quá xa (mặc định 90 ngày) bị từ chối', () => {
+      const from = new Date(NOW.getTime() + 365 * 24 * HOUR);
+      const p = base({ scheduledFrom: from.toISOString(), scheduledTo: new Date(from.getTime() + HOUR).toISOString() });
+      expect(() => run(p)).toThrow('Thời gian bắt đầu không được quá 90 ngày kể từ hôm nay');
+    });
+
+    it('maxAdvanceDays lấy từ cấu hình', () => {
+      const from = new Date(NOW.getTime() + 20 * 24 * HOUR);
+      const p = base({ scheduledFrom: from.toISOString(), scheduledTo: new Date(from.getTime() + HOUR).toISOString() });
+      expect(() => validateVisitPayload(p, 'online', NOW, { maxVisitDays: 7, maxAdvanceDays: 14 }, true)).toThrow('không được quá 14 ngày');
+      expect(() => validateVisitPayload(p, 'online', NOW, { maxVisitDays: 7, maxAdvanceDays: 30 }, true)).not.toThrow();
+    });
+  });
+
   it('maxVisitDays lấy từ cấu hình', () => {
     const p = base({ scheduledTo: new Date(NOW.getTime() + 4 * 24 * HOUR).toISOString() });
     expect(() => validateVisitPayload(p, 'online', NOW, { maxVisitDays: 3 }, true)).toThrow('Khung giờ hẹn tối đa 3 ngày');
