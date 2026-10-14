@@ -959,7 +959,7 @@ describe('IvssPresenceIngestionService (IPI-001 #38+#39)', () => {
         c.sql.includes('FROM device_user_mappings'),
       )!;
       expect(q.sql).toContain(
-        "metadata_json->>'source' IN ('ivss', 'portrait')",
+        "metadata_json->>'source' IN ('ivss', 'portrait', 'hgvision')",
       );
       // Xác định thứ tự khi 1 user có cả 2 nguồn (không phụ thuộc thứ tự vật lý).
       expect(q.sql).toContain('ORDER BY last_synced_at DESC NULLS LAST');

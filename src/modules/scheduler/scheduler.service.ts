@@ -20,6 +20,7 @@ import { RecordingSessionService } from '../recording/services/recording-session
 import { RecordingSystemConfigService } from '../recording/services/recording-system-config.service.js';
 import { OccupancyPersistenceService } from '../presence/services/occupancy-persistence.service.js';
 import { ReportScheduleDispatchService } from '../reports/schedules/report-schedule-dispatch.service.js';
+import { DeviceMaintenanceAlertService } from '../device-alert/services/device-maintenance-alert.service.js';
 import { VisitorSweepService } from '../visitors/services/visitor-sweep.service.js';
 import {
   KpiRollupJobService,
@@ -61,6 +62,7 @@ export class SchedulerService {
   private readonly kpiRollupEnabled: boolean;
   private readonly visitorEnabled: boolean;
   private readonly reportScheduleEnabled: boolean;
+  private readonly deviceMaintenanceEnabled: boolean;
 
   constructor(
     private readonly dataSource: DataSource,
@@ -85,6 +87,7 @@ export class SchedulerService {
     private readonly kpiRollupJobService: KpiRollupJobService,
     private readonly visitorSweepService: VisitorSweepService,
     private readonly reportScheduleDispatchService: ReportScheduleDispatchService,
+    private readonly deviceMaintenanceAlertService: DeviceMaintenanceAlertService,
   ) {
     this.schedulerEnabled = this.configService.get<boolean>(
       'SCHEDULER_ENABLED',
@@ -185,8 +188,14 @@ export class SchedulerService {
       false,
     );
 
+    // CAMG-001: cảnh báo camera offline quá X giờ cần bảo trì (default OFF).
+    this.deviceMaintenanceEnabled = this.configService.get<boolean>(
+      'SCHEDULER_DEVICE_MAINTENANCE_ENABLED',
+      false,
+    );
+
     this.logger.log(
-      `SchedulerService initialized — enabled=${this.schedulerEnabled} | no-show=${this.noShowEnabled} | auto-release=${this.autoReleaseEnabled} | reminder=${this.reminderEnabled} | device-offline-detect=${this.deviceOfflineDetectEnabled} | face-sync=${this.faceSyncEnabled} | early-vacancy=${this.earlyVacancyEnabled} | ivss-sync=${this.ivssSyncEnabled} | ivss-portrait=${this.ivssPortraitEnabled} | restricted-zone=${this.restrictedZoneEnabled} | crowd-alert=${this.crowdAlertEnabled} | gate-pairing=${this.gatePairingEnabled} | auto-complete=${this.autoCompleteEnabled} | meeting-status=${this.meetingStatusEnabled} | meeting-request-expire=${this.meetingRequestExpireEnabled} | security-alert-auto-resolve=${this.securityAlertAutoResolveEnabled} | recording-max-duration=${this.recordingMaxDurationEnabled} | kpi-rollup=${this.kpiRollupEnabled} | visitor=${this.visitorEnabled} | report-schedule=${this.reportScheduleEnabled}`,
+      `SchedulerService initialized — enabled=${this.schedulerEnabled} | no-show=${this.noShowEnabled} | auto-release=${this.autoReleaseEnabled} | reminder=${this.reminderEnabled} | device-offline-detect=${this.deviceOfflineDetectEnabled} | face-sync=${this.faceSyncEnabled} | early-vacancy=${this.earlyVacancyEnabled} | ivss-sync=${this.ivssSyncEnabled} | ivss-portrait=${this.ivssPortraitEnabled} | restricted-zone=${this.restrictedZoneEnabled} | crowd-alert=${this.crowdAlertEnabled} | gate-pairing=${this.gatePairingEnabled} | auto-complete=${this.autoCompleteEnabled} | meeting-status=${this.meetingStatusEnabled} | meeting-request-expire=${this.meetingRequestExpireEnabled} | security-alert-auto-resolve=${this.securityAlertAutoResolveEnabled} | recording-max-duration=${this.recordingMaxDurationEnabled} | kpi-rollup=${this.kpiRollupEnabled} | visitor=${this.visitorEnabled} | report-schedule=${this.reportScheduleEnabled} | device-maintenance=${this.deviceMaintenanceEnabled}`,
     );
   }
 
@@ -740,6 +749,20 @@ export class SchedulerService {
       }
     } catch (e) {
       this.logger.error(`[Scheduler] visitor-sweep failed: ${e instanceof Error ? e.message : 'unknown'}`);
+    }
+  }
+
+  /** CAMG-001: quét camera offline quá ngưỡng giờ → cảnh báo bảo trì. KHÔNG ném ra cron. */
+  @Cron(CronExpression.EVERY_HOUR, { name: 'device-maintenance-scan' })
+  async deviceMaintenanceScan(): Promise<void> {
+    if (!this.schedulerEnabled || !this.deviceMaintenanceEnabled) return;
+    try {
+      const r = await this.deviceMaintenanceAlertService.scan();
+      this.logger.log(
+        `[Scheduler] device-maintenance-scan: threshold=${r.thresholdHours}h stale=${r.stale} alerts=${r.alertsRecorded} resolved=${r.alertsResolved}`,
+      );
+    } catch (e) {
+      this.logger.error(`[Scheduler] device-maintenance-scan failed: ${e instanceof Error ? e.message : 'unknown'}`);
     }
   }
 

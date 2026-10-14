@@ -848,7 +848,7 @@ export class DevController {
     if (existing[0]?.id) {
       await this.dataSource.manager.query(
         `UPDATE device_user_mappings SET
-           device_person_id = $2,
+           device_person_id = $2::text,
            device_person_code = $3,
            device_person_name = $3,
            face_registered = true,
@@ -875,7 +875,7 @@ export class DevController {
          (device_id, user_id, device_person_id, device_person_code, device_person_name,
           face_registered, sync_status, last_synced_at, last_sync_error,
           registered_at, metadata_json)
-       VALUES ($1,$2,$2,$3,$3,true,'synced',now(),NULL,now(),$4::jsonb)`,
+       VALUES ($1,$2::uuid,$2::text,$3,$3,true,'synced',now(),NULL,now(),$4::jsonb)`,
       [
         input.deviceId,
         input.userId,

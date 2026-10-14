@@ -259,7 +259,9 @@ export class MeetingsController {
   @Get('meetings')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('meeting.read.all')
+  // Không gắn 'meeting.read.all' ở guard: MANAGER cũng dùng route này (màn Chuyên cần phòng ban)
+  // nhưng chỉ thấy cuộc họp của phòng ban mình — service tự phân phạm vi (admin = toàn bộ).
+  @RequirePermissions()
   @UsePipes(
     new ValidationPipe({
       whitelist: true,
@@ -267,16 +269,25 @@ export class MeetingsController {
       forbidNonWhitelisted: true,
     }),
   )
-  @ApiOperation({ summary: 'Danh sach cuoc hop (admin, co phan trang/filter)' })
+  @ApiOperation({
+    summary:
+      'Danh sach cuoc hop (admin: toan bo; manager: phong ban minh quan ly)',
+  })
   @ApiResponse({ status: 200, description: 'Danh sach cuoc hop' })
   @ApiResponse({ status: 403, description: 'Khong co quyen meeting.read.all' })
-  async listMeetings(@Query() query: MeetingListQueryDto): Promise<{
+  async listMeetings(
+    @Query() query: MeetingListQueryDto,
+    @CurrentUser() currentUser: { userId: string },
+  ): Promise<{
     success: boolean;
     message: string;
     data: MeetingListItemDto[];
     meta: { page: number; limit: number; total: number; totalPages: number };
   }> {
-    const result = await this.meetingListService.list(query);
+    const result = await this.meetingListService.list(
+      query,
+      currentUser.userId,
+    );
     return {
       success: true,
       message: 'Lay danh sach cuoc hop thanh cong',

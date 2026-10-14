@@ -12,6 +12,10 @@ export class ApproveVisitDto {
 export class ReasonDto {
   @IsOptional() @IsString() @MaxLength(1000) reason?: string;
 }
+export class ReassignHostDto {
+  @IsOptional() @IsString() hostId?: string;
+  @IsOptional() @IsString() @MaxLength(1000) reason?: string;
+}
 export class ExtendVisitDto {
   @IsOptional() @IsString() validTo?: string;
 }

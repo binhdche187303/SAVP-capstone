@@ -21,6 +21,7 @@ import { SecurityAlertAutoResolveService } from '../alerts/services/security-ale
 import { RecordingSessionService } from '../recording/services/recording-session.service.js';
 import { RecordingSystemConfigService } from '../recording/services/recording-system-config.service.js';
 import { OccupancyPersistenceService } from '../presence/services/occupancy-persistence.service.js';
+import { DeviceMaintenanceAlertService } from '../device-alert/services/device-maintenance-alert.service.js';
 import { ReportScheduleDispatchService } from '../reports/schedules/report-schedule-dispatch.service.js';
 import { VisitorSweepService } from '../visitors/services/visitor-sweep.service.js';
 import { KpiRollupJobService } from '../kpi-rollup/services/kpi-rollup-job.service.js';
@@ -204,6 +205,7 @@ describe('SchedulerService (NSL-001 + EVD-001 + IPS-001 + GAP-001 cron wiring)',
         },
         { provide: KpiRollupJobService, useValue: kpiRollupMock },
         { provide: ReportScheduleDispatchService, useValue: { dispatchDue: jest.fn() } },
+        { provide: DeviceMaintenanceAlertService, useValue: { scan: jest.fn() } },
         {
           provide: VisitorSweepService,
           useValue: {

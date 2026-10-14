@@ -86,8 +86,8 @@ describeDb('RPT-CENTER schedule CRUD', () => {
     expect(res.body.message).toBe(message);
   });
 
-  it('loại sinh viên chưa khả dụng → 409; bộ lọc lạ → 400', async () => {
-    expect((await call('post', '/report-schedules', valid({ reportType: 'student-attendance', filters: {} }))).status).toBe(409);
+  it('loại sinh viên đã khả dụng → 201; bộ lọc lạ → 400', async () => {
+    expect((await call('post', '/report-schedules', valid({ reportType: 'student-attendance', filters: {} }))).status).toBe(201);
     const res = await call('post', '/report-schedules', valid({ filters: { hack: '1' } }));
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('INVALID_FILTER');

@@ -14,6 +14,7 @@ describe('UserJourneyController (UJN-001)', () => {
   // RedisService...), trong khi ta chỉ cần kiểm metadata guard/permission.
   beforeEach(() => {
     serviceMock = {
+      authorizeView: jest.fn().mockResolvedValue(undefined),
       getUserJourney: jest.fn().mockResolvedValue({
         userId: 'u1',
         fullName: 'Bui Van Long',
@@ -29,11 +30,24 @@ describe('UserJourneyController (UJN-001)', () => {
 
   afterEach(() => jest.clearAllMocks());
 
+  const ADMIN = { userId: 'admin-1' };
+
+  it('kiểm phạm vi + ghi audit TRƯỚC khi đọc hành trình', async () => {
+    await controller.userJourney({ userId: 'u1', date: '2026-07-29' }, ADMIN);
+    expect(serviceMock.authorizeView).toHaveBeenCalledWith('admin-1', 'u1', '2026-07-29');
+  });
+
+  it('authorizeView ném 403 ⇒ không đọc dữ liệu', async () => {
+    serviceMock.authorizeView.mockRejectedValueOnce(new Error('Forbidden'));
+    await expect(controller.userJourney({ userId: 'u2' }, ADMIN)).rejects.toThrow('Forbidden');
+    expect(serviceMock.getUserJourney).not.toHaveBeenCalled();
+  });
+
   it('trả envelope chuẩn {success, message, data}', async () => {
     const r = await controller.userJourney({
       userId: 'u1',
       date: '2026-07-29',
-    });
+    }, ADMIN);
     expect(r.success).toBe(true);
     expect(r.message).toBe('User journey retrieved');
     expect(r.data.fullName).toBe('Bui Van Long');
@@ -41,7 +55,7 @@ describe('UserJourneyController (UJN-001)', () => {
   });
 
   it('truyền date=undefined khi client không gửi (service tự lấy hôm nay giờ VN)', async () => {
-    await controller.userJourney({ userId: 'u1' });
+    await controller.userJourney({ userId: 'u1' }, ADMIN);
     expect(serviceMock.getUserJourney).toHaveBeenCalledWith('u1', undefined);
   });
 

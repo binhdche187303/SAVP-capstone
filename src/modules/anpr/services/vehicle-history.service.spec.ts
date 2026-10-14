@@ -47,12 +47,13 @@ describe('VehicleHistoryService (VHI-001 / UC7)', () => {
   });
 
   // ── user-scope ──
-  it("listForUser: WHERE payload_json->>'userId' = $1 (param u1); output KHÔNG userId, KHÔNG owner", async () => {
+  // $1, $2 luôn là 2 event_type xe (ivss_vehicle_event, camera_vehicle_event).
+  it("listForUser: WHERE payload_json->>'userId' = $3 (param u1); output KHÔNG userId, KHÔNG owner", async () => {
     wire();
     const r = await service.listForUser('u1', q());
     const sql = rowsCall()!.sql;
-    expect(sql).toContain("iot_device_events.payload_json->>'userId' = $1");
-    expect(rowsCall()!.params[0]).toBe('u1');
+    expect(sql).toContain("iot_device_events.payload_json->>'userId' = $3");
+    expect(rowsCall()!.params[2]).toBe('u1');
     // SELECT KHÔNG có user_id column → item không có userId.
     expect(sql).not.toContain('AS user_id');
     expect(r.items[0]).not.toHaveProperty('userId');
@@ -66,9 +67,7 @@ describe('VehicleHistoryService (VHI-001 / UC7)', () => {
     wire();
     const r = await service.listAll(q());
     const sql = rowsCall()!.sql;
-    expect(sql).toContain(
-      "iot_device_events.event_type = 'ivss_vehicle_event'",
-    );
+    expect(sql).toContain('iot_device_events.event_type IN ($1, $2)');
     expect(sql).not.toContain("payload_json->>'userId' = $");
     expect(sql).toContain(
       "iot_device_events.payload_json->>'userId' AS user_id",
@@ -76,13 +75,15 @@ describe('VehicleHistoryService (VHI-001 / UC7)', () => {
     expect(r.items[0].userId).toBe('u1');
   });
 
-  it('C1-isolation: event_type=ivss_vehicle_event (KHÔNG face)', async () => {
+  it('C1-isolation: event_type IN (ivss/camera_vehicle_event) (KHÔNG face)', async () => {
     wire();
     await service.listAll(q());
-    const sql = rowsCall()!.sql;
-    expect(sql).toContain(
-      "iot_device_events.event_type = 'ivss_vehicle_event'",
-    );
+    const { sql, params } = rowsCall()!;
+    expect(sql).toContain('iot_device_events.event_type IN ($1, $2)');
+    expect(params.slice(0, 2)).toEqual([
+      'ivss_vehicle_event',
+      'camera_vehicle_event',
+    ]);
     expect(sql).not.toContain('face_verify');
     expect(sql).not.toContain('face_stranger');
   });
@@ -270,16 +271,16 @@ describe('VehicleHistoryService (VHI-001 / UC7)', () => {
       wire();
       await service.listAll(q({ ownerName: 'Nguyễn' }));
       const c = rowsCall()!;
-      expect(c.sql).toContain('u.full_name ILIKE $1');
-      expect(c.params[0]).toBe('%Nguyễn%');
+      expect(c.sql).toContain('u.full_name ILIKE $3');
+      expect(c.params[2]).toBe('%Nguyễn%');
     });
 
     it('COUNT query CÓ JOIN users khi listAll (khác security_alerts) — cần cho filter ownerName chính xác', async () => {
       wire();
       await service.listAll(q({ ownerName: 'Nguyễn' }));
       expect(countCall()!.sql).toContain('LEFT JOIN users u');
-      expect(countCall()!.sql).toContain('u.full_name ILIKE $1');
-      expect(countCall()!.params[0]).toBe('%Nguyễn%');
+      expect(countCall()!.sql).toContain('u.full_name ILIKE $3');
+      expect(countCall()!.params[2]).toBe('%Nguyễn%');
     });
 
     it('ownerName KHÔNG có tác dụng ở listForUser (DTO field bị bỏ qua, KHÔNG lỗi)', async () => {
@@ -311,13 +312,13 @@ describe('VehicleHistoryService (VHI-001 / UC7)', () => {
     await service.listAll(q({ matchState: 'unmatched' }));
     const c = rowsCall()!;
     expect(c.sql).toContain(
-      "iot_device_events.payload_json->>'matchState' = $1",
+      "iot_device_events.payload_json->>'matchState' = $3",
     );
-    expect(c.params[0]).toBe('unmatched');
+    expect(c.params[2]).toBe('unmatched');
   });
 
   // ── bind index liên tục, CẢ 2 method ──
-  it('bind index listForUser: userId=$1, from=$2, direction=$3, plate=$4, LIMIT $5 OFFSET $6', async () => {
+  it('bind index listForUser: userId=$3, from=$4, direction=$5, plate=$6, LIMIT $7 OFFSET $8', async () => {
     wire();
     await service.listForUser(
       'u1',
@@ -328,16 +329,18 @@ describe('VehicleHistoryService (VHI-001 / UC7)', () => {
       }),
     );
     const c = rowsCall()!;
-    expect(c.sql).toContain("iot_device_events.payload_json->>'userId' = $1");
-    expect(c.sql).toContain('iot_device_events.event_time >= $2');
+    expect(c.sql).toContain("iot_device_events.payload_json->>'userId' = $3");
+    expect(c.sql).toContain('iot_device_events.event_time >= $4');
     expect(c.sql).toContain(
-      "iot_device_events.payload_json->>'direction' = $3",
+      "iot_device_events.payload_json->>'direction' = $5",
     );
     expect(c.sql).toContain(
-      "iot_device_events.payload_json->>'plateNumber' = $4",
+      "iot_device_events.payload_json->>'plateNumber' = $6",
     );
-    expect(c.sql).toContain('LIMIT $5 OFFSET $6');
+    expect(c.sql).toContain('LIMIT $7 OFFSET $8');
     expect(c.params).toEqual([
+      'ivss_vehicle_event',
+      'camera_vehicle_event',
       'u1',
       '2026-06-01T00:00:00.000Z',
       'enter',
@@ -347,6 +350,8 @@ describe('VehicleHistoryService (VHI-001 / UC7)', () => {
     ]);
     // COUNT cùng filter params (KHÔNG limit/offset).
     expect(countCall()!.params).toEqual([
+      'ivss_vehicle_event',
+      'camera_vehicle_event',
       'u1',
       '2026-06-01T00:00:00.000Z',
       'enter',
@@ -354,24 +359,31 @@ describe('VehicleHistoryService (VHI-001 / UC7)', () => {
     ]);
   });
 
-  it('bind index listAll: matchState=$1, from=$2, LIMIT $3 OFFSET $4 (không lệch)', async () => {
+  it('bind index listAll: matchState=$3, from=$4, LIMIT $5 OFFSET $6 (không lệch)', async () => {
     wire();
     await service.listAll(
       q({ matchState: 'matched', from: '2026-06-01T00:00:00.000Z' }),
     );
     const c = rowsCall()!;
     expect(c.sql).toContain(
-      "iot_device_events.payload_json->>'matchState' = $1",
+      "iot_device_events.payload_json->>'matchState' = $3",
     );
-    expect(c.sql).toContain('iot_device_events.event_time >= $2');
-    expect(c.sql).toContain('LIMIT $3 OFFSET $4');
-    expect(c.params).toEqual(['matched', '2026-06-01T00:00:00.000Z', 20, 0]);
+    expect(c.sql).toContain('iot_device_events.event_time >= $4');
+    expect(c.sql).toContain('LIMIT $5 OFFSET $6');
+    expect(c.params).toEqual([
+      'ivss_vehicle_event',
+      'camera_vehicle_event',
+      'matched',
+      '2026-06-01T00:00:00.000Z',
+      20,
+      0,
+    ]);
   });
 
   it('to filter → event_time <= $n', async () => {
     wire();
     await service.listAll(q({ to: '2026-06-30T00:00:00.000Z' }));
-    expect(rowsCall()!.sql).toContain('iot_device_events.event_time <= $1');
+    expect(rowsCall()!.sql).toContain('iot_device_events.event_time <= $3');
   });
 
   it('meta total (COUNT, total=25 limit=20 → totalPages=2)', async () => {

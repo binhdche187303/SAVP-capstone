@@ -1,11 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
+import { StorageService } from '../../storage/storage.service.js';
 import { AuditLogsService } from '../../administration/services/audit-logs.service.js';
 import { BackgroundJobType } from '../../administration/entities/background-job.entity.js';
 import { BackgroundJobsService } from '../../administration/services/background-jobs.service.js';
 import { QueueService } from '../../queue/queue.service.js';
 import { REPORT_CENTER_EXPORT_JOB_NAME, REPORT_EXPORT_QUEUE_NAME } from '../constants/report-export-job.constants.js';
-import { reportBadRequest } from './report-center.errors.js';
+import { reportBadRequest, reportConflict, reportNotFound } from './report-center.errors.js';
 import { ReportCenterService } from './report-center.service.js';
 import { REPORT_FORMATS, type ReportFormat } from './report-file.service.js';
 import { REPORT_DEFINITIONS, isReportType } from './report-definition.registry.js';
@@ -29,6 +31,8 @@ export class ReportCenterExportService {
     private readonly queue: QueueService,
     private readonly audit: AuditLogsService,
     private readonly dataSource: DataSource,
+    private readonly storage: StorageService,
+    private readonly config: ConfigService,
   ) {}
 
   /** POST /reports/center/:type/exports → 202. Mọi việc dựng file đi qua hàng đợi (ARCH-02). */
@@ -80,5 +84,23 @@ export class ReportCenterExportService {
         createdAt: new Date(r.created).toISOString(),
       };
     });
+  }
+
+  /** Liên kết tải tạm (ký) tới file của một job xuất đã hoàn tất — chỉ người tạo job được tải. */
+  async downloadLink(jobId: string, userId: string) {
+    const rows: Array<{ status: string; output_file_id: string | null; file_name: string | null }> = /^[0-9a-f-]{36}$/i.test(jobId)
+      ? await this.dataSource.query(
+          `SELECT j.status, j.output_file_id, m.file_name FROM background_jobs j LEFT JOIN media_files m ON m.id = j.output_file_id
+            WHERE j.id = $1 AND j.related_entity_type = 'report_center' AND j.requested_by = $2`,
+          [jobId, userId],
+        )
+      : [];
+    const job = rows[0];
+    if (!job) throw reportNotFound('Không tìm thấy yêu cầu xuất', 'EXPORT_NOT_FOUND');
+    if (job.status !== 'completed' || !job.output_file_id) throw reportConflict('File chưa sẵn sàng để tải', 'EXPORT_NOT_READY');
+    const ttl = this.config.get<number>('MEDIA_DOWNLOAD_TOKEN_TTL_SECONDS', 600);
+    const base = this.config.get<string>('API_PUBLIC_BASE_URL', 'http://localhost:3000').replace(/\/$/, '');
+    const { token } = this.storage.generateSignedDownloadToken(job.output_file_id, ttl);
+    return { fileName: job.file_name, downloadUrl: `${base}/api/v1/media-files/${job.output_file_id}/secure-download?token=${token}` };
   }
 }

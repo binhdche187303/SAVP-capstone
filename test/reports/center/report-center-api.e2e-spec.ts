@@ -74,20 +74,19 @@ describeDb('RPT-CENTER API (preview, catalog)', () => {
     expect((await call('/reports/catalog', 'employee')).status).toBe(403);
   });
 
-  it('danh mục trả đủ 7 loại theo thứ tự của FE, sinh viên chưa khả dụng có lý do', async () => {
+  it('danh mục trả đủ 7 loại theo thứ tự của FE, sinh viên khả dụng', async () => {
     const res = await call('/reports/catalog', 'admin');
     expect(res.status).toBe(200);
     expect(res.body.data.map((c: { type: string }) => c.type)).toEqual(['staff-attendance', 'student-attendance', 'gate-access', 'room-utilization', 'vehicle', 'visitor', 'security-alert']);
     const student = res.body.data.find((c: { type: string }) => c.type === 'student-attendance');
-    expect(student).toMatchObject({ available: false });
-    expect(student.unavailableReason).toBeTruthy();
+    expect(student).toMatchObject({ available: true, unavailableReason: null });
     expect(res.body.data[0]).toHaveProperty('activeSchedules');
   });
 
-  it('lookups có đủ khóa FE cần (không có semesters/subjects/classSections)', async () => {
+  it('lookups có đủ khóa FE cần (gồm semesters/subjects/classSections cho chuyên cần sinh viên)', async () => {
     const res = await call('/reports/lookups', 'admin');
     expect(res.status).toBe(200);
-    expect(Object.keys(res.body.data).sort()).toEqual(['buildings', 'departments', 'gates', 'purposes', 'rooms', 'staff', 'zones']);
+    expect(Object.keys(res.body.data).sort()).toEqual(['buildings', 'classSections', 'departments', 'gates', 'purposes', 'rooms', 'semesters', 'staff', 'subjects', 'zones']);
     expect(res.body.data.purposes.length).toBeGreaterThan(0);
   });
 

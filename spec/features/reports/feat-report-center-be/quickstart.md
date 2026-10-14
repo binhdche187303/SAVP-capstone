@@ -48,7 +48,7 @@ Tạo lịch hằng ngày có giờ gửi sau 2 phút (hoặc bấm "Gửi thử
 
 ## 7. Việc còn lại
 
-- Khi phân hệ 2.7 có điểm danh từng buổi: thêm provider `student-attendance` (đổi `available=true` trong registry) và ba lookup `semesters/subjects/classSections`.
+- Chuyên cần sinh viên: ĐÃ làm (provider `student-attendance`, nguồn `class_attendance_records` của 2.7, lookup `semesters/subjects/classSections`). Số buổi = lịch buổi học (`class_sessions`, bỏ buổi hủy) ∪ ngày có điểm danh; không có bản ghi hoặc chỉ có giờ rời = vắng. Chưa có đồng bộ từ hệ thống đào tạo (2.7 dòng 36), nên danh sách lớp hiện nhập tay/seed.
 - Chưa trừ ngày nghỉ lễ / nghỉ phép trong chuyên cần cán bộ (đã ghi `notes[]` trong phản hồi và file xuất).
 - `security-alert` tải cả kỳ vào bộ nhớ: nếu một kỳ vượt vài chục nghìn cảnh báo thì chuyển sang gộp ở DB.
 - Chưa kiểm chứng: email thật qua SMTP, mở tệp xuất bằng Excel/Word/trình đọc PDF thật, hiệu năng trên dữ liệu production, chạy tay trên trình duyệt kịch bản demo bước 7–9.

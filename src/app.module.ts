@@ -39,6 +39,7 @@ import { SchedulingModule } from './modules/scheduling/scheduling.module';
 import { TranscriptionModule } from './modules/transcription/transcription.module';
 import { UtilizationModule } from './modules/utilization/utilization.module';
 import { IvssModule } from './modules/ivss/ivss.module';
+import { HgvisionModule } from './modules/hgvision/hgvision.module';
 import { AnprModule } from './modules/anpr/anpr.module';
 import { ZonesModule } from './modules/zones/zones.module';
 import { AcademicModule } from './modules/academic/academic.module';
@@ -48,6 +49,7 @@ import { GateAccessModule } from './modules/gate-access/gate-access.module';
 import { RestrictedZoneModule } from './modules/restricted-zone/restricted-zone.module';
 import { CampusDashboardModule } from './modules/campus-dashboard/campus-dashboard.module';
 import { CrowdAlertModule } from './modules/crowd-alert/crowd-alert.module';
+import { CameraGroupsModule } from './modules/camera-groups/camera-groups.module';
 import { DeviceAlertModule } from './modules/device-alert/device-alert.module';
 import { SearchModule } from './modules/search/search.module';
 import { GuestAccessModule } from './modules/guest-access/guest-access.module';
@@ -130,6 +132,7 @@ void loadDevModule; // suppress unused warning
     ReportsModule,
     AnalyticsModule,
     IvssModule,
+    HgvisionModule,
     AnprModule,
     ZonesModule, // schema-only: đăng ký entity scope Zone (SAVP)
     AcademicModule, // schema-only: đăng ký entity Học vụ (ACD-001, nền điểm danh phòng học #23)
@@ -139,6 +142,7 @@ void loadDevModule; // suppress unused warning
     RestrictedZoneModule, // Bước 3 SAVP (ARZ-001/UC-124): cron xâm nhập khu vực hạn chế
     CampusDashboardModule, // Bước 4 SAVP (CDB-001/UC-126, ZPT-001/UC-119, ZTH-001/UC-120): dashboard + timeline + heatmap khu vực
     CrowdAlertModule, // Bước 4 SAVP (ACR-001/UC-121): cron cảnh báo tụ tập đông người
+    CameraGroupsModule, // CAMG-001 — nhóm camera
     DeviceAlertModule, // Camera online → offline → security_alerts device_error + thông báo SA/BA
     SearchModule, // SRCH-01: tìm kiếm tổng hợp đa nguồn (zone/device/vehicle/user/meeting)
     GuestAccessModule,

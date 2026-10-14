@@ -278,6 +278,22 @@ export const envValidationSchema = Joi.object({
     .min(1000)
     .max(30000)
     .default(8000),
+  // HGVision (Camera AI, docs/hgvision): nguồn camera chạy song song IVSS.
+  // CAMERA_PROVIDER=hgvision ⇒ bật poller GET /api/history (HGVision không có webhook).
+  CAMERA_PROVIDER: Joi.string().valid('ivss', 'hgvision').default('ivss'),
+  HGVISION_BASE_URL: Joi.string().allow('').default(''),
+  HGVISION_CLIENT_ID: Joi.string().allow('').default(''),
+  HGVISION_CLIENT_SECRET: Joi.string().allow('').default(''),
+  HGVISION_TIMEOUT_MS: Joi.number()
+    .integer()
+    .min(1000)
+    .max(30000)
+    .default(8000),
+  HGVISION_POLL_INTERVAL_MS: Joi.number()
+    .integer()
+    .min(1000)
+    .max(60000)
+    .default(5000),
   // IPS-001 (#37): cron đồng bộ person IVSS (gated default OFF) + lead/grace (phút).
   SCHEDULER_IVSS_SYNC_ENABLED: Joi.boolean().default(false),
   // KPI-001 (#10): cron rollup KPI theo giờ + đối soát 01:00 (gated default OFF).
@@ -289,6 +305,7 @@ export const envValidationSchema = Joi.object({
   // RPT-CENTER-BE-001 (2.13 Trung tâm báo cáo): bật route và cron lịch gửi (mặc định TẮT).
   REPORT_CENTER_ENABLED: Joi.boolean().default(false),
   SCHEDULER_REPORT_SCHEDULE_ENABLED: Joi.boolean().default(false),
+  SCHEDULER_DEVICE_MAINTENANCE_ENABLED: Joi.boolean().default(false),
   // KPI-001: đọc bảng tổng hợp ở API zone traffic / vehicle stats. false ⇒ quay về 100% raw.
   KPI_ROLLUP_READ_ENABLED: Joi.boolean().default(true),
   IVSS_SYNC_LEAD_MINUTES: Joi.number().integer().min(1).default(5),

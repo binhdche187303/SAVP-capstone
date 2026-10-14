@@ -5,7 +5,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard.js';
 import { VISITOR_PERMISSIONS as P } from '../constants/visitor-permission.constant.js';
 import { CreateVisitDto } from '../dto/public-registration.dto.js';
 import { ListVisitsQueryDto } from '../dto/list-visits.query.dto.js';
-import { ApproveVisitDto, AttachPhotoDto, CheckOutDto, CloseManualDto, ExtendVisitDto, ManualCheckInDto, ReasonDto } from '../dto/visit-actions.dto.js';
+import { ApproveVisitDto, AttachPhotoDto, CheckOutDto, CloseManualDto, ExtendVisitDto, ManualCheckInDto, ReasonDto, ReassignHostDto } from '../dto/visit-actions.dto.js';
 import { VisitorsEnabledGuard } from '../guards/visitors-enabled.guard.js';
 import { VisitActionsService } from '../services/visit-actions.service.js';
 import { VisitQueryService } from '../services/visit-query.service.js';
@@ -98,6 +98,15 @@ export class VisitsController {
     const actor = await this.actors.resolve(user);
     this.actors.requireAny(actor, P.VISIT_MANAGE, P.HOST_SELF);
     return ok('Đã hủy lượt khách', await this.actions.cancel(id, actor));
+  }
+
+  @Post('visits/:id/reassign-host')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Chuyển người duyệt (lượt chờ duyệt mà người được gặp vắng / không phản hồi)' })
+  async reassignHost(@Param('id') id: string, @Body() dto: ReassignHostDto, @CurrentUser() user: CurrentUserInfo) {
+    const actor = await this.actors.resolve(user);
+    this.actors.requireAny(actor, P.VISIT_MANAGE);
+    return ok('Đã chuyển người duyệt', await this.actions.reassignHost(id, dto, actor));
   }
 
   @Post('visits/:id/revoke')

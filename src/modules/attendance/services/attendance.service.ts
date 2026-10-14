@@ -207,9 +207,22 @@ export class AttendanceService {
       relations: { user: true },
     });
 
+    // Ngoài cấp dưới trực tiếp, trưởng phòng (departments.manager_user_id) cũng quản lý mọi
+    // nhân viên thuộc phòng ban mình — khớp phạm vi màn "Chuyên cần phòng ban" (GET /meetings).
+    const managedDeptRows: Array<{ id: string }> =
+      await this.participantRepo.manager.query(
+        `SELECT id FROM departments WHERE manager_user_id = $1 AND is_active = true`,
+        [managerUserId],
+      );
+    const managedDeptIds = new Set(managedDeptRows.map((r) => r.id));
+
     const directReportIds = new Set<string>();
     for (const p of participants) {
-      if (p.user?.directManagerId === managerUserId) {
+      if (p.userId === managerUserId) continue;
+      if (
+        p.user?.directManagerId === managerUserId ||
+        (p.user?.departmentId && managedDeptIds.has(p.user.departmentId))
+      ) {
         directReportIds.add(p.userId);
       }
     }
@@ -217,9 +230,8 @@ export class AttendanceService {
   }
 
   private async checkIsAdmin(userId: string): Promise<boolean> {
-    const { roles } = await this.authzRead.getEffectiveRolesAndPermissions(
-      userId,
-    );
+    const { roles } =
+      await this.authzRead.getEffectiveRolesAndPermissions(userId);
     return roles.some((r) => ADMIN_ROLE_CODES.includes(r));
   }
 

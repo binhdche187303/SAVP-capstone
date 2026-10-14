@@ -143,7 +143,7 @@ export class VisitService {
       await this.addEvent(this.dataSource.manager, view.id, 'email_sent', { note: `Đã gửi email tới ${view.visitor.email}` });
     }
     if (channel === 'online') await this.notifier.notifyHost(view, 'visitor_pending_approval', `${view.visitor.fullName} (${view.visitor.organization || 'khách'}) xin gặp bạn, đang chờ duyệt`);
-    if (channel === 'walk_in') await this.notifier.notifyHost(view, 'visitor_registered', `Lễ tân đã đăng ký khách ${view.visitor.fullName} đến gặp bạn`);
+    if (channel === 'walk_in') await this.notifier.notifyHost(view, 'visitor_registered', `Bảo vệ đã đăng ký khách ${view.visitor.fullName} đến gặp bạn`);
     if (actor?.userId) {
       void this.audit.logAction({ userId: actor.userId, actionType: 'visitor_visit_create', entityType: 'visitor_visits', entityId: view.id, metadataJson: { channel, code: view.code } })
         .catch((e) => this.logger.warn(`audit lỗi: ${e instanceof Error ? e.message : 'unknown'}`));
