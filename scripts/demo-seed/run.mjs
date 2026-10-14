@@ -14,6 +14,8 @@ import { seedMeetings } from './04-meetings.mjs';
 import { seedContent } from './05-content.mjs';
 import { seedAcademic } from './06-academic.mjs';
 import { seedRoomFaces } from './07-room-faces.mjs';
+import { seedVisitors } from './08-visitors.mjs';
+import { seedReports } from './09-reports.mjs';
 
 const dryRun = process.argv.includes('--dry-run');
 const only = (process.argv.find((a) => a.startsWith('--until='))?.split('=')[1]) ?? 'all';
@@ -26,6 +28,8 @@ const PHASES = [
   ['content', seedContent],
   ['academic', seedAcademic],
   ['roomFaces', seedRoomFaces],
+  ['visitors', seedVisitors],
+  ['reports', seedReports],
 ];
 
 async function loadRef(c) {

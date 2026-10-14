@@ -40,11 +40,18 @@ export async function seedAcademic(ctx) {
   // Sinh viên: 11 sinh viên mới + student.demo
   const stuUsers = [...out.students.map((s) => ({ userId: s.id, code: s.code, status: s.account === 'pending_reset' ? 'suspended' : 'studying' })),
     ...(ref.user['student.demo'] ? [{ userId: ref.user['student.demo'], code: 'HE190100', status: 'studying' }] : [])];
+  // student.demo đã có hồ sơ từ migration CreateClassAttendanceRecordsAndSeedDemo (SV001) — dùng lại,
+  // không tạo hồ sơ thứ 2 (UQ_students_user_active: mỗi user 1 hồ sơ sinh viên).
+  const { rows: existingStu } = await c.query(
+    `SELECT id, user_id FROM public.students WHERE user_id = ANY($1::uuid[]) AND deleted_at IS NULL`,
+    [stuUsers.map((s) => s.userId)],
+  );
+  const existingByUser = Object.fromEntries(existingStu.map((r) => [r.user_id, r.id]));
   const students = stuUsers.map((s, i) => ({
-    id: id('students'), user_id: s.userId, student_code: s.code, cohort: 'K19', major: i % 4 === 3 ? 'Trí tuệ nhân tạo' : 'Kỹ thuật phần mềm',
+    id: existingByUser[s.userId] ?? id('students'), user_id: s.userId, student_code: s.code, cohort: 'K19', major: i % 4 === 3 ? 'Trí tuệ nhân tạo' : 'Kỹ thuật phần mềm',
     administrative_class: i % 4 === 3 ? 'AI1901' : 'SE1901', department_id: dept, study_status: s.status,
   }));
-  n.students = await insert(c, 'students', students);
+  n.students = await insert(c, 'students', students.filter((s) => !existingByUser[s.user_id]));
 
   const { rows: shiftRows } = await c.query(`SELECT shift_code, id, start_time::text AS st, end_time::text AS et FROM public.study_shifts WHERE deleted_at IS NULL`);
   const shift = Object.fromEntries(shiftRows.map((s) => [s.shift_code, s]));

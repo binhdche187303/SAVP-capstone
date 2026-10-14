@@ -4,6 +4,8 @@ import { DEMO_PREFIX } from './lib.mjs';
 
 // Bảng có id uuid (thứ tự không quan trọng vì có vòng lặp thử lại; liệt kê cho đủ).
 export const DEMO_TABLES = [
+  'report_schedule_runs', 'report_schedules',
+  'visitor_visit_events', 'visitor_visits', 'visitors',
   'kpi_zone_hourly', 'kpi_vehicle_hourly', 'kpi_vehicle_plate_hourly', // xoá theo zone_id (xem dưới)
   'meeting_minutes_shares', 'meeting_minutes', 'meeting_notes', 'meeting_agendas',
   'meeting_events', 'meeting_external_participants', 'transcripts',

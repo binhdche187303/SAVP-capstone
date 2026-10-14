@@ -440,9 +440,16 @@ export async function seedMeetings(ctx) {
   n.meeting_external_participants = await insert(c, 'meeting_external_participants', externals);
   n.meeting_requests = await insert(c, 'meeting_requests', requests.map((r) => ({ rejection_reason: null, notes: null, applied_at: null, ...r })));
   n.room_bookings = await insert(c, 'room_bookings', bookings);
-  n.room_booking_usages = await insert(c, 'room_booking_usages', usages.map((u) => ({ released_at: null, release_reason: null, ...u })));
-  n.no_show_cases = await insert(c, 'no_show_cases', noShows.map((x) => ({ released_at: null, resolved_by: null, resolution_status: null, note: null, ...x })));
-  n.room_events = await insert(c, 'room_events', roomEvents.map((e) => ({ booking_id: null, ...e })));
+  // Lịch demo trùng giờ với lịch thật cùng phòng bị ràng buộc ex_room_bookings_no_overlap
+  // bỏ qua (ON CONFLICT DO NOTHING) → bỏ luôn bản ghi phụ thuộc vào booking đó.
+  const okBk = new Set((await c.query(
+    `SELECT id::text FROM public.room_bookings WHERE id = ANY($1::uuid[])`, [bookings.map((b) => b.id)],
+  )).rows.map((r) => r.id));
+  n.room_bookings_skipped = bookings.length - okBk.size;
+  const hasBk = (x) => okBk.has(x.booking_id);
+  n.room_booking_usages = await insert(c, 'room_booking_usages', usages.filter(hasBk).map((u) => ({ released_at: null, release_reason: null, ...u })));
+  n.no_show_cases = await insert(c, 'no_show_cases', noShows.filter(hasBk).map((x) => ({ released_at: null, resolved_by: null, resolution_status: null, note: null, ...x })));
+  n.room_events = await insert(c, 'room_events', roomEvents.map((e) => ({ ...e, booking_id: e.booking_id && okBk.has(e.booking_id) ? e.booking_id : null })));
   n.meeting_events = await insert(c, 'meeting_events', mEvents);
   n.attendance_records = await insert(c, 'attendance_records', attRecords);
   n.attendance_events = await insert(c, 'attendance_events', attEvents.map((e) => ({ evidence_media_file_id: null, review_status: null, reviewed_by: null, reviewed_at: null, ...e })));
