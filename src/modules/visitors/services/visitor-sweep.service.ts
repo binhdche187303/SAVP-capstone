@@ -67,7 +67,7 @@ export class VisitorSweepService {
     const result = await this.withLock('sweep', async () => {
       const cfg = await this.config.get();
       const r: SweepResult = { skipped: false, expired: 0, overstayNotified: 0, overstayEscalated: 0, exitUnrecorded: 0 };
-      r.expired = await this.expireApproved(now);
+      r.expired = (await this.expireApproved(now)) + (await this.expirePending(now));
       r.exitUnrecorded = await this.markExitUnrecorded(now);
       const o = await this.overstay(now, cfg.overstayEscalateMinutes);
       r.overstayNotified = o.notified;
@@ -100,6 +100,32 @@ export class VisitorSweepService {
         }
       } catch (e) {
         this.logger.error(`Hết hạn lượt ${id} lỗi: ${this.msg(e)}`);
+      }
+    }
+    return n;
+  }
+
+  /** Chờ duyệt mà đã qua hết khung giờ hẹn → không ai duyệt kịp, tự hết hạn (khách xem được trên trang trạng thái). */
+  private async expirePending(now: Date): Promise<number> {
+    const rows: Array<{ id: string }> = await this.dataSource.query(
+      `SELECT id FROM visitor_visits WHERE status = 'pending_approval' AND scheduled_to < $1 AND deleted_at IS NULL ORDER BY scheduled_to LIMIT 500`,
+      [now],
+    );
+    let n = 0;
+    for (const { id } of rows) {
+      try {
+        const done = await this.dataSource.transaction(async (m) => {
+          const u = returnedRows(await m.query(
+            `UPDATE visitor_visits SET status = 'expired', updated_at = now() WHERE id = $1 AND status = 'pending_approval' RETURNING id`,
+            [id],
+          ));
+          if (u.length === 0) return false;
+          await m.query(`INSERT INTO visitor_visit_events (visit_id, event_type, event_time, note) VALUES ($1,'expired',$2,'Quá giờ hẹn mà chưa được duyệt')`, [id, now]);
+          return true;
+        });
+        if (done) n++;
+      } catch (e) {
+        this.logger.error(`Hết hạn lượt chờ duyệt ${id} lỗi: ${this.msg(e)}`);
       }
     }
     return n;

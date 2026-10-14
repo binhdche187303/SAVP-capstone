@@ -15,7 +15,7 @@ import { VisitorNotifier } from './visitor-notifier.service.js';
 type SetColumns = Partial<Record<
   | 'approved_by' | 'approved_at' | 'valid_from' | 'valid_to' | 'reject_reason' | 'check_in_at' | 'check_out_at' | 'revoked_at'
   | 'manual_exit' | 'not_found' | 'face_score' | 'overstay_notified_at' | 'overstay_escalated_at' | 'photo_file_id'
-  | 'last_seen_at' | 'last_seen_zone_id' | 'consent_at',
+  | 'last_seen_at' | 'last_seen_zone_id' | 'consent_at' | 'host_user_id' | 'department_id',
   unknown
 >>;
 const COLUMN_RE = /^[a-z_]+$/;
@@ -51,7 +51,7 @@ export class VisitActionsService {
 
   async approve(id: string, dto: { access?: { validFrom?: string; validTo?: string; zoneIds?: string[] } }, actor: Actor): Promise<VisitView> {
     const row = await this.load(id);
-    await this.authorizeHostOrManage(row, actor);
+    this.authorizeHost(row, actor);
     const to = this.guard(row.status, 'approve');
     const access = dto.access ? await this.validateAccess(dto.access) : null;
 
@@ -79,7 +79,7 @@ export class VisitActionsService {
 
   async reject(id: string, dto: { reason?: string }, actor: Actor): Promise<VisitView> {
     const row = await this.load(id);
-    await this.authorizeHostOrManage(row, actor);
+    this.authorizeHost(row, actor);
     const reason = String(dto.reason ?? '').trim();
     const to = this.guard(row.status, 'reject');
     if (!reason) throw err(400, 'VALIDATION_ERROR', 'Vui lòng nhập lý do từ chối');
@@ -92,6 +92,24 @@ export class VisitActionsService {
         await this.visits.addEvent(this.dataSource.manager, row.id, 'email_sent', { note: `Đã gửi email thông báo từ chối tới ${view.visitor.email}` });
       }
     });
+  }
+
+  /** Người được gặp vắng / không phản hồi: người quản lý chuyển lượt chờ duyệt sang người khác duyệt. */
+  async reassignHost(id: string, dto: { hostId?: string; reason?: string }, actor: Actor): Promise<VisitView> {
+    this.requireManage(actor);
+    const row = await this.load(id);
+    if (row.status !== 'pending_approval') throw err(409, 'VISIT_INVALID_TRANSITION', 'Chỉ chuyển người duyệt khi lượt khách đang chờ duyệt');
+    const reason = String(dto.reason ?? '').trim();
+    if (!reason) throw err(400, 'VALIDATION_ERROR', 'Vui lòng nhập lý do chuyển người duyệt');
+    const host = dto.hostId ? await this.visits.findActiveHost(dto.hostId) : null;
+    if (!host) throw err(400, 'VALIDATION_ERROR', 'Người duyệt mới không hợp lệ hoặc không còn hoạt động');
+    if (host.id === row.host_user_id) throw err(400, 'VALIDATION_ERROR', 'Người duyệt mới trùng người hiện tại');
+    await this.dataSource.transaction(async (m) => {
+      await this.conditionalUpdate(m, row, 'pending_approval', { host_user_id: host.id, department_id: host.department_id });
+      await this.visits.addEvent(m, row.id, 'host_reassigned', { note: reason, actorUserId: actor.userId });
+    });
+    return this.finish(row.id, 'visitor_visit_reassign_host', actor, (view) =>
+      this.notifier.notifyHost(view, 'visitor_pending_approval', `Bạn được chuyển duyệt khách ${view.visitor.fullName} (thay người được gặp ban đầu)`));
   }
 
   async cancel(id: string, actor: Actor): Promise<VisitView> {
@@ -313,6 +331,12 @@ export class VisitActionsService {
     if (!actor.permissions.includes(VISITOR_PERMISSIONS.VISIT_MANAGE)) {
       throw new ForbiddenException({ success: false, message: 'Bạn không có quyền thực hiện thao tác này', error: { code: 'VISIT_FORBIDDEN', details: {} } });
     }
+  }
+
+  /** Duyệt / từ chối: chỉ chính người được gặp — khách của ai người ấy duyệt, admin không duyệt thay. */
+  private authorizeHost(row: VisitRow, actor: Actor): void {
+    if (actor.userId && actor.userId === row.host_user_id) return;
+    throw new ForbiddenException({ success: false, message: 'Chỉ người được gặp mới duyệt được lượt khách này', error: { code: 'VISIT_FORBIDDEN', details: {} } });
   }
 
   /** BR-V18: người có quyền quản lý, hoặc chính người được gặp khi `approver_mode = host_or_manager`. */
