@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module.js';
 import { IotModule } from '../iot/iot.module.js';
+import { AcademicModule } from '../academic/academic.module.js';
 import { ZoneEntity } from './entities/zone.entity.js';
 import { GateAccessLogEntity } from './entities/gate-access-log.entity.js';
 import { ZonePresenceEventEntity } from './entities/zone-presence-event.entity.js';
@@ -48,6 +49,7 @@ import { ZonesAuditRepository } from './repositories/zones-audit.repository.js';
     ]),
     AuthModule,
     IotModule,
+    AcademicModule,
   ],
   controllers: [ZonesController, GateAccessLogController],
   providers: [

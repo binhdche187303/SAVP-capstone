@@ -9,6 +9,11 @@ import type { PaginationMeta } from './zones.service.js';
 import { normalizePlate } from '../../anpr/utils/normalize-plate.js';
 import type { ListGateAccessLogsQueryDto } from '../dto/list-gate-access-logs-query.dto.js';
 import type { AdminListGateAccessLogsQueryDto } from '../dto/admin-list-gate-access-logs-query.dto.js';
+import {
+  HgVisionRecognizedFace,
+  HgVisionRecognizedPlate,
+  HgVisionService,
+} from '../../academic/services/hgvision.service.js';
 
 /**
  * Input ghi một dòng `gate_access_logs` (GAW-001 / UC-105). `anpr` đã resolve sạch:
@@ -58,6 +63,7 @@ export class GateAccessLogService {
     @InjectRepository(GateAccessLogEntity)
     private readonly repo: Repository<GateAccessLogEntity>,
     private readonly dataSource: DataSource,
+    private readonly hgVisionService: HgVisionService,
   ) {}
 
   /** USER: log của current user. Fold cứng gal.userId (SEC-01). */
@@ -147,6 +153,9 @@ export class GateAccessLogService {
         : 'enter';
     const gate = await this.resolveGuardDashboardGate(input.gateId);
     const scenario = input.scenario ?? 'authorized';
+    const hgVision = await this.resolveHgVisionGateRecognition(
+      input.snapshotImageBase64,
+    );
     const status =
       scenario === 'unknown' || scenario === 'plate_mismatch'
         ? 'denied'
@@ -154,13 +163,14 @@ export class GateAccessLogService {
     const person =
       scenario === 'unknown'
         ? null
-        : await this.resolveGuardDashboardPerson(currentUserId, direction);
+        : (hgVision.person ??
+          (await this.resolveGuardDashboardPerson(currentUserId, direction)));
     const plateNumber =
       scenario === 'unknown'
         ? '59X00000'
         : scenario === 'plate_mismatch'
           ? '98A99999'
-          : person?.plate_number ?? '30A12345';
+          : hgVision.plate?.plate ?? person?.plate_number ?? '30A12345';
     const now = new Date();
     const reason =
       status === 'authorized'
@@ -177,11 +187,14 @@ export class GateAccessLogService {
       plateNumber: normalizePlate(plateNumber),
       metadata: {
         source: 'guard-dashboard',
+        recognitionProvider: hgVision.used ? 'hgvision' : 'demo-fallback',
         accessStatus: status,
         scenario,
         reason,
         gateId: input.gateId ?? null,
         snapshotImageBase64: input.snapshotImageBase64 ?? null,
+        hgvisionFace: this.toSafeHgVisionFace(hgVision.face),
+        hgvisionPlate: this.toSafeHgVisionPlate(hgVision.plate),
         personCode: person?.person_code ?? (scenario === 'unknown' ? 'UNK-001' : null),
         personRole: person?.person_role ?? (scenario === 'unknown' ? 'Người lạ' : null),
       },
@@ -220,10 +233,138 @@ export class GateAccessLogService {
           accessStatus: status,
           scenario,
           reason,
+          recognitionProvider: hgVision.used ? 'hgvision' : 'demo-fallback',
           snapshotImageBase64: input.snapshotImageBase64 ?? null,
+          hgvisionFace: this.toSafeHgVisionFace(hgVision.face),
+          hgvisionPlate: this.toSafeHgVisionPlate(hgVision.plate),
         },
       },
     };
+  }
+
+  private async resolveHgVisionGateRecognition(snapshotImageBase64?: string) {
+    if (!snapshotImageBase64 || !this.hgVisionService.isConfigured()) {
+      return {
+        used: false,
+        face: null,
+        plate: null,
+        person: null,
+      };
+    }
+
+    const [face, plate] = await Promise.all([
+      this.hgVisionService.searchFaceFromDataUrl(snapshotImageBase64, 5).catch((error) => {
+        this.logger.warn(`HGVision gate face search skipped: ${String(error).slice(0, 160)}`);
+        return null;
+      }),
+      this.hgVisionService.readLicensePlateFromDataUrl(snapshotImageBase64).catch((error) => {
+        this.logger.warn(`HGVision gate plate read skipped: ${String(error).slice(0, 160)}`);
+        return null;
+      }),
+    ]);
+
+    return {
+      used: Boolean(face || plate),
+      face,
+      plate,
+      person: face ? await this.resolvePersonByHgVisionFace(face) : null,
+    };
+  }
+
+  private async resolvePersonByHgVisionFace(face: HgVisionRecognizedFace) {
+    const rows = (await this.dataSource.manager.query(
+      `
+      SELECT u.id,
+             u.full_name,
+             COALESCE(st.student_code, u.employee_code, u.email) AS person_code,
+             CASE
+               WHEN st.id IS NOT NULL THEN 'Sinh viên'
+               WHEN EXISTS (
+                 SELECT 1 FROM user_roles ur
+                 JOIN roles r ON r.id = ur.role_id
+                 WHERE ur.user_id = u.id
+                   AND ur.is_active = true
+                   AND r.role_code = 'TEACHER'
+               ) THEN 'Giảng viên'
+               ELSE COALESCE(u.position_title, 'Nhân viên')
+             END AS person_role,
+             vr.plate_number
+        FROM users u
+        LEFT JOIN students st ON st.user_id = u.id AND st.deleted_at IS NULL
+        LEFT JOIN LATERAL (
+          SELECT plate_number
+            FROM vehicle_registrations
+           WHERE user_id = u.id
+             AND deleted_at IS NULL
+           ORDER BY created_at DESC
+           LIMIT 1
+        ) vr ON true
+       WHERE u.deleted_at IS NULL
+         AND u.account_status = 'active'
+      `,
+    )) as Array<{
+      id: string;
+      full_name: string;
+      person_code: string | null;
+      person_role: string | null;
+      plate_number: string | null;
+    }>;
+
+    const normalizedFace = this.normalizeIdentity(face.faceIdent);
+    return (
+      rows.find((row) => {
+        const candidates = [
+          row.person_code ?? '',
+          row.full_name,
+          `${row.person_code ?? ''} ${row.full_name}`,
+          `${row.full_name} ${row.person_code ?? ''}`,
+        ].map((value) => this.normalizeIdentity(value));
+        return candidates.some(
+          (candidate) =>
+            candidate &&
+            (candidate === normalizedFace ||
+              normalizedFace.includes(candidate) ||
+              candidate.includes(normalizedFace)),
+        );
+      }) ?? null
+    );
+  }
+
+  private toSafeHgVisionFace(face: HgVisionRecognizedFace | null) {
+    if (!face) return null;
+    return {
+      faceIdent: face.faceIdent,
+      faceInfo: face.faceInfo ?? null,
+      score: face.score,
+      confidence: this.normalizeConfidence(face.score),
+      faceImagePath: face.faceImagePath ?? null,
+    };
+  }
+
+  private toSafeHgVisionPlate(plate: HgVisionRecognizedPlate | null) {
+    if (!plate) return null;
+    return {
+      plate: normalizePlate(plate.plate),
+      score: plate.score,
+      confidence: this.normalizeConfidence(plate.score),
+      detectionScore: plate.detectionScore ?? null,
+      type: plate.type ?? null,
+      hasCropImage: Boolean(plate.cropImage),
+    };
+  }
+
+  private normalizeIdentity(value: string) {
+    return String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9@._-]+/g, '')
+      .toLowerCase();
+  }
+
+  private normalizeConfidence(score: number | null | undefined) {
+    const value = Number(score ?? 0);
+    if (!Number.isFinite(value)) return 0;
+    return Math.max(0, Math.min(100, Math.round(value <= 1 ? value * 100 : value)));
   }
 
   /**

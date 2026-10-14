@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { HgVisionRecognizedFace, HgVisionService } from './hgvision.service.js';
 
 type RoleCode = 'SYSTEM_ADMIN' | 'ADMIN' | 'BUSINESS_ADMIN' | 'TEACHER' | 'STUDENT' | string;
 
@@ -44,7 +45,10 @@ const CLASS_ATTENDANCE_AUTO_SCAN_INTERVAL_KEY =
 
 @Injectable()
 export class ClassAttendanceService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly hgVisionService: HgVisionService,
+  ) {}
 
   async getSettings() {
     const values = await this.getClassAttendanceConfigValues();
@@ -227,8 +231,13 @@ export class ClassAttendanceService {
     const date = this.todayKey();
     const students = await this.getClassStudents(classId);
     const rows = await this.getRows(currentUserId, classId, date);
-    const target =
-      direction === 'out'
+    const recognition = await this.resolveClassFaceRecognition(
+      students,
+      body.snapshotImageBase64,
+    );
+    const target = recognition?.student
+      ? rows.find((row) => row.studentId === recognition.student.id)
+      : direction === 'out'
         ? rows.find((row) => row.checkInAt && !row.checkOutAt)
         : rows.find((row) => !row.checkInAt);
 
@@ -246,6 +255,31 @@ export class ClassAttendanceService {
       };
     }
 
+    if (recognition?.student) {
+      if (direction === 'in' && target.checkInAt) {
+        return {
+          success: true,
+          data: {
+            operationSuccess: false,
+            warning: true,
+            recognition: recognition.face,
+            message: `${recognition.student.name} đã được điểm danh vào lớp trước đó.`,
+          },
+        };
+      }
+      if (direction === 'out' && (!target.checkInAt || target.checkOutAt)) {
+        return {
+          success: true,
+          data: {
+            operationSuccess: false,
+            warning: true,
+            recognition: recognition.face,
+            message: `${recognition.student.name} chưa có lượt vào đang mở để ghi nhận rời lớp.`,
+          },
+        };
+      }
+    }
+
     const student = students.find((item) => item.id === target.studentId);
     if (!student) {
       throw new BadRequestException('Student not found in class');
@@ -259,6 +293,9 @@ export class ClassAttendanceService {
     } else {
       status = 'left';
     }
+    const confidence = recognition?.face
+      ? this.normalizeConfidence(recognition.face.score)
+      : 94;
 
     const inserted = (await this.dataSource.manager.query(
       `
@@ -270,7 +307,7 @@ export class ClassAttendanceService {
         $1, $2, $3::date,
         CASE WHEN $4 = 'in' THEN $5::timestamptz ELSE NULL END,
         CASE WHEN $4 = 'out' THEN $5::timestamptz ELSE NULL END,
-        $6, 94, $7, $8, now()
+        $6, $9, $7, $8, now()
       )
       ON CONFLICT (class_section_id, student_id, attendance_date)
       DO UPDATE SET
@@ -280,7 +317,7 @@ export class ClassAttendanceService {
           ELSE class_attendance_records.check_out_at
         END,
         status = $6,
-        confidence = 94,
+        confidence = $9,
         evidence_image = COALESCE($7, class_attendance_records.evidence_image),
         source = $8,
         updated_at = now()
@@ -294,7 +331,8 @@ export class ClassAttendanceService {
         now.toISOString(),
         status,
         body.snapshotImageBase64 ?? null,
-        body.snapshotImageBase64 ? 'webcam' : 'camera',
+        recognition?.face ? 'hgvision-face' : body.snapshotImageBase64 ? 'webcam' : 'camera',
+        confidence,
       ],
     )) as AttendanceRow[];
 
@@ -309,10 +347,13 @@ export class ClassAttendanceService {
           email: student.email,
         },
         record: inserted[0],
+        recognition: recognition?.face ?? null,
         message:
           direction === 'out'
             ? `${student.name} đã rời lớp.`
-            : `${student.name} đã điểm danh ${status === 'late' ? 'đi muộn' : 'đúng giờ'}.`,
+            : `${student.name} đã điểm danh ${status === 'late' ? 'đi muộn' : 'đúng giờ'}${
+                recognition?.face ? ' bằng HGVision FaceID' : ''
+              }.`,
       },
     };
   }
@@ -592,6 +633,56 @@ export class ClassAttendanceService {
       `,
       [classId],
     )) as StudentRow[];
+  }
+
+  private async resolveClassFaceRecognition(
+    students: StudentRow[],
+    snapshotImageBase64?: string,
+  ): Promise<{ student: StudentRow; face: HgVisionRecognizedFace } | null> {
+    try {
+      const face = await this.hgVisionService.searchFaceFromDataUrl(
+        snapshotImageBase64,
+        5,
+      );
+      if (!face) return null;
+      const student = this.matchStudentByFaceIdent(students, face.faceIdent);
+      return student ? { student, face } : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private matchStudentByFaceIdent(students: StudentRow[], faceIdent: string) {
+    const normalizedFace = this.normalizeIdentity(faceIdent);
+    return students.find((student) => {
+      const candidates = [
+        student.code,
+        student.name,
+        student.email ?? '',
+        `${student.code} ${student.name}`,
+        `${student.name} ${student.code}`,
+      ].map((value) => this.normalizeIdentity(value));
+      return candidates.some(
+        (candidate) =>
+          candidate === normalizedFace ||
+          normalizedFace.includes(candidate) ||
+          candidate.includes(normalizedFace),
+      );
+    });
+  }
+
+  private normalizeIdentity(value: string) {
+    return String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9@._-]+/g, '')
+      .toLowerCase();
+  }
+
+  private normalizeConfidence(score: number | null | undefined) {
+    const value = Number(score ?? 0);
+    if (!Number.isFinite(value)) return 0;
+    return Math.max(0, Math.min(100, Math.round(value <= 1 ? value * 100 : value)));
   }
 
   private async getReportClasses(

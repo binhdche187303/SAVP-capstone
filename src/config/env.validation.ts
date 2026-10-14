@@ -232,6 +232,14 @@ export const envValidationSchema = Joi.object({
   FFMPEG_PATH: Joi.string().default('ffmpeg'),
   RECORDING_STORAGE_PATH: Joi.string().default('./storage/recordings'),
   MOCK_RECORDING_ENABLED: Joi.boolean().default(false),
+  // HGVision/Camera AI integration — optional. Khi bật, BE gọi HGVision từ backend
+  // để nhận diện FaceID thật cho điểm danh lớp/cổng; tuyệt đối không đưa secret ra FE.
+  HGVISION_ENABLED: Joi.boolean().default(false),
+  HGVISION_BASE_URL: Joi.string().uri().allow('').default(''),
+  HGVISION_CLIENT_ID: Joi.string().allow('').default(''),
+  HGVISION_CLIENT_SECRET: Joi.string().allow('').default(''),
+  HGVISION_SCOPE: Joi.string().default('faces:read plates:read cameras:read'),
+  HGVISION_TIMEOUT_MS: Joi.number().integer().min(1000).default(8000),
   // REC-005: ffprobe trích metadata media (best-effort).
   FFPROBE_PATH: Joi.string().default('ffprobe'),
   // NSC-001 (#31): token nội bộ cho POST /internal/no-show-cases (fail-closed nếu rỗng).
