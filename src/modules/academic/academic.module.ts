@@ -10,6 +10,7 @@ import { ClassSessionEntity } from './entities/class-session.entity.js';
 import { AuthModule } from '../auth/auth.module.js';
 import { ClassAttendanceController } from './controllers/class-attendance.controller.js';
 import { ClassAttendanceService } from './services/class-attendance.service.js';
+import { HgVisionService } from './services/hgvision.service.js';
 
 /**
  * AcademicModule (ACD-001) — SCHEMA-ONLY: chỉ đăng ký entity Học vụ (R13, R14).
@@ -30,7 +31,7 @@ import { ClassAttendanceService } from './services/class-attendance.service.js';
     ]),
   ],
   controllers: [ClassAttendanceController],
-  providers: [ClassAttendanceService],
-  exports: [TypeOrmModule],
+  providers: [ClassAttendanceService, HgVisionService],
+  exports: [TypeOrmModule, HgVisionService],
 })
 export class AcademicModule {}

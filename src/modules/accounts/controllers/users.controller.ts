@@ -681,13 +681,12 @@ export class UsersController {
 
   @Patch(':userId')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('accounts.user.update')
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Cập nhật thông tin tài khoản nhân sự',
     description:
-      'Cho phép System Admin (toàn hệ thống) và Business Admin (giới hạn department scope) cập nhật một phần thông tin hồ sơ: họ tên, mã nhân viên, số điện thoại, chức danh, phòng ban. Không đổi email/vai trò/trạng thái tài khoản qua endpoint này.',
+      'Cho phép người dùng cập nhật hồ sơ của chính mình với các trường an toàn (họ tên, số điện thoại). System Admin và Business Admin có quyền accounts.user.update vẫn có thể cập nhật thông tin hồ sơ nhân sự theo phạm vi được phân quyền. Không đổi email/vai trò/trạng thái tài khoản qua endpoint này.',
   })
   @ApiParam({
     name: 'userId',
@@ -704,7 +703,7 @@ export class UsersController {
   })
   @ApiForbiddenResponse({
     description:
-      'Không đủ quyền hạn (thiếu permission accounts.user.update) hoặc ngoài phạm vi department.',
+      'Không đủ quyền hạn, không phải hồ sơ của chính mình, hoặc ngoài phạm vi department.',
   })
   async updateUser(
     @Param(
@@ -856,6 +855,25 @@ export class UsersController {
     };
   }
 
+  @Get('student-classes')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('accounts.user.manage')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Danh sách lớp hành chính dùng khi quản lý sinh viên',
+  })
+  async listStudentAdministrativeClasses(@Req() request: Request) {
+    const user = request['user'] as { userId: string } | undefined;
+    const data = await this.usersService.listStudentAdministrativeClasses(
+      user?.userId || 'system',
+    );
+    return {
+      success: true,
+      message: 'Lấy danh sách lớp hành chính thành công',
+      data,
+    };
+  }
+
   // ⚠️ Route order: khai báo path tĩnh 'manage' TRƯỚC ':userId' để không bị
   // pattern ':userId' nuốt "manage".
   @Get('manage')
@@ -957,6 +975,55 @@ export class UsersController {
     res.setHeader('Content-Type', XLSX_MIME);
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
     res.send(buffer);
+  }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Xem hồ sơ cá nhân của tài khoản đang đăng nhập',
+    description:
+      'Cho phép người dùng tự xem hồ sơ của chính mình. Endpoint này chỉ yêu cầu JWT, không yêu cầu quyền admin xem chi tiết tài khoản người khác.',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Hồ sơ cá nhân của tài khoản đang đăng nhập.',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Không có quyền truy cập (thiếu hoặc sai JWT).',
+  })
+  async getMyProfile(
+    @Req() request: Request,
+    @Ip() ipAddress: string,
+    @Headers('user-agent') userAgent?: string,
+    @Headers('x-request-id') requestId?: string,
+  ): Promise<{
+    success: boolean;
+    message: string;
+    data: UserDetailResponseDto;
+  }> {
+    const user = request['user'] as { userId: string } | undefined;
+    const authenticatedUserId = user?.userId;
+
+    if (!authenticatedUserId) {
+      throw new Error('Authenticated user id is missing from request context');
+    }
+
+    const result = await this.usersService.getUserDetail(
+      authenticatedUserId,
+      authenticatedUserId,
+      {
+        ipAddress,
+        userAgent,
+        requestId,
+      },
+    );
+
+    return {
+      success: true,
+      message: 'My profile retrieved successfully',
+      data: result,
+    };
   }
 
   @Get(':userId')

@@ -235,6 +235,22 @@ export const envValidationSchema = Joi.object({
   FFMPEG_PATH: Joi.string().default('ffmpeg'),
   RECORDING_STORAGE_PATH: Joi.string().default('./storage/recordings'),
   MOCK_RECORDING_ENABLED: Joi.boolean().default(false),
+  // HGVision/Camera AI integration — optional. Khi bật, BE gọi HGVision từ backend
+  // để nhận diện FaceID thật cho điểm danh lớp/cổng; tuyệt đối không đưa secret ra FE.
+  // CAMERA_PROVIDER=hgvision ⇒ bật poller GET /api/history (HGVision không có webhook).
+  CAMERA_PROVIDER: Joi.string().valid('ivss', 'hgvision').default('ivss'),
+  HGVISION_ENABLED: Joi.boolean().default(false),
+  HGVISION_BASE_URL: Joi.string().uri().allow('').default(''),
+  HGVISION_CLIENT_ID: Joi.string().allow('').default(''),
+  HGVISION_CLIENT_SECRET: Joi.string().allow('').default(''),
+  HGVISION_MOCK_FALLBACK_ENABLED: Joi.boolean().default(false),
+  HGVISION_SCOPE: Joi.string().default('faces:read plates:read cameras:read'),
+  HGVISION_TIMEOUT_MS: Joi.number().integer().min(1000).default(8000),
+  HGVISION_POLL_INTERVAL_MS: Joi.number()
+    .integer()
+    .min(1000)
+    .max(60000)
+    .default(5000),
   // REC-005: ffprobe trích metadata media (best-effort).
   FFPROBE_PATH: Joi.string().default('ffprobe'),
   // NSC-001 (#31): token nội bộ cho POST /internal/no-show-cases (fail-closed nếu rỗng).
@@ -273,22 +289,6 @@ export const envValidationSchema = Joi.object({
     .min(1000)
     .max(30000)
     .default(8000),
-  // HGVision (Camera AI, docs/hgvision): nguồn camera chạy song song IVSS.
-  // CAMERA_PROVIDER=hgvision ⇒ bật poller GET /api/history (HGVision không có webhook).
-  CAMERA_PROVIDER: Joi.string().valid('ivss', 'hgvision').default('ivss'),
-  HGVISION_BASE_URL: Joi.string().allow('').default(''),
-  HGVISION_CLIENT_ID: Joi.string().allow('').default(''),
-  HGVISION_CLIENT_SECRET: Joi.string().allow('').default(''),
-  HGVISION_TIMEOUT_MS: Joi.number()
-    .integer()
-    .min(1000)
-    .max(30000)
-    .default(8000),
-  HGVISION_POLL_INTERVAL_MS: Joi.number()
-    .integer()
-    .min(1000)
-    .max(60000)
-    .default(5000),
   // IPS-001 (#37): cron đồng bộ person IVSS (gated default OFF) + lead/grace (phút).
   SCHEDULER_IVSS_SYNC_ENABLED: Joi.boolean().default(false),
   // KPI-001 (#10): cron rollup KPI theo giờ + đối soát 01:00 (gated default OFF).

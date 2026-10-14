@@ -4,6 +4,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { GateAccessLogEntity } from '../entities/gate-access-log.entity.js';
 import { GateAccessLogService } from './gate-access-log.service.js';
+import { HgVisionService } from '../../academic/services/hgvision.service.js';
 
 describe('GateAccessLogService (GAL-001 / UC-107)', () => {
   let service: GateAccessLogService;
@@ -11,6 +12,7 @@ describe('GateAccessLogService (GAL-001 / UC-107)', () => {
   let qb: any;
   let ds: any;
   let qr: any;
+  let hgVision: any;
 
   beforeEach(async () => {
     qb = {
@@ -36,11 +38,21 @@ describe('GateAccessLogService (GAL-001 / UC-107)', () => {
       manager: { query: jest.fn().mockResolvedValue([{ zone_type: 'gate' }]) },
       createQueryRunner: jest.fn(() => qr),
     };
+    hgVision = {
+      isConfigured: jest.fn().mockReturnValue(false),
+      isMockFallbackEnabled: jest.fn().mockReturnValue(false),
+      searchFaceFromDataUrl: jest.fn(),
+      readLicensePlateFromDataUrl: jest.fn(),
+    };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         GateAccessLogService,
         { provide: getRepositoryToken(GateAccessLogEntity), useValue: repo },
         { provide: DataSource, useValue: ds },
+        {
+          provide: HgVisionService,
+          useValue: hgVision,
+        },
       ],
     }).compile();
     service = module.get(GateAccessLogService);
@@ -178,6 +190,122 @@ describe('GateAccessLogService (GAL-001 / UC-107)', () => {
       expect(findAndWhere('gal.accessTime <= :to')[1]).toEqual({
         to: '2026-07-31T00:00:00Z',
       });
+    });
+  });
+
+  describe('scanFromGuardDashboard', () => {
+    const mockGuardAndGateQueries = () => {
+      ds.manager.query.mockImplementation((sql: string) => {
+        if (sql.includes('SELECT r.role_code')) {
+          return Promise.resolve([{ role_code: 'GUARD' }]);
+        }
+        if (sql.includes('FROM zones')) {
+          return Promise.resolve([
+            {
+              id: 'gate-1',
+              zone_code: 'GATE_MAIN',
+              zone_name: 'Cổng chính',
+            },
+          ]);
+        }
+        return Promise.resolve([]);
+      });
+    };
+
+    it('không có ảnh camera thì không lấy tài khoản bảo vệ làm người được quét', async () => {
+      mockGuardAndGateQueries();
+
+      const result = await service.scanFromGuardDashboard('guard-user-id', {
+        gateId: 'main-in',
+        direction: 'in',
+        scenario: 'authorized',
+      });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          success: false,
+          message: 'Cần ảnh từ camera để xác định người qua cổng.',
+        }),
+      );
+      expect(hgVision.searchFaceFromDataUrl).not.toHaveBeenCalled();
+      expect(ds.createQueryRunner).not.toHaveBeenCalled();
+    });
+
+    it('FaceID engine chưa cấu hình thì không tạo log bằng danh tính bảo vệ', async () => {
+      mockGuardAndGateQueries();
+
+      const result = await service.scanFromGuardDashboard('guard-user-id', {
+        gateId: 'main-in',
+        direction: 'in',
+        scenario: 'authorized',
+        snapshotImageBase64: 'data:image/jpeg;base64,/9j/2Q==',
+      });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          success: false,
+          message:
+            'Dịch vụ đối chiếu FaceID chưa sẵn sàng nên chưa thể xác định người trước camera.',
+        }),
+      );
+      expect(ds.createQueryRunner).not.toHaveBeenCalled();
+    });
+
+    it('mock FaceID dùng người có hồ sơ active khác tài khoản bảo vệ', async () => {
+      hgVision.isMockFallbackEnabled.mockReturnValue(true);
+      ds.manager.query.mockImplementation((sql: string) => {
+        if (sql.includes('SELECT r.role_code')) {
+          return Promise.resolve([{ role_code: 'GUARD' }]);
+        }
+        if (sql.includes('zone_name')) {
+          return Promise.resolve([
+            {
+              id: 'gate-1',
+              zone_code: 'GATE_MAIN',
+              zone_name: 'Cổng chính',
+            },
+          ]);
+        }
+        if (sql.includes('JOIN face_profiles fp')) {
+          return Promise.resolve([
+            {
+              id: 'student-user-id',
+              full_name: 'Lê Minh Sinh',
+              person_code: 'SV001',
+              person_role: 'Sinh viên',
+              plate_number: null,
+            },
+          ]);
+        }
+        if (sql.includes('SELECT direction')) return Promise.resolve([]);
+        if (sql.includes('SELECT id')) return Promise.resolve([]);
+        if (sql.includes('SELECT zone_type')) {
+          return Promise.resolve([{ zone_type: 'gate' }]);
+        }
+        return Promise.resolve([]);
+      });
+
+      const result = await service.scanFromGuardDashboard('guard-user-id', {
+        gateId: 'main-in',
+        direction: 'in',
+        scenario: 'authorized',
+        snapshotImageBase64: 'data:image/jpeg;base64,/9j/2Q==',
+      });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          success: true,
+          event: expect.objectContaining({
+            user_id: 'student-user-id',
+            person_code: 'SV001',
+            person_role: 'Sinh viên',
+            metadata_json: expect.objectContaining({
+              recognitionProvider: 'mock-faceid',
+            }),
+          }),
+        }),
+      );
+      expect(result.event.user_id).not.toBe('guard-user-id');
     });
   });
 

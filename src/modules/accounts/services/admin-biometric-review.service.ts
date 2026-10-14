@@ -49,6 +49,17 @@ const SORT_FIELD_MAP: Record<string, string> = {
  */
 const PORTRAIT_MAPPING_SOURCE = 'portrait';
 
+type UserClassSection = {
+  id: string;
+  code: string;
+  name: string;
+};
+
+type UserRoleSummary = {
+  roleCode: string;
+  roleName: string;
+};
+
 /**
  * AdminBiometricReviewService — ACCT-BIOMETRIC-REVIEW-001.
  *
@@ -101,6 +112,66 @@ export class AdminBiometricReviewService {
       });
     }
 
+    if (query.role) {
+      qb.andWhere(
+        `
+        EXISTS (
+          SELECT 1
+            FROM user_roles ur
+            JOIN roles r
+              ON r.id = ur.role_id
+             AND r.is_active = true
+           WHERE ur.user_id = u.id
+             AND ur.is_active = true
+             AND r.role_code = :roleCode
+        )
+        `,
+        { roleCode: query.role },
+      );
+    }
+
+    if (query.classId) {
+      const classIdentifier = query.classId.trim();
+      const normalizedClassCode = classIdentifier
+        .replace(/[^a-z0-9]/gi, '')
+        .toLowerCase();
+      qb.andWhere(
+        `
+        (
+          EXISTS (
+            SELECT 1
+              FROM students st
+              JOIN class_enrollments ce
+                ON ce.student_id = st.id
+               AND ce.status = 'active'
+              JOIN class_sections cs
+                ON cs.id = ce.class_section_id
+               AND cs.deleted_at IS NULL
+             WHERE st.user_id = u.id
+               AND st.deleted_at IS NULL
+               AND (
+                 cs.id::text = :classIdentifier
+                 OR lower(cs.class_code) = lower(:classIdentifier)
+                 OR regexp_replace(lower(cs.class_code), '[^a-z0-9]', '', 'g') = :normalizedClassCode
+               )
+          )
+          OR EXISTS (
+            SELECT 1
+              FROM class_sections cs
+             WHERE cs.lecturer_user_id = u.id
+               AND cs.deleted_at IS NULL
+               AND (
+                 cs.id::text = :classIdentifier
+                 OR lower(cs.class_code) = lower(:classIdentifier)
+                 OR regexp_replace(lower(cs.class_code), '[^a-z0-9]', '', 'g') = :normalizedClassCode
+               )
+          )
+        )
+        `,
+        { classIdentifier, normalizedClassCode },
+      );
+    }
+
     const sortColumn = SORT_FIELD_MAP[sortBy] ?? 'fp.enrolledAt';
     const order = sortOrder.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
     qb.orderBy(sortColumn, order);
@@ -130,6 +201,9 @@ export class AdminBiometricReviewService {
     ]);
 
     const [items, total] = await qb.getManyAndCount();
+    const userIds = items.map((fp) => fp.userId).filter(Boolean);
+    const classSectionsByUser = await this.getClassSectionsByUserIds(userIds);
+    const roleByUser = await this.getPrimaryRoleByUserIds(userIds);
 
     return {
       data: items.map((fp) => ({
@@ -144,6 +218,9 @@ export class AdminBiometricReviewService {
         submittedAt: fp.enrolledAt,
         primaryImageFileId: fp.primaryImageFileId,
         qualityScore: fp.qualityScore !== null ? Number(fp.qualityScore) : null,
+        classSections: classSectionsByUser.get(fp.userId) ?? [],
+        roleCode: roleByUser.get(fp.userId)?.roleCode ?? null,
+        roleName: roleByUser.get(fp.userId)?.roleName ?? null,
       })),
       meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
     };
@@ -216,6 +293,7 @@ export class AdminBiometricReviewService {
       department: user.department
         ? { id: user.department.id, departmentName: user.department.departmentName }
         : null,
+      classSections: (await this.getClassSectionsByUserIds([user.id])).get(user.id) ?? [],
       status: fp.status,
       primaryImageFileId: fp.primaryImageFileId,
       imageFile,
@@ -224,6 +302,113 @@ export class AdminBiometricReviewService {
       consentAt: fp.consentAt,
       reviewMetadata,
     };
+  }
+
+  private async getClassSectionsByUserIds(userIds: string[]) {
+    const uniqueUserIds = [...new Set(userIds.filter(Boolean))];
+    if (uniqueUserIds.length === 0) {
+      return new Map<string, UserClassSection[]>();
+    }
+
+    const rows = (await this.dataSource.manager.query(
+      `
+      WITH user_classes AS (
+        SELECT
+          st.user_id,
+          cs.id,
+          cs.class_code,
+          subj.subject_name
+        FROM students st
+        JOIN class_enrollments ce
+          ON ce.student_id = st.id
+         AND ce.status = 'active'
+        JOIN class_sections cs
+          ON cs.id = ce.class_section_id
+         AND cs.deleted_at IS NULL
+        JOIN subjects subj
+          ON subj.id = cs.subject_id
+         AND subj.deleted_at IS NULL
+        WHERE st.deleted_at IS NULL
+          AND st.user_id = ANY($1::uuid[])
+
+        UNION
+
+        SELECT
+          cs.lecturer_user_id AS user_id,
+          cs.id,
+          cs.class_code,
+          subj.subject_name
+        FROM class_sections cs
+        JOIN subjects subj
+          ON subj.id = cs.subject_id
+         AND subj.deleted_at IS NULL
+        WHERE cs.deleted_at IS NULL
+          AND cs.lecturer_user_id = ANY($1::uuid[])
+      )
+      SELECT
+        user_id,
+        json_agg(
+          json_build_object(
+            'id', id,
+            'code', class_code,
+            'name', subject_name
+          )
+          ORDER BY class_code
+        ) AS class_sections
+      FROM user_classes
+      GROUP BY user_id
+      `,
+      [uniqueUserIds],
+    )) as Array<{
+      user_id: string;
+      class_sections: UserClassSection[] | string | null;
+    }>;
+
+    return new Map(
+      rows.map((row) => {
+        const parsed = Array.isArray(row.class_sections)
+          ? row.class_sections
+          : row.class_sections
+            ? (JSON.parse(row.class_sections) as UserClassSection[])
+            : [];
+        return [row.user_id, parsed] as const;
+      }),
+    );
+  }
+
+  private async getPrimaryRoleByUserIds(userIds: string[]) {
+    const uniqueUserIds = [...new Set(userIds.filter(Boolean))];
+    if (uniqueUserIds.length === 0) {
+      return new Map<string, UserRoleSummary>();
+    }
+
+    const rows = (await this.dataSource.manager.query(
+      `
+      SELECT DISTINCT ON (ur.user_id)
+        ur.user_id,
+        r.role_code,
+        r.role_name
+      FROM user_roles ur
+      JOIN roles r
+        ON r.id = ur.role_id
+       AND r.is_active = true
+      WHERE ur.is_active = true
+        AND ur.user_id = ANY($1::uuid[])
+      ORDER BY ur.user_id, r.is_system_role DESC, r.role_code ASC
+      `,
+      [uniqueUserIds],
+    )) as Array<{
+      user_id: string;
+      role_code: string;
+      role_name: string;
+    }>;
+
+    return new Map(
+      rows.map((row) => [
+        row.user_id,
+        { roleCode: row.role_code, roleName: row.role_name },
+      ]),
+    );
   }
 
   // ── US2: Download URL ────────────────────────────────────────────────

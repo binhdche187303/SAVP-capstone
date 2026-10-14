@@ -2,7 +2,10 @@
 import { NotFoundException } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard.js';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard.js';
-import { PERMISSIONS_KEY } from '../../auth/decorators/require-permissions.decorator.js';
+import {
+  ANY_PERMISSIONS_KEY,
+  PERMISSIONS_KEY,
+} from '../../auth/decorators/require-permissions.decorator.js';
 import { ALLOW_PARTNER_ACCOUNT_KEY } from '../../../common/decorators/allow-partner-account.decorator.js';
 import { VehicleRegistrationController } from './vehicle-registration.controller.js';
 
@@ -313,13 +316,16 @@ describe('VehicleRegistrationController (VPR-001 / UC1)', () => {
       expect(guards).not.toContain(PermissionsGuard);
     });
 
-    it('admin route gate THẬT: PermissionsGuard + @RequirePermissions(history_view)', () => {
+    it('admin route gate THẬT: PermissionsGuard + history_view hoặc gate.access.read', () => {
       const guards =
         Reflect.getMetadata('__guards__', controller.historyAll) ?? [];
       expect(guards).toContain(JwtAuthGuard);
       expect(guards).toContain(PermissionsGuard);
-      const perms = Reflect.getMetadata(PERMISSIONS_KEY, controller.historyAll);
-      expect(perms).toEqual(['anpr.vehicle.history_view']);
+      const perms = Reflect.getMetadata(
+        ANY_PERMISSIONS_KEY,
+        controller.historyAll,
+      );
+      expect(perms).toEqual(['anpr.vehicle.history_view', 'gate.access.read']);
     });
   });
 

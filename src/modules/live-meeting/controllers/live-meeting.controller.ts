@@ -567,6 +567,53 @@ export class LiveMeetingController {
     };
   }
 
+  @Post('live-meetings/:meetingId/attendance/scan')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('attendance.manual.create')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Quet diem danh phong hop bang HGVision',
+    description:
+      'Host/nguoi co quyen diem danh gui anh snapshot tu camera phong hop; backend goi HGVision face search va ghi attendance_records/attendance_events.',
+  })
+  @ApiParam({
+    name: 'meetingId',
+    type: String,
+    format: 'uuid',
+    description: 'ID cuoc hop',
+  })
+  async scanAttendance(
+    @Param('meetingId', ParseUUIDPipe) meetingId: string,
+    @Req() request: Request,
+    @Ip() ipAddress: string,
+    @Headers('user-agent') userAgent: string | undefined,
+    @Body()
+    body: {
+      direction?: 'in' | 'out' | 'enter' | 'leave';
+      snapshotImageBase64?: string;
+      cameraName?: string;
+    },
+  ): Promise<{
+    success: boolean;
+    message: string;
+    data: any;
+  }> {
+    const user = request['user'] as { userId: string } | undefined;
+    const data = await this.liveMeetingService.scanMeetingAttendanceWithHgVision(
+      meetingId,
+      { userId: user!.userId },
+      { ipAddress, userAgent },
+      body,
+    );
+
+    return {
+      success: true,
+      message: data.message ?? 'Meeting attendance scan processed',
+      data,
+    };
+  }
+
   // ------------------------------------------------------------------
   //  UC-IMM-09: Create Meeting Note (UC-102)
   // ------------------------------------------------------------------

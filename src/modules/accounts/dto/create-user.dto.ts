@@ -34,10 +34,22 @@ export class CreateUserDto {
   // departmentId vẫn BẮT BUỘC cho tài khoản nhân viên thường (accountType mặc định/'employee').
   // Chỉ bỏ qua khi tạo tài khoản đối tác (accountType='partner') — server luôn override
   // bằng PARTNER_DEPARTMENT_ID bất kể client gửi gì (xem UsersService.createUser()).
-  @ValidateIf((o: CreateUserDto) => o.accountType !== 'partner')
+  @ValidateIf(
+    (o: CreateUserDto) =>
+      o.accountType !== 'partner' && o.accountType !== 'student',
+  )
   @IsNotEmpty({ message: 'ID phòng ban không được để trống' })
   @IsUUID('4', { message: 'ID phòng ban phải là định dạng UUID' })
   departmentId?: string;
+
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @ValidateIf((o: CreateUserDto) => o.accountType === 'student')
+  @IsNotEmpty({ message: 'Lớp hành chính không được để trống' })
+  @IsString({ message: 'Lớp hành chính phải là chuỗi ký tự' })
+  @MaxLength(50, { message: 'Lớp hành chính không được vượt quá 50 ký tự' })
+  administrativeClass?: string;
 
   // roleIds vẫn BẮT BUỘC cho tài khoản nhân viên thường. Bỏ qua khi tạo tài
   // khoản đối tác (accountType='partner') — server luôn ép role EMPLOYEE bất
@@ -83,10 +95,10 @@ export class CreateUserDto {
   directManagerId?: string;
 
   @IsOptional()
-  @IsIn(['employee', 'partner'], {
-    message: 'Loại tài khoản phải là employee hoặc partner',
+  @IsIn(['employee', 'student', 'partner'], {
+    message: 'Loại tài khoản phải là employee, student hoặc partner',
   })
-  accountType?: 'employee' | 'partner';
+  accountType?: 'employee' | 'student' | 'partner';
 
   @IsOptional()
   @IsDateString(

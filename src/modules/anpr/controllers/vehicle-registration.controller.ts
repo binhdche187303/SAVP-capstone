@@ -17,7 +17,10 @@ import {
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard.js';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard.js';
-import { RequirePermissions } from '../../auth/decorators/require-permissions.decorator.js';
+import {
+  RequireAnyPermissions,
+  RequirePermissions,
+} from '../../auth/decorators/require-permissions.decorator.js';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator.js';
 import { VehicleRegistrationService } from '../services/vehicle-registration.service.js';
 import { CreateVehicleRegistrationDto } from '../dto/create-vehicle-registration.dto.js';
@@ -84,7 +87,7 @@ export class VehicleRegistrationController {
   // ADMIN: TẤT CẢ lượt ra/vào (matched + unmatched) — admin-gated.
   @Get('admin/vehicle-history')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('anpr.vehicle.history_view')
+  @RequireAnyPermissions('anpr.vehicle.history_view', 'gate.access.read')
   @UsePipes(REGISTER_PIPE)
   @ApiOperation({
     summary:

@@ -16,7 +16,10 @@ import {
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard.js';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard.js';
-import { RequirePermissions } from '../../auth/decorators/require-permissions.decorator.js';
+import {
+  RequireAnyPermissions,
+  RequirePermissions,
+} from '../../auth/decorators/require-permissions.decorator.js';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator.js';
 import { ZonesService } from '../services/zones.service.js';
 import { CreateZoneDto } from '../dto/create-zone.dto.js';
@@ -55,7 +58,7 @@ export class ZonesController {
 
   @Get()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('zones.zone.read')
+  @RequireAnyPermissions('zones.zone.read', 'gate.access.monitor')
   @UsePipes(ZONE_PIPE)
   async list(@Query() query: ListZonesQueryDto) {
     const { items, meta } = await this.zonesService.list(query);
@@ -71,7 +74,7 @@ export class ZonesController {
   // Route ĐỘNG — luôn khai SAU mọi route static của cùng method.
   @Get(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('zones.zone.read')
+  @RequireAnyPermissions('zones.zone.read', 'gate.access.monitor')
   async detail(@Param('id', ParseUUIDPipe) id: string) {
     const { zone, devices } = await this.zonesService.getDetail(id);
 

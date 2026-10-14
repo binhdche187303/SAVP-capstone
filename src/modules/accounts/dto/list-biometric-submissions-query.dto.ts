@@ -21,6 +21,15 @@ const SORT_BY_WHITELIST = [
 ] as const;
 
 const STATUS_FILTER_VALUES = ['pending_review', 'rejected', 'active'] as const;
+const ROLE_FILTER_VALUES = [
+  'SYSTEM_ADMIN',
+  'BUSINESS_ADMIN',
+  'MANAGER',
+  'EMPLOYEE',
+  'TEACHER',
+  'STUDENT',
+  'GUARD',
+] as const;
 
 export class ListBiometricSubmissionsQueryDto {
   @IsOptional()
@@ -72,4 +81,21 @@ export class ListBiometricSubmissionsQueryDto {
     message: 'departmentId must be a valid UUID',
   })
   departmentId?: string;
+
+  @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value,
+  )
+  @IsIn(ROLE_FILTER_VALUES, {
+    message:
+      'role must be one of: SYSTEM_ADMIN, BUSINESS_ADMIN, MANAGER, EMPLOYEE, TEACHER, STUDENT, GUARD',
+  })
+  role?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @MaxLength(100, {
+    message: 'classId must not exceed 100 characters',
+  })
+  classId?: string;
 }

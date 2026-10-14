@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard.js';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard.js';
-import { RequirePermissions } from '../../auth/decorators/require-permissions.decorator.js';
+import { RequireAnyPermissions } from '../../auth/decorators/require-permissions.decorator.js';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator.js';
 import { GateAccessLogService } from '../services/gate-access-log.service.js';
 import { ListGateAccessLogsQueryDto } from '../dto/list-gate-access-logs-query.dto.js';
@@ -62,7 +62,8 @@ export class GateAccessLogController {
   }
 
   @Post('admin/gate-access-logs/scan')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequireAnyPermissions('gate.access.monitor', 'gate.access.read')
   async scanFromGuardDashboard(
     @CurrentUser() user: { userId: string },
     @Body()
@@ -87,7 +88,7 @@ export class GateAccessLogController {
   // ADMIN: log của mọi người — gate THẬT. Thiếu @RequirePermissions = endpoint hở im lặng.
   @Get('admin/gate-access-logs')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('zones.gate_log.read')
+  @RequireAnyPermissions('zones.gate_log.read', 'gate.access.read')
   @UsePipes(GATE_LOG_PIPE)
   async listAll(@Query() query: AdminListGateAccessLogsQueryDto) {
     const { items, meta } = await this.gateAccessLogService.listAll(query);

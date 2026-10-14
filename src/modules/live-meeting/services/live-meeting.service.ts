@@ -70,6 +70,10 @@ import { DepartmentEntity } from '../../accounts/entities/department.entity.js';
 import { WebsocketService } from '../../websocket/websocket.service.js';
 import { GuestInviteService } from '../../guest-access/services/guest-invite.service.js';
 import { RecordingSessionService } from '../../recording/services/recording-session.service.js';
+import {
+  HgVisionRecognizedFace,
+  HgVisionService,
+} from '../../academic/services/hgvision.service.js';
 
 import { StartMeetingResponseDto } from '../dto/start-meeting-response.dto.js';
 import { EndMeetingResponseDto } from '../dto/end-meeting-response.dto.js';
@@ -140,6 +144,7 @@ export class LiveMeetingService {
     private readonly guestInviteService: GuestInviteService,
     private readonly recordingSessionService: RecordingSessionService,
     private readonly faceProvisioningService: FaceProvisioningService,
+    private readonly hgVisionService: HgVisionService,
   ) {
     this.schedulerQueueName = this.configService.get<string>(
       'QUEUE_SCHEDULER',
@@ -3315,6 +3320,355 @@ export class LiveMeetingService {
       participants: items,
       meta,
     });
+  }
+
+  async scanMeetingAttendanceWithHgVision(
+    meetingId: string,
+    authUser: AuthUser,
+    clientContext: ClientContext,
+    body: {
+      direction?: 'in' | 'out' | 'enter' | 'leave';
+      snapshotImageBase64?: string;
+      cameraName?: string;
+    },
+  ) {
+    const meeting = await this.dataSource.getRepository(MeetingEntity).findOne({
+      where: { id: meetingId },
+    });
+    if (!meeting || meeting.deletedAt) {
+      throw new NotFoundException({
+        success: false,
+        message: 'Khong tim thay cuoc hop',
+        error: {
+          code: MEETING_ATTENDANCE_ERRORS.MEETING_NOT_FOUND,
+          details: { meetingId },
+        },
+      });
+    }
+
+    if ((meeting.status as string) !== 'in_progress') {
+      throw new ConflictException({
+        success: false,
+        message: 'Cuoc hop chua o trang thai dang dien ra',
+        error: {
+          code: MEETING_ATTENDANCE_ERRORS.MEETING_NOT_ACTIVE_OR_COMPLETED,
+          details: { meetingId, currentStatus: meeting.status },
+        },
+      });
+    }
+
+    if (!body.snapshotImageBase64) {
+      throw new BadRequestException({
+        success: false,
+        message: 'snapshotImageBase64 is required',
+      });
+    }
+
+    const face = await this.hgVisionService.searchFaceFromDataUrl(
+      body.snapshotImageBase64,
+      5,
+    );
+    if (!face) {
+      return {
+        operationSuccess: false,
+        warning: true,
+        message: 'HGVision chưa nhận diện được người tham dự trong ảnh.',
+        recognition: null,
+      };
+    }
+
+    const participant = await this.resolveMeetingParticipantByHgVisionFace(
+      meetingId,
+      face,
+    );
+    if (!participant) {
+      return {
+        operationSuccess: false,
+        warning: true,
+        message:
+          'HGVision nhận diện được khuôn mặt nhưng không khớp danh sách người tham dự cuộc họp.',
+        recognition: this.toSafeHgVisionMeetingFace(face),
+      };
+    }
+
+    const now = new Date();
+    const direction =
+      body.direction === 'out' || body.direction === 'leave' ? 'out' : 'in';
+    const lateThresholdMinutes = await this.getMeetingLateThresholdMinutes();
+    const baseTime = meeting.actualStartTime || meeting.startTime;
+    const lateThresholdTime = new Date(
+      baseTime.getTime() + lateThresholdMinutes * 60 * 1000,
+    );
+    const isLate = now > lateThresholdTime;
+    const status =
+      direction === 'out'
+        ? AttendanceRecordStatus.LEFT_EARLY
+        : isLate
+          ? AttendanceRecordStatus.LATE
+          : AttendanceRecordStatus.PRESENT;
+    const confidence = this.normalizeHgVisionConfidence(face.score);
+
+    const record = await this.dataSource.transaction(async (manager) => {
+      const existing = (await manager.query(
+        `SELECT id, check_in_time, check_out_time
+           FROM attendance_records
+          WHERE meeting_id = $1::uuid
+            AND user_id = $2::uuid
+          ORDER BY created_at ASC
+          LIMIT 1
+          FOR UPDATE`,
+        [meetingId, participant.user_id],
+      )) as Array<{
+        id: string;
+        check_in_time: Date | null;
+        check_out_time: Date | null;
+      }>;
+
+      let recordId = existing[0]?.id;
+      if (recordId) {
+        await manager.query(
+          `
+          UPDATE attendance_records
+             SET participant_id = COALESCE(participant_id, $2::uuid),
+                 check_in_method = 'room_camera',
+                 attendance_source = 'camera',
+                 check_in_time = CASE
+                   WHEN $3 = 'in' THEN COALESCE(check_in_time, $4::timestamptz)
+                   ELSE check_in_time
+                 END,
+                 check_out_time = CASE
+                   WHEN $3 = 'out' THEN COALESCE($4::timestamptz, check_out_time)
+                   ELSE check_out_time
+                 END,
+                 first_detected_at = COALESCE(first_detected_at, $4::timestamptz),
+                 last_detected_at = $4::timestamptz,
+                 is_present = CASE WHEN $3 = 'in' THEN true ELSE is_present END,
+                 is_late = CASE WHEN $3 = 'in' THEN $5::boolean ELSE is_late END,
+                 late_minutes = CASE
+                   WHEN $3 = 'in' AND $5::boolean THEN GREATEST(0, FLOOR(EXTRACT(EPOCH FROM ($4::timestamptz - $6::timestamptz)) / 60)::int)
+                   ELSE late_minutes
+                 END,
+                 confidence_score = $7::numeric,
+                 attendance_status = $8::varchar,
+                 note = COALESCE(note, 'HGVision room camera scan'),
+                 updated_at = now()
+           WHERE id = $1::uuid`,
+          [
+            recordId,
+            participant.participant_id,
+            direction,
+            now.toISOString(),
+            isLate,
+            lateThresholdTime.toISOString(),
+            confidence,
+            status,
+          ],
+        );
+      } else {
+        const inserted = (await manager.query(
+          `
+          INSERT INTO attendance_records (
+            meeting_id, participant_id, user_id, check_in_method, attendance_source,
+            check_in_time, check_out_time, first_detected_at, last_detected_at,
+            is_present, is_late, late_minutes, confidence_score, attendance_status,
+            note
+          )
+          VALUES (
+            $1::uuid, $2::uuid, $3::uuid, 'room_camera', 'camera',
+            CASE WHEN $4 = 'in' THEN $5::timestamptz ELSE NULL END,
+            CASE WHEN $4 = 'out' THEN $5::timestamptz ELSE NULL END,
+            $5::timestamptz, $5::timestamptz,
+            CASE WHEN $4 = 'in' THEN true ELSE false END,
+            CASE WHEN $4 = 'in' THEN $6::boolean ELSE false END,
+            CASE
+              WHEN $4 = 'in' AND $6::boolean THEN GREATEST(0, FLOOR(EXTRACT(EPOCH FROM ($5::timestamptz - $7::timestamptz)) / 60)::int)
+              ELSE NULL
+            END,
+            $8::numeric, $9::varchar, 'HGVision room camera scan'
+          )
+          RETURNING id`,
+          [
+            meetingId,
+            participant.participant_id,
+            participant.user_id,
+            direction,
+            now.toISOString(),
+            isLate,
+            lateThresholdTime.toISOString(),
+            confidence,
+            status,
+          ],
+        )) as Array<{ id: string }>;
+        recordId = inserted[0].id;
+      }
+
+      await manager.query(
+        `
+        INSERT INTO attendance_events (
+          meeting_id, attendance_record_id, user_id, room_id, device_id,
+          event_type, event_time, source_type, confidence_score, metadata_json
+        )
+        VALUES (
+          $1::uuid, $2::uuid, $3::uuid, $4::uuid, NULL,
+          $5::varchar, $6::timestamptz, 'hgvision_room_camera',
+          $7::numeric, $8::jsonb
+        )`,
+        [
+          meetingId,
+          recordId,
+          participant.user_id,
+          meeting.roomId ?? null,
+          direction === 'out' ? 'check_out' : 'check_in',
+          now.toISOString(),
+          confidence,
+          JSON.stringify({
+            provider: 'hgvision',
+            cameraName: body.cameraName ?? null,
+            face: this.toSafeHgVisionMeetingFace(face),
+            ipAddress: clientContext.ipAddress ?? null,
+            userAgent: clientContext.userAgent ?? null,
+          }),
+        ],
+      );
+
+      await manager.query(
+        `
+        UPDATE meeting_participants
+           SET attendance_status = $3::varchar,
+               joined_at = CASE
+                 WHEN $4 = 'in' THEN COALESCE(joined_at, $5::timestamptz)
+                 ELSE joined_at
+               END,
+               left_at = CASE
+                 WHEN $4 = 'out' THEN COALESCE($5::timestamptz, left_at)
+                 ELSE left_at
+               END,
+               updated_at = now()
+         WHERE id = $1::uuid
+           AND meeting_id = $2::uuid`,
+        [
+          participant.participant_id,
+          meetingId,
+          direction === 'out' ? 'left_early' : isLate ? 'late' : 'present',
+          direction,
+          now.toISOString(),
+        ],
+      );
+
+      return {
+        id: recordId,
+        status,
+        checkInAt: direction === 'in' ? now : null,
+        checkOutAt: direction === 'out' ? now : null,
+      };
+    });
+
+    return {
+      operationSuccess: true,
+      participant: {
+        id: participant.participant_id,
+        userId: participant.user_id,
+        fullName: participant.full_name,
+        email: participant.email,
+        role: participant.participant_role,
+      },
+      record,
+      recognition: this.toSafeHgVisionMeetingFace(face),
+      message:
+        direction === 'out'
+          ? `${participant.full_name} đã rời phòng họp.`
+          : `${participant.full_name} đã điểm danh ${isLate ? 'đi muộn' : 'đúng giờ'} bằng HGVision.`,
+    };
+  }
+
+  private async resolveMeetingParticipantByHgVisionFace(
+    meetingId: string,
+    face: HgVisionRecognizedFace,
+  ) {
+    const rows = (await this.dataSource.manager.query(
+      `
+      SELECT mp.id AS participant_id,
+             mp.user_id,
+             mp.participant_role,
+             u.full_name,
+             u.email,
+             u.employee_code
+        FROM meeting_participants mp
+        JOIN users u ON u.id = mp.user_id
+       WHERE mp.meeting_id = $1::uuid
+         AND mp.user_id IS NOT NULL
+         AND mp.invitation_status != 'declined'
+         AND u.deleted_at IS NULL
+      `,
+      [meetingId],
+    )) as Array<{
+      participant_id: string;
+      user_id: string;
+      participant_role: string;
+      full_name: string;
+      email: string | null;
+      employee_code: string | null;
+    }>;
+
+    const normalizedFace = this.normalizeHgVisionIdentity(face.faceIdent);
+    return (
+      rows.find((row) => {
+        const candidates = [
+          row.employee_code ?? '',
+          row.email ?? '',
+          row.full_name,
+          `${row.employee_code ?? ''} ${row.full_name}`,
+          `${row.full_name} ${row.employee_code ?? ''}`,
+        ].map((value) => this.normalizeHgVisionIdentity(value));
+        return candidates.some(
+          (candidate) =>
+            candidate &&
+            (candidate === normalizedFace ||
+              normalizedFace.includes(candidate) ||
+              candidate.includes(normalizedFace)),
+        );
+      }) ?? null
+    );
+  }
+
+  private async getMeetingLateThresholdMinutes() {
+    const rows = (await this.dataSource.manager.query(
+      `SELECT config_value
+         FROM system_configs
+        WHERE config_key = 'attendance.late_threshold'
+          AND is_active = true
+        LIMIT 1`,
+    )) as Array<{ config_value: string | null }>;
+    const value = Number(rows[0]?.config_value ?? 10);
+    return Number.isFinite(value) && value > 0 ? value : 10;
+  }
+
+  private toSafeHgVisionMeetingFace(face: HgVisionRecognizedFace | null) {
+    if (!face) return null;
+    return {
+      faceIdent: face.faceIdent,
+      faceInfo: face.faceInfo ?? null,
+      score: face.score,
+      confidence: this.normalizeHgVisionConfidence(face.score),
+      faceImagePath: face.faceImagePath ?? null,
+    };
+  }
+
+  private normalizeHgVisionIdentity(value: string) {
+    return String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9@._-]+/g, '')
+      .toLowerCase();
+  }
+
+  private normalizeHgVisionConfidence(score: number | null | undefined) {
+    const value = Number(score ?? 0);
+    if (!Number.isFinite(value)) return 0;
+    return Math.max(
+      0,
+      Math.min(100, Math.round(value <= 1 ? value * 100 : value)),
+    );
   }
 
   // ------------------------------------------------------------------

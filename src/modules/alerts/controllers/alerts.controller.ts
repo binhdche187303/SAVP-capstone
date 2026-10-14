@@ -13,7 +13,7 @@ import {
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard.js';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard.js';
-import { RequirePermissions } from '../../auth/decorators/require-permissions.decorator.js';
+import { RequireAnyPermissions } from '../../auth/decorators/require-permissions.decorator.js';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator.js';
 import { AlertsService } from '../services/alerts.service.js';
 import { QuerySecurityAlertsDto } from '../dto/query-security-alerts.dto.js';
@@ -40,7 +40,7 @@ export class AlertsController {
   constructor(private readonly alertsService: AlertsService) {}
 
   @Get()
-  @RequirePermissions('security_alert.read')
+  @RequireAnyPermissions('security_alert.read', 'gate.access.alert.handle')
   @UsePipes(SECURITY_ALERT_PIPE)
   @ApiOperation({
     summary:
@@ -57,7 +57,7 @@ export class AlertsController {
   }
 
   @Get(':id')
-  @RequirePermissions('security_alert.read')
+  @RequireAnyPermissions('security_alert.read', 'gate.access.alert.handle')
   @ApiOperation({
     summary:
       'Xem chi tiết 1 cảnh báo an ninh, kèm thông tin zone + lịch sử cùng loại/cùng zone',
@@ -76,7 +76,10 @@ export class AlertsController {
   }
 
   @Post(':id/acknowledge')
-  @RequirePermissions('security_alert.acknowledge')
+  @RequireAnyPermissions(
+    'security_alert.acknowledge',
+    'gate.access.alert.handle',
+  )
   @ApiOperation({
     summary: 'Xác nhận đã tiếp nhận 1 cảnh báo an ninh (new → acknowledged)',
   })
@@ -93,7 +96,7 @@ export class AlertsController {
   }
 
   @Post(':id/resolve')
-  @RequirePermissions('security_alert.resolve')
+  @RequireAnyPermissions('security_alert.resolve', 'gate.access.alert.handle')
   @UsePipes(SECURITY_ALERT_PIPE)
   @ApiOperation({
     summary:
@@ -113,7 +116,10 @@ export class AlertsController {
   }
 
   @Post('bulk-acknowledge')
-  @RequirePermissions('security_alert.acknowledge')
+  @RequireAnyPermissions(
+    'security_alert.acknowledge',
+    'gate.access.alert.handle',
+  )
   @UsePipes(SECURITY_ALERT_PIPE)
   @ApiOperation({
     summary:

@@ -1,7 +1,10 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call, @typescript-eslint/unbound-method */
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard.js';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard.js';
-import { PERMISSIONS_KEY } from '../../auth/decorators/require-permissions.decorator.js';
+import {
+  ANY_PERMISSIONS_KEY,
+  PERMISSIONS_KEY,
+} from '../../auth/decorators/require-permissions.decorator.js';
 import { GateAccessLogController } from './gate-access-log.controller.js';
 
 describe('GateAccessLogController (GAL-001 / UC-107)', () => {
@@ -78,13 +81,16 @@ describe('GateAccessLogController (GAL-001 / UC-107)', () => {
       expect(r.meta).toEqual(meta);
     });
 
-    it('admin-gate THẬT: JwtAuthGuard + PermissionsGuard + @RequirePermissions(zones.gate_log.read)', () => {
+    it('admin-gate THẬT: JwtAuthGuard + PermissionsGuard + zones.gate_log.read hoặc gate.access.read', () => {
       const guards =
         Reflect.getMetadata('__guards__', controller.listAll) ?? [];
       expect(guards).toContain(JwtAuthGuard);
       expect(guards).toContain(PermissionsGuard);
-      const perms = Reflect.getMetadata(PERMISSIONS_KEY, controller.listAll);
-      expect(perms).toEqual(['zones.gate_log.read']);
+      const perms = Reflect.getMetadata(
+        ANY_PERMISSIONS_KEY,
+        controller.listAll,
+      );
+      expect(perms).toEqual(['zones.gate_log.read', 'gate.access.read']);
     });
   });
 

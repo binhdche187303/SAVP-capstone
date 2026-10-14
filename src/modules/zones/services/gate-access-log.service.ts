@@ -1,4 +1,9 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { GateAccessLogEntity } from '../entities/gate-access-log.entity.js';
@@ -9,6 +14,10 @@ import type { PaginationMeta } from './zones.service.js';
 import { normalizePlate } from '../../anpr/utils/normalize-plate.js';
 import type { ListGateAccessLogsQueryDto } from '../dto/list-gate-access-logs-query.dto.js';
 import type { AdminListGateAccessLogsQueryDto } from '../dto/admin-list-gate-access-logs-query.dto.js';
+import {
+  HgVisionRecognizedFace,
+  HgVisionService,
+} from '../../academic/services/hgvision.service.js';
 
 /**
  * Input ghi một dòng `gate_access_logs` (GAW-001 / UC-105). `anpr` đã resolve sạch:
@@ -39,6 +48,8 @@ interface GuardDashboardScanInput {
   snapshotImageBase64?: string;
 }
 
+const GUARD_SCAN_DUPLICATE_WINDOW_SECONDS = 4;
+
 /**
  * GateAccessLogService (GAL-001 / UC-107) — đọc lịch sử ra/vào cổng (read-only).
  *
@@ -58,6 +69,7 @@ export class GateAccessLogService {
     @InjectRepository(GateAccessLogEntity)
     private readonly repo: Repository<GateAccessLogEntity>,
     private readonly dataSource: DataSource,
+    private readonly hgVisionService: HgVisionService,
   ) {}
 
   /** USER: log của current user. Fold cứng gal.userId (SEC-01). */
@@ -136,7 +148,9 @@ export class GateAccessLogService {
         ['GUARD', 'SYSTEM_ADMIN', 'ADMIN', 'BUSINESS_ADMIN'].includes(role),
       )
     ) {
-      throw new ForbiddenException('Bạn không có quyền ghi nhận lượt qua cổng.');
+      throw new ForbiddenException(
+        'Bạn không có quyền ghi nhận lượt qua cổng.',
+      );
     }
 
     const direction =
@@ -147,27 +161,108 @@ export class GateAccessLogService {
         : 'enter';
     const gate = await this.resolveGuardDashboardGate(input.gateId);
     const scenario = input.scenario ?? 'authorized';
+    const requiresFaceRecognition = scenario !== 'unknown';
+
+    if (requiresFaceRecognition && !input.snapshotImageBase64) {
+      return {
+        success: false,
+        warning: true,
+        message: 'Cần ảnh từ camera để xác định người qua cổng.',
+      };
+    }
+
+    const faceRecognition = await this.resolveGateFaceRecognition(
+      input.snapshotImageBase64,
+    );
+    const mockPerson =
+      requiresFaceRecognition &&
+      !faceRecognition.configured &&
+      this.hgVisionService.isMockFallbackEnabled()
+        ? await this.resolveMockApprovedPerson(currentUserId)
+        : null;
+
+    if (requiresFaceRecognition && !faceRecognition.configured && !mockPerson) {
+      return {
+        success: false,
+        warning: true,
+        message:
+          'Dịch vụ đối chiếu FaceID chưa sẵn sàng nên chưa thể xác định người trước camera.',
+      };
+    }
+    if (
+      requiresFaceRecognition &&
+      faceRecognition.configured &&
+      !faceRecognition.face
+    ) {
+      return {
+        success: false,
+        warning: true,
+        message: 'Không nhận diện được FaceID trong ảnh camera.',
+      };
+    }
+    if (
+      requiresFaceRecognition &&
+      faceRecognition.configured &&
+      !faceRecognition.person
+    ) {
+      return {
+        success: false,
+        warning: true,
+        message: 'Khuôn mặt không khớp với tài khoản có FaceID đã được duyệt.',
+      };
+    }
     const status =
       scenario === 'unknown' || scenario === 'plate_mismatch'
         ? 'denied'
         : 'authorized';
     const person =
-      scenario === 'unknown'
-        ? null
-        : await this.resolveGuardDashboardPerson(currentUserId, direction);
+      scenario === 'unknown' ? null : (faceRecognition.person ?? mockPerson);
+    const recognitionProvider = faceRecognition.person
+      ? 'faceid-engine'
+      : mockPerson
+        ? 'mock-faceid'
+        : 'unidentified';
     const plateNumber =
       scenario === 'unknown'
         ? '59X00000'
         : scenario === 'plate_mismatch'
           ? '98A99999'
-          : person?.plate_number ?? '30A12345';
+          : (person?.plate_number ?? null);
     const now = new Date();
     const reason =
       status === 'authorized'
-        ? 'FaceID và biển số hợp lệ, được phép ra/vào khuôn viên.'
+        ? mockPerson
+          ? 'FaceID mô phỏng hợp lệ, được phép ra/vào khuôn viên.'
+          : 'FaceID hợp lệ, được phép ra/vào khuôn viên.'
         : scenario === 'plate_mismatch'
           ? 'FaceID hợp lệ nhưng biển số không khớp hồ sơ.'
           : 'Không nhận diện được hồ sơ hợp lệ.';
+
+    const duplicateReason = await this.findRecentGuardDashboardScan({
+      zoneId: gate.id,
+      direction,
+      userId: person?.id ?? null,
+      plateNumber: normalizePlate(plateNumber),
+      dayStart: this.startOfLocalDay(now),
+      since: new Date(
+        now.getTime() - GUARD_SCAN_DUPLICATE_WINDOW_SECONDS * 1000,
+      ),
+    });
+    if (duplicateReason) {
+      return {
+        success: false,
+        warning: true,
+        duplicate: true,
+        duplicateReason,
+        retryAfterSeconds: GUARD_SCAN_DUPLICATE_WINDOW_SECONDS,
+        message:
+          duplicateReason === 'same_direction'
+            ? direction === 'enter'
+              ? 'Người này đã được ghi nhận vào cổng và chưa có lượt ra.'
+              : 'Người này đã được ghi nhận ra cổng và chưa có lượt vào mới.'
+            : `Đã bỏ qua lượt quét trùng trong ${GUARD_SCAN_DUPLICATE_WINDOW_SECONDS} giây.`,
+      };
+    }
 
     const written = await this.writeGateLog({
       zoneId: gate.id,
@@ -177,13 +272,18 @@ export class GateAccessLogService {
       plateNumber: normalizePlate(plateNumber),
       metadata: {
         source: 'guard-dashboard',
+        recognitionProvider,
         accessStatus: status,
         scenario,
         reason,
         gateId: input.gateId ?? null,
         snapshotImageBase64: input.snapshotImageBase64 ?? null,
-        personCode: person?.person_code ?? (scenario === 'unknown' ? 'UNK-001' : null),
-        personRole: person?.person_role ?? (scenario === 'unknown' ? 'Người lạ' : null),
+        hgvisionFace: this.toSafeFaceRecognition(faceRecognition.face),
+        hgvisionPlate: null,
+        personCode:
+          person?.person_code ?? (scenario === 'unknown' ? 'UNK-001' : null),
+        personRole:
+          person?.person_role ?? (scenario === 'unknown' ? 'Người lạ' : null),
       },
     });
 
@@ -220,10 +320,306 @@ export class GateAccessLogService {
           accessStatus: status,
           scenario,
           reason,
+          recognitionProvider,
           snapshotImageBase64: input.snapshotImageBase64 ?? null,
+          hgvisionFace: this.toSafeFaceRecognition(faceRecognition.face),
+          hgvisionPlate: null,
         },
       },
     };
+  }
+
+  private async findRecentGuardDashboardScan(input: {
+    zoneId: string;
+    direction: 'enter' | 'leave';
+    userId: string | null;
+    plateNumber: string | null;
+    dayStart: Date;
+    since: Date;
+  }): Promise<'same_direction' | 'cooldown' | null> {
+    if (!input.userId && !input.plateNumber) return null;
+
+    if (input.userId) {
+      const latestRows = await this.dataSource.manager.query<
+        Array<{ direction: 'enter' | 'leave' }>
+      >(
+        `
+        SELECT direction
+          FROM gate_access_logs
+         WHERE user_id = $1::uuid
+           AND access_time >= $2
+           AND metadata_json->>'source' = 'guard-dashboard'
+         ORDER BY access_time DESC
+         LIMIT 1
+        `,
+        [input.userId, input.dayStart],
+      );
+      if (latestRows[0]?.direction === input.direction) {
+        return 'same_direction';
+      }
+    }
+
+    const rows = await this.dataSource.manager.query<Array<{ id: string }>>(
+      `
+      SELECT id
+        FROM gate_access_logs
+       WHERE zone_id = $1
+         AND direction = $2
+         AND access_time >= $3
+         AND metadata_json->>'source' = 'guard-dashboard'
+         AND (
+           ($4::uuid IS NOT NULL AND user_id = $4::uuid)
+           OR ($5::text IS NOT NULL AND plate_number = $5)
+         )
+       ORDER BY access_time DESC
+       LIMIT 1
+      `,
+      [
+        input.zoneId,
+        input.direction,
+        input.since,
+        input.userId,
+        input.plateNumber,
+      ],
+    );
+
+    return rows.length > 0 ? 'cooldown' : null;
+  }
+
+  private startOfLocalDay(value: Date) {
+    const start = new Date(value);
+    start.setHours(0, 0, 0, 0);
+    return start;
+  }
+
+  private async resolveGateFaceRecognition(snapshotImageBase64?: string) {
+    const configured = this.hgVisionService.isConfigured();
+    if (!snapshotImageBase64 || !configured) {
+      return { configured, face: null, person: null };
+    }
+
+    const face = await this.hgVisionService
+      .searchFaceFromDataUrl(snapshotImageBase64, 5)
+      .catch((error) => {
+        this.logger.warn(
+          `Gate FaceID search failed: ${String(error).slice(0, 160)}`,
+        );
+        return null;
+      });
+
+    return {
+      configured: true,
+      face,
+      person: face ? await this.resolveApprovedPersonByFace(face) : null,
+    };
+  }
+
+  private async resolveApprovedPersonByFace(face: HgVisionRecognizedFace) {
+    const mappedRows = await this.dataSource.manager.query<
+      Array<{
+        id: string;
+        full_name: string;
+        person_code: string | null;
+        person_role: string | null;
+        plate_number: string | null;
+      }>
+    >(
+      `
+      SELECT u.id,
+             u.full_name,
+             COALESCE(st.student_code, u.employee_code, u.email) AS person_code,
+             CASE
+               WHEN st.id IS NOT NULL THEN 'Sinh viên'
+               WHEN EXISTS (
+                 SELECT 1 FROM user_roles ur
+                 JOIN roles r ON r.id = ur.role_id
+                 WHERE ur.user_id = u.id
+                   AND ur.is_active = true
+                   AND r.role_code = 'TEACHER'
+               ) THEN 'Giảng viên'
+               WHEN EXISTS (
+                 SELECT 1 FROM user_roles ur
+                 JOIN roles r ON r.id = ur.role_id
+                 WHERE ur.user_id = u.id
+                   AND ur.is_active = true
+                   AND r.role_code = 'GUARD'
+               ) THEN 'Bảo vệ'
+               ELSE COALESCE(u.position_title, 'Nhân viên')
+             END AS person_role,
+             vr.plate_number
+        FROM device_user_mappings dum
+        JOIN users u
+          ON u.id = dum.user_id
+         AND u.deleted_at IS NULL
+         AND u.account_status = 'active'
+        JOIN face_profiles fp
+          ON fp.user_id = u.id
+         AND fp.status = 'active'
+         AND fp.deleted_at IS NULL
+        LEFT JOIN students st ON st.user_id = u.id AND st.deleted_at IS NULL
+        LEFT JOIN LATERAL (
+          SELECT plate_number
+            FROM vehicle_registrations
+           WHERE user_id = u.id
+             AND deleted_at IS NULL
+           ORDER BY created_at DESC
+           LIMIT 1
+        ) vr ON true
+       WHERE dum.device_person_id = $1
+         AND dum.deleted_at IS NULL
+         AND dum.metadata_json->>'source' IN ('ivss', 'portrait', 'hgvision')
+       ORDER BY dum.last_synced_at DESC NULLS LAST, dum.created_at DESC
+       LIMIT 1
+      `,
+      [face.faceIdent],
+    );
+    if (mappedRows[0]) return mappedRows[0];
+
+    const rows = await this.dataSource.manager.query<
+      Array<{
+        id: string;
+        full_name: string;
+        person_code: string | null;
+        person_role: string | null;
+        plate_number: string | null;
+      }>
+    >(
+      `
+      SELECT u.id,
+             u.full_name,
+             COALESCE(st.student_code, u.employee_code, u.email) AS person_code,
+             CASE
+               WHEN st.id IS NOT NULL THEN 'Sinh viên'
+               WHEN EXISTS (
+                 SELECT 1 FROM user_roles ur
+                 JOIN roles r ON r.id = ur.role_id
+                 WHERE ur.user_id = u.id
+                   AND ur.is_active = true
+                   AND r.role_code = 'TEACHER'
+               ) THEN 'Giảng viên'
+               WHEN EXISTS (
+                 SELECT 1 FROM user_roles ur
+                 JOIN roles r ON r.id = ur.role_id
+                 WHERE ur.user_id = u.id
+                   AND ur.is_active = true
+                   AND r.role_code = 'GUARD'
+               ) THEN 'Bảo vệ'
+               ELSE COALESCE(u.position_title, 'Nhân viên')
+             END AS person_role,
+             vr.plate_number
+        FROM users u
+        JOIN face_profiles fp
+          ON fp.user_id = u.id
+         AND fp.status = 'active'
+         AND fp.deleted_at IS NULL
+        LEFT JOIN students st ON st.user_id = u.id AND st.deleted_at IS NULL
+        LEFT JOIN LATERAL (
+          SELECT plate_number
+            FROM vehicle_registrations
+           WHERE user_id = u.id
+             AND deleted_at IS NULL
+           ORDER BY created_at DESC
+           LIMIT 1
+        ) vr ON true
+       WHERE u.deleted_at IS NULL
+         AND u.account_status = 'active'
+      `,
+    );
+
+    const normalizedFace = this.normalizeFaceIdentity(face.faceIdent);
+    return (
+      rows.find((row) => {
+        const candidates = [
+          row.person_code ?? '',
+          row.full_name,
+          `${row.person_code ?? ''} ${row.full_name}`,
+          `${row.full_name} ${row.person_code ?? ''}`,
+        ].map((value) => this.normalizeFaceIdentity(value));
+        return candidates.some(
+          (candidate) =>
+            candidate &&
+            (candidate === normalizedFace ||
+              normalizedFace.includes(candidate) ||
+              candidate.includes(normalizedFace)),
+        );
+      }) ?? null
+    );
+  }
+
+  private normalizeFaceIdentity(value: string) {
+    return String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9@._-]+/g, '')
+      .toLowerCase();
+  }
+
+  private toSafeFaceRecognition(face: HgVisionRecognizedFace | null) {
+    if (!face) return null;
+    return {
+      faceIdent: face.faceIdent,
+      faceInfo: face.faceInfo ?? null,
+      score: face.score,
+      faceImagePath: face.faceImagePath ?? null,
+    };
+  }
+
+  private async resolveMockApprovedPerson(currentUserId: string) {
+    const rows = await this.dataSource.manager.query<
+      Array<{
+        id: string;
+        full_name: string;
+        person_code: string | null;
+        person_role: string | null;
+        plate_number: string | null;
+      }>
+    >(
+      `
+      SELECT u.id,
+             u.full_name,
+             COALESCE(st.student_code, u.employee_code, u.email) AS person_code,
+             CASE
+               WHEN st.id IS NOT NULL THEN 'Sinh viên'
+               WHEN EXISTS (
+                 SELECT 1 FROM user_roles ur
+                 JOIN roles r ON r.id = ur.role_id
+                 WHERE ur.user_id = u.id
+                   AND ur.is_active = true
+                   AND r.role_code = 'TEACHER'
+               ) THEN 'Giảng viên'
+               WHEN EXISTS (
+                 SELECT 1 FROM user_roles ur
+                 JOIN roles r ON r.id = ur.role_id
+                 WHERE ur.user_id = u.id
+                   AND ur.is_active = true
+                   AND r.role_code = 'GUARD'
+               ) THEN 'Bảo vệ'
+               ELSE COALESCE(u.position_title, 'Nhân viên')
+             END AS person_role,
+             vr.plate_number
+        FROM users u
+        JOIN face_profiles fp
+          ON fp.user_id = u.id
+         AND fp.status = 'active'
+         AND fp.deleted_at IS NULL
+        LEFT JOIN students st ON st.user_id = u.id AND st.deleted_at IS NULL
+        LEFT JOIN LATERAL (
+          SELECT plate_number
+            FROM vehicle_registrations
+           WHERE user_id = u.id
+             AND deleted_at IS NULL
+           ORDER BY created_at DESC
+           LIMIT 1
+        ) vr ON true
+       WHERE u.id <> $1
+         AND u.deleted_at IS NULL
+         AND u.account_status = 'active'
+       ORDER BY CASE WHEN st.id IS NOT NULL THEN 0 ELSE 1 END, u.full_name ASC
+       LIMIT 1
+      `,
+      [currentUserId],
+    );
+    return rows[0] ?? null;
   }
 
   /**
@@ -275,67 +671,9 @@ export class GateAccessLogService {
       [preferredCode],
     )) as Array<{ id: string; zone_code: string; zone_name: string }>;
     if (!rows[0]) {
-      throw new BadRequestException('Chưa có zone loại gate để ghi log ra/vào.');
-    }
-    return rows[0];
-  }
-
-  private async resolveGuardDashboardPerson(
-    currentUserId: string,
-    direction: 'enter' | 'leave',
-  ) {
-    const rows = (await this.dataSource.manager.query(
-      `
-      SELECT u.id,
-             u.full_name,
-             COALESCE(st.student_code, u.employee_code, u.email) AS person_code,
-             CASE
-               WHEN st.id IS NOT NULL THEN 'Sinh viên'
-               WHEN EXISTS (
-                 SELECT 1 FROM user_roles ur
-                 JOIN roles r ON r.id = ur.role_id
-                 WHERE ur.user_id = u.id
-                   AND ur.is_active = true
-                   AND r.role_code = 'TEACHER'
-               ) THEN 'Giảng viên'
-               ELSE COALESCE(u.position_title, 'Nhân viên')
-             END AS person_role,
-             vr.plate_number
-        FROM users u
-        LEFT JOIN students st ON st.user_id = u.id AND st.deleted_at IS NULL
-        LEFT JOIN LATERAL (
-          SELECT plate_number
-            FROM vehicle_registrations
-           WHERE user_id = u.id
-             AND deleted_at IS NULL
-           ORDER BY created_at DESC
-           LIMIT 1
-        ) vr ON true
-       WHERE u.deleted_at IS NULL
-         AND u.account_status = 'active'
-         AND u.id <> $1
-         AND EXISTS (
-           SELECT 1 FROM user_roles ur
-           JOIN roles r ON r.id = ur.role_id
-           WHERE ur.user_id = u.id
-             AND ur.is_active = true
-             AND r.role_code IN ('STUDENT', 'TEACHER', 'EMPLOYEE', 'BUSINESS_ADMIN')
-         )
-       ORDER BY
-         CASE WHEN $2 = 'leave' THEN u.updated_at ELSE u.created_at END DESC NULLS LAST,
-         u.full_name ASC
-       LIMIT 1
-      `,
-      [currentUserId, direction],
-    )) as Array<{
-      id: string;
-      full_name: string;
-      person_code: string | null;
-      person_role: string | null;
-      plate_number: string | null;
-    }>;
-    if (!rows[0]) {
-      throw new BadRequestException('Chưa có người dùng demo để ghi nhận lượt qua cổng.');
+      throw new BadRequestException(
+        'Chưa có zone loại gate để ghi log ra/vào.',
+      );
     }
     return rows[0];
   }

@@ -48,8 +48,6 @@ export interface AdminGateAccessLogOwner {
   user_id: string;
   full_name: string;
   email: string;
-  employee_code?: string | null;
-  position_title?: string | null;
 }
 
 export interface AdminGateAccessLogResponse extends GateAccessLogResponse {
@@ -69,8 +67,6 @@ export function toAdminGateAccessLogResponse(
           user_id: entity.user.id,
           full_name: entity.user.fullName,
           email: entity.user.email,
-          employee_code: entity.user.employeeCode,
-          position_title: entity.user.positionTitle,
         }
       : null,
   };
