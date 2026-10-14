@@ -7,7 +7,10 @@ import {
   IsEnum,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { AuditLogSeverityFilter } from './query-audit-logs.dto.js';
+import {
+  AuditLogSearchFields,
+  AuditLogSeverityFilter,
+} from './query-audit-logs.dto.js';
 
 /**
  * ExportAuditLogsDto — bộ lọc cho GET /api/v1/audit-logs/export.
@@ -18,7 +21,7 @@ import { AuditLogSeverityFilter } from './query-audit-logs.dto.js';
  * bảng. Không có page/limit — export lấy toàn bộ bản ghi khớp filter trong
  * khoảng, giới hạn an toàn tuyệt đối ở MAX_EXPORT_ROWS (audit-log-export.service.ts).
  */
-export class ExportAuditLogsDto {
+export class ExportAuditLogsDto extends AuditLogSearchFields {
   @ApiProperty({
     description: 'Lọc từ thời điểm (ISO 8601) — bắt buộc',
     example: '2026-01-01T00:00:00Z',

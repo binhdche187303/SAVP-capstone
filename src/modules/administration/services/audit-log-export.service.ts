@@ -10,6 +10,7 @@ import {
   AuditLogRow,
 } from '../repositories/audit-log-query.repository.js';
 import { ExportAuditLogsDto } from '../dto/export-audit-logs.dto.js';
+import { normalizeSearchFields } from '../dto/query-audit-logs.dto.js';
 import { AuditLogItemDto } from '../dto/audit-log-response.dto.js';
 import { AuditLogsService } from './audit-logs.service.js';
 import { renderAuditLogExportXlsx } from '../renderers/audit-log-xlsx-renderer.js';
@@ -124,7 +125,7 @@ export class AuditLogExportService {
     if (dto.actionType) filters.actionType = dto.actionType;
     if (dto.entityType) filters.entityType = dto.entityType;
     if (dto.severity) filters.severity = dto.severity;
-    return filters;
+    return { ...filters, ...normalizeSearchFields(dto) };
   }
 
   /** Mirror AuditLogQueryService.mapRow — cùng logic resolve actorName khi user_id NULL. */

@@ -179,6 +179,34 @@ describe('AuditLogQueryService', () => {
       const filters = service.buildFilters(dto);
       expect(Object.keys(filters)).toHaveLength(6);
     });
+
+    it('should pass search with label-resolved codes', () => {
+      const filters = service.buildFilters({
+        search: 'admin',
+        searchActionTypes: ['login'],
+        searchEntityTypes: [],
+      });
+      expect(filters).toEqual({
+        search: 'admin',
+        searchActionTypes: ['login'],
+      });
+    });
+
+    it('should split raw comma-separated codes and trim search (no ValidationPipe on list)', () => {
+      const filters = service.buildFilters({
+        search: '  admin ',
+        searchActionTypes: 'login, logout,' as unknown as string[],
+      });
+      expect(filters).toEqual({
+        search: 'admin',
+        searchActionTypes: ['login', 'logout'],
+      });
+    });
+
+    it('should ignore label-resolved codes when search is empty', () => {
+      const filters = service.buildFilters({ searchActionTypes: ['login'] });
+      expect(filters).toEqual({});
+    });
   });
 
   // ---------------------------------------------------------------------------
