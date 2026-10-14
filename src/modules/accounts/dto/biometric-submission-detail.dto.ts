@@ -25,4 +25,9 @@ export class BiometricSubmissionDetailDto {
   submittedAt: Date | null;
   consentAt: Date | null;
   reviewMetadata: ReviewMetadataDto | null;
+  classSections?: Array<{
+    id: string;
+    code: string;
+    name: string;
+  }>;
 }

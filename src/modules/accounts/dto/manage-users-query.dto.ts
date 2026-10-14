@@ -1,4 +1,12 @@
-import { IsOptional, IsString, IsUUID, IsIn, Min, Max } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsUUID,
+  IsIn,
+  Min,
+  Max,
+  MaxLength,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 /**
@@ -15,6 +23,17 @@ export class ManageUsersQueryDto {
   @IsOptional()
   @IsUUID('4', { message: 'roleId phải là định dạng UUID' })
   roleId?: string;
+
+  @IsOptional()
+  @IsIn(['staff', 'student'], {
+    message: 'accountType chỉ được là staff hoặc student',
+  })
+  accountType?: 'staff' | 'student';
+
+  @IsOptional()
+  @IsString({ message: 'classId phải là chuỗi ký tự' })
+  @MaxLength(100, { message: 'classId không được vượt quá 100 ký tự' })
+  classId?: string;
 
   // 'expired' là giá trị filter ảo (không phải giá trị DB thật của account_status):
   // tài khoản đối tác accountStatus='active' nhưng accountExpiresAt đã qua — xem

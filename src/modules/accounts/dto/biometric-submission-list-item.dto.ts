@@ -11,4 +11,9 @@ export class BiometricSubmissionListItemDto {
   submittedAt: Date | null;
   primaryImageFileId: string | null;
   qualityScore: number | null;
+  classSections?: Array<{
+    id: string;
+    code: string;
+    name: string;
+  }>;
 }

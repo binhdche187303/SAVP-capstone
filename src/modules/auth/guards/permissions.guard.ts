@@ -7,7 +7,10 @@ import {
 import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
 import { AuthzReadRepository } from '../repositories/authz-read.repository.js';
-import { PERMISSIONS_KEY } from '../decorators/require-permissions.decorator.js';
+import {
+  ANY_PERMISSIONS_KEY,
+  PERMISSIONS_KEY,
+} from '../decorators/require-permissions.decorator.js';
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
@@ -21,8 +24,17 @@ export class PermissionsGuard implements CanActivate {
       PERMISSIONS_KEY,
       [context.getHandler(), context.getClass()],
     );
+    const anyPermissions = this.reflector.getAllAndOverride<string[]>(
+      ANY_PERMISSIONS_KEY,
+      [context.getHandler(), context.getClass()],
+    );
 
-    if (!requiredPermissions || requiredPermissions.length === 0) {
+    const hasRequiredList =
+      Array.isArray(requiredPermissions) && requiredPermissions.length > 0;
+    const hasAnyList =
+      Array.isArray(anyPermissions) && anyPermissions.length > 0;
+
+    if (!hasRequiredList && !hasAnyList) {
       return true;
     }
 
@@ -43,11 +55,16 @@ export class PermissionsGuard implements CanActivate {
     const { permissions } =
       await this.authzRepo.getEffectiveRolesAndPermissions(user.userId);
 
-    const hasAllPermissions = requiredPermissions.every((permission) =>
-      permissions.includes(permission),
-    );
+    const hasAllPermissions =
+      !hasRequiredList ||
+      requiredPermissions.every((permission) =>
+        permissions.includes(permission),
+      );
+    const hasAnyPermission =
+      !hasAnyList ||
+      anyPermissions.some((permission) => permissions.includes(permission));
 
-    if (!hasAllPermissions) {
+    if (!hasAllPermissions || !hasAnyPermission) {
       throw new ForbiddenException({
         success: false,
         message: 'Bạn không có quyền thực hiện hành động này.',

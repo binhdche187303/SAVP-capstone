@@ -7,7 +7,10 @@ import {
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard.js';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard.js';
-import { PERMISSIONS_KEY } from '../../auth/decorators/require-permissions.decorator.js';
+import {
+  ANY_PERMISSIONS_KEY,
+  PERMISSIONS_KEY,
+} from '../../auth/decorators/require-permissions.decorator.js';
 import { ZonesController } from './zones.controller.js';
 import type { CreateZoneDto } from '../dto/create-zone.dto.js';
 import type { UpdateZoneDto } from '../dto/update-zone.dto.js';
@@ -205,13 +208,14 @@ describe('ZonesController (ZNC-001 / UC-90)', () => {
     });
 
     // Case 24
-    it('gate THẬT trên CẢ 2 handler: 2 guard + @RequirePermissions("zones.zone.read")', () => {
+    it('gate THẬT trên CẢ 2 handler: 2 guard + zones.zone.read hoặc gate.access.monitor', () => {
       for (const handler of [controller.list, controller.detail]) {
         const guards = Reflect.getMetadata('__guards__', handler) ?? [];
         expect(guards).toContain(JwtAuthGuard);
         expect(guards).toContain(PermissionsGuard);
-        expect(Reflect.getMetadata(PERMISSIONS_KEY, handler)).toEqual([
+        expect(Reflect.getMetadata(ANY_PERMISSIONS_KEY, handler)).toEqual([
           'zones.zone.read',
+          'gate.access.monitor',
         ]);
       }
     });

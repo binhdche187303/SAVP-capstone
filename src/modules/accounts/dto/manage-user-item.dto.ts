@@ -17,6 +17,12 @@ export class ManageUserItemDto {
   @ApiProperty({ description: 'Mã nhân viên', nullable: true })
   employeeCode: string | null;
 
+  @ApiProperty({ description: 'Mã sinh viên', required: false, nullable: true })
+  studentCode?: string | null;
+
+  @ApiProperty({ description: 'Lớp hành chính', required: false, nullable: true })
+  administrativeClass?: string | null;
+
   @ApiProperty({ description: 'Trạng thái tài khoản' })
   accountStatus: string;
 

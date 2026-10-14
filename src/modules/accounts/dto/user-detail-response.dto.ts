@@ -10,6 +10,21 @@ export class DirectManagerInfoDto {
   fullName: string;
 }
 
+export class StudentClassInfoDto {
+  id: string;
+  code: string;
+  name: string | null;
+  lecturerName: string | null;
+}
+
+export class StudentProfileInfoDto {
+  studentCode: string;
+  administrativeClass: string | null;
+  cohort: string | null;
+  major: string | null;
+  classSections: StudentClassInfoDto[];
+}
+
 export class RoleInfoDto {
   id: string;
   roleCode: string;
@@ -26,6 +41,7 @@ export class UserDetailResponseDto {
   positionTitle: string | null;
   department: DepartmentInfoDto | null;
   directManager: DirectManagerInfoDto | null;
+  studentProfile: StudentProfileInfoDto | null;
   accountStatus: string;
   employmentStatus: string;
   mustChangePassword: boolean;

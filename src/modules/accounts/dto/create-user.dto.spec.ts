@@ -80,4 +80,34 @@ describe('CreateUserDto Validation', () => {
     expect(errors.length).toBeGreaterThan(0);
     expect(errors[0].property).toBe('roleIds');
   });
+
+  it('should accept a student account with an administrative class and no department', async () => {
+    const dto = plainToInstance(CreateUserDto, {
+      fullName: 'Le Minh Sinh',
+      email: 'student@example.com',
+      accountType: 'student',
+      administrativeClass: 'DHTH2026',
+      roleIds: ['b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12'],
+    });
+
+    const errors = await validate(dto);
+
+    expect(errors).toHaveLength(0);
+  });
+
+  it('should require a class for a student account', async () => {
+    const dto = plainToInstance(CreateUserDto, {
+      fullName: 'Le Minh Sinh',
+      email: 'student@example.com',
+      accountType: 'student',
+      roleIds: ['b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12'],
+    });
+
+    const errors = await validate(dto);
+
+    expect(errors.map((error) => error.property)).toContain(
+      'administrativeClass',
+    );
+    expect(errors.map((error) => error.property)).not.toContain('departmentId');
+  });
 });

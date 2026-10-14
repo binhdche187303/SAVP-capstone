@@ -453,22 +453,22 @@ describe('UsersController', () => {
     // eslint-disable-next-line @typescript-eslint/unbound-method
     const { updateUser } = UsersController.prototype;
 
-    it('[C4] Endpoint áp dụng JwtAuthGuard + PermissionsGuard (401/403 gate)', () => {
+    it('[C4] Endpoint áp dụng JwtAuthGuard; quyền update/self-update được service kiểm soát theo target user', () => {
       const guards = Reflect.getMetadata(
         GUARDS_METADATA,
         updateUser,
       ) as unknown[];
 
-      expect(guards).toEqual([JwtAuthGuard, PermissionsGuard]);
+      expect(guards).toEqual([JwtAuthGuard]);
     });
 
-    it('[C5] Yêu cầu permission accounts.user.update (403 nếu thiếu)', () => {
+    it('[C5] Không gắn RequirePermissions trực tiếp để cho phép self-update hồ sơ cá nhân', () => {
       const permissions = Reflect.getMetadata(
         PERMISSIONS_KEY,
         updateUser,
       ) as string[];
 
-      expect(permissions).toEqual(['accounts.user.update']);
+      expect(permissions).toBeUndefined();
     });
   });
 

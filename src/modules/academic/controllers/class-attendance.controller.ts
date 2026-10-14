@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator.js';
 import { ClassAttendanceService } from '../services/class-attendance.service.js';
@@ -97,10 +107,12 @@ export class ClassAttendanceController {
     @CurrentUser() user: { userId: string },
     @Query('mode') mode?: string,
     @Query('anchorDate') anchorDate?: string,
+    @Query('subjectCode') subjectCode?: string,
   ) {
     const data = await this.service.getStudentReport(user.userId, {
       mode,
       anchorDate,
+      subjectCode,
     });
     return {
       success: true,
@@ -115,11 +127,13 @@ export class ClassAttendanceController {
     @Query('studentId') studentId?: string,
     @Query('mode') mode?: string,
     @Query('anchorDate') anchorDate?: string,
+    @Query('subjectCode') subjectCode?: string,
   ) {
     const data = await this.service.getStudentReport(user.userId, {
       studentId,
       mode,
       anchorDate,
+      subjectCode,
     });
     return {
       success: true,
@@ -135,12 +149,16 @@ export class ClassAttendanceController {
     @Query('semester') semester?: string,
     @Query('mode') mode?: string,
     @Query('anchorDate') anchorDate?: string,
+    @Query('subjectCode') subjectCode?: string,
+    @Query('administrativeClass') administrativeClass?: string,
   ) {
     const data = await this.service.getTeacherReport(user.userId, {
       classId,
       semester,
       mode,
       anchorDate,
+      subjectCode,
+      administrativeClass,
     });
     return {
       success: true,
@@ -154,14 +172,21 @@ export class ClassAttendanceController {
     @CurrentUser() user: { userId: string },
     @Query('classId') classId: string | undefined,
     @Query('semester') semester: string | undefined,
+    @Query('subjectCode') subjectCode: string | undefined,
+    @Query('administrativeClass') administrativeClass: string | undefined,
     @Res() res: any,
   ) {
     const result = await this.service.exportSemesterCsv(user.userId, {
       classId,
       semester,
+      subjectCode,
+      administrativeClass,
     });
     res.setHeader('Content-Type', 'application/octet-stream; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${result.filename}"`,
+    );
     res.send(Buffer.from(`\uFEFF${result.csv}`, 'utf8'));
   }
 

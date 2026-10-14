@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateClassAttendanceRecordsAndSeedDemo20261011000002
-  implements MigrationInterface
-{
+export class CreateClassAttendanceRecordsAndSeedDemo20261011000002 implements MigrationInterface {
   name = 'CreateClassAttendanceRecordsAndSeedDemo20261011000002';
 
   private readonly demoPasswordHash =
@@ -10,7 +8,12 @@ export class CreateClassAttendanceRecordsAndSeedDemo20261011000002
 
   private readonly demoStudents = [
     ['SV001', 'student.demo', 'student@meetingsys.vn', 'Le Minh Sinh'],
-    ['SV002', 'nam.nguyen', 'nam.nguyen@smartracking.edu.vn', 'Nguyen Hoang Nam'],
+    [
+      'SV002',
+      'nam.nguyen',
+      'nam.nguyen@smartracking.edu.vn',
+      'Nguyen Hoang Nam',
+    ],
     ['SV003', 'lan.ngo', 'lan.ngo@smartracking.edu.vn', 'Ngo Thi Lan'],
     ['SV004', 'huy.do', 'huy.do@smartracking.edu.vn', 'Do Gia Huy'],
     ['SV005', 'mai.tran', 'mai.tran@smartracking.edu.vn', 'Tran Ngoc Mai'],
@@ -21,16 +24,24 @@ export class CreateClassAttendanceRecordsAndSeedDemo20261011000002
 
   private readonly classes = [
     {
-      code: 'WEB101',
+      code: 'WEB101-01',
       subjectCode: 'WEB101',
       subjectName: 'Lap trinh Web',
       scheduleWeekday: 1,
       scheduleText: 'Thu 2, 08:00 - 10:30',
       roomText: 'Phong hoc A101',
-      studentCodes: ['SV001', 'SV002', 'SV003', 'SV004', 'SV005', 'SV006', 'SV007'],
+      studentCodes: [
+        'SV001',
+        'SV002',
+        'SV003',
+        'SV004',
+        'SV005',
+        'SV006',
+        'SV007',
+      ],
     },
     {
-      code: 'AI202',
+      code: 'AI202-01',
       subjectCode: 'AI202',
       subjectName: 'Tri tue nhan tao ung dung',
       scheduleWeekday: 3,
@@ -39,7 +50,7 @@ export class CreateClassAttendanceRecordsAndSeedDemo20261011000002
       studentCodes: ['SV001', 'SV002', 'SV003', 'SV005', 'SV006', 'SV008'],
     },
     {
-      code: 'DB303',
+      code: 'DB303-01',
       subjectCode: 'DB303',
       subjectName: 'Co so du lieu nang cao',
       scheduleWeekday: 5,
@@ -175,7 +186,11 @@ export class CreateClassAttendanceRecordsAndSeedDemo20261011000002
                  AND cs.subject_id = subj.id
                  AND cs.deleted_at IS NULL
             );`,
-        [klass.code, klass.subjectCode, `${klass.scheduleText} | ${klass.roomText}`],
+        [
+          klass.code,
+          klass.subjectCode,
+          `${klass.scheduleText} | ${klass.roomText}`,
+        ],
       );
 
       for (const studentCode of klass.studentCodes) {

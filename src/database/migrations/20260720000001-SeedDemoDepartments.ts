@@ -19,8 +19,8 @@ export class SeedDemoDepartments20260720000001 implements MigrationInterface {
 
   private readonly root = {
     code: 'BOD',
-    name: 'Ban Giam doc',
-    description: 'Ban dieu hanh cong ty (demo seed data)',
+    name: 'Ban Giám đốc',
+    description: 'Ban điều hành công ty (demo seed data)',
   };
 
   private readonly children: Array<{
@@ -30,29 +30,29 @@ export class SeedDemoDepartments20260720000001 implements MigrationInterface {
   }> = [
     {
       code: 'IT',
-      name: 'Phong Cong nghe thong tin',
-      description: 'Phat trien va van hanh he thong (demo seed data)',
+      name: 'Phòng Công nghệ thông tin',
+      description: 'Phát triển và vận hành hệ thống (demo seed data)',
     },
     {
       code: 'HR',
-      name: 'Phong Nhan su',
-      description: 'Tuyen dung va quan ly nhan su (demo seed data)',
+      name: 'Phòng Nhân sự',
+      description: 'Tuyển dụng và quản lý nhân sự (demo seed data)',
     },
     {
       code: 'SALES',
-      name: 'Phong Kinh doanh',
-      description: 'Kinh doanh va cham soc khach hang (demo seed data)',
+      name: 'Phòng Kinh doanh',
+      description: 'Kinh doanh và chăm sóc khách hàng (demo seed data)',
     },
     {
       code: 'ADM',
-      name: 'Phong Hanh chinh - Le tan',
-      description: 'Hanh chinh van phong, le tan (demo seed data)',
+      name: 'Phòng Hành chính - Lễ tân',
+      description: 'Hành chính văn phòng, lễ tân (demo seed data)',
     },
     {
       code: 'FAC',
-      name: 'Phong Van hanh - Co so vat chat',
+      name: 'Phòng Vận hành - Cơ sở vật chất',
       description:
-        'Quan ly phong hop, thiet bi, co so vat chat (demo seed data)',
+        'Quản lý phòng họp, thiết bị, cơ sở vật chất (demo seed data)',
     },
   ];
 

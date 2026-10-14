@@ -98,6 +98,7 @@ import {
   DepartmentInfoDto,
   DirectManagerInfoDto,
   RoleInfoDto,
+  StudentProfileInfoDto,
 } from '../dto/user-detail-response.dto.js';
 import { UserPublicProfileResponseDto } from '../dto/user-public-profile-response.dto.js';
 import { ListUsersQueryDto } from '../dto/list-users-query.dto.js';
@@ -118,7 +119,7 @@ export interface UserClientContext {
 export interface ResolvedAccountData {
   fullName: string;
   email: string;
-  departmentId: string;
+  departmentId: string | null;
   roleIds: string[];
   employeeCode: string | null;
   phoneNumber: string | null;
@@ -168,7 +169,13 @@ export class UsersService {
     const rows: Array<{ id: string }> = await manager.query(
       `INSERT INTO users (employee_code, username, email, password_hash, full_name, department_id, account_status, employment_status)
        VALUES ($1, $2, $3, '!', $4, $5, 'active', 'active') RETURNING id`,
-      [`VIS-${short}`, `visitor_${short}`, `${input.visitorId}@visitor.invalid`, input.fullName, VISITOR_DEPARTMENT_ID],
+      [
+        `VIS-${short}`,
+        `visitor_${short}`,
+        `${input.visitorId}@visitor.invalid`,
+        input.fullName,
+        VISITOR_DEPARTMENT_ID,
+      ],
     );
     return { userId: rows[0].id };
   }
@@ -186,11 +193,12 @@ export class UsersService {
     const email = dto.email.trim().toLowerCase();
     const employeeCode = dto.employeeCode ? dto.employeeCode.trim() : null;
     const isPartner = dto.accountType === 'partner';
-    const departmentId = isPartner
+    const isStudent = dto.accountType === 'student';
+    let departmentId = isPartner
       ? await resolvePartnerDepartmentId(this.dataSource)
-      : dto.departmentId;
+      : (dto.departmentId ?? null);
 
-    if (!departmentId) {
+    if (!departmentId && !isStudent) {
       throw new BadRequestException({
         success: false,
         message: 'Phòng ban không được để trống',
@@ -235,6 +243,35 @@ export class UsersService {
 
     try {
       await this.dataSource.transaction(async (em) => {
+        if (isStudent) {
+          const classRows = (await em.query(
+            `SELECT administrative_class, department_id
+               FROM students
+              WHERE lower(administrative_class) = lower($1::varchar)
+                AND deleted_at IS NULL
+              ORDER BY created_at ASC
+              LIMIT 1`,
+            [dto.administrativeClass],
+          )) as Array<{
+            administrative_class: string;
+            department_id: string | null;
+          }>;
+          const selectedAdministrativeClass = classRows[0];
+          if (!selectedAdministrativeClass) {
+            throw new NotFoundException({
+              success: false,
+              message: 'Lớp hành chính được chọn không tồn tại.',
+              error: {
+                code: 'ADMINISTRATIVE_CLASS_NOT_FOUND',
+                details: { administrativeClass: dto.administrativeClass },
+              },
+            });
+          }
+          departmentId = selectedAdministrativeClass.department_id;
+          dto.administrativeClass =
+            selectedAdministrativeClass.administrative_class;
+        }
+
         const existingEmail = await em.findOne(UserEntity, {
           where: { email, deletedAt: IsNull() },
         });
@@ -261,28 +298,31 @@ export class UsersService {
           });
         }
 
-        const department = await em.findOne(DepartmentEntity, {
-          where: { id: departmentId, deletedAt: IsNull() },
-        });
-        if (!department) {
-          throw new NotFoundException({
-            success: false,
-            message: 'Phòng ban được chỉ định không tồn tại.',
-            error: {
-              code: 'DEPARTMENT_NOT_FOUND',
-              details: { departmentId },
-            },
+        if (departmentId) {
+          const department = await em.findOne(DepartmentEntity, {
+            where: { id: departmentId, deletedAt: IsNull() },
           });
-        }
-        if (!department.isActive) {
-          throw new UnprocessableEntityException({
-            success: false,
-            message: 'Phòng ban được chỉ định không hoạt động hoặc đã bị xóa.',
-            error: {
-              code: 'DEPARTMENT_INACTIVE_OR_DELETED',
-              details: { departmentId },
-            },
-          });
+          if (!department) {
+            throw new NotFoundException({
+              success: false,
+              message: 'Phòng ban được chỉ định không tồn tại.',
+              error: {
+                code: 'DEPARTMENT_NOT_FOUND',
+                details: { departmentId },
+              },
+            });
+          }
+          if (!department.isActive) {
+            throw new UnprocessableEntityException({
+              success: false,
+              message:
+                'Phòng ban được chỉ định không hoạt động hoặc đã bị xóa.',
+              error: {
+                code: 'DEPARTMENT_INACTIVE_OR_DELETED',
+                details: { departmentId },
+              },
+            });
+          }
         }
 
         roles = [];
@@ -326,6 +366,14 @@ export class UsersService {
             }
             roles.push(role);
           }
+        }
+
+        if (isStudent && !roles.some((role) => role.roleCode === 'STUDENT')) {
+          throw new BadRequestException({
+            success: false,
+            message: 'Tài khoản sinh viên phải được gán vai trò Sinh viên.',
+            error: { code: 'STUDENT_ROLE_REQUIRED', details: {} },
+          });
         }
 
         if (employeeCode) {
@@ -392,6 +440,22 @@ export class UsersService {
         );
         createdUser = persisted.user;
         tempPassword = persisted.tempPassword;
+
+        if (isStudent) {
+          const studentCode = `SV${createdUser.id.replace(/-/g, '').slice(0, 10).toUpperCase()}`;
+          await em.query(
+            `INSERT INTO students (
+               user_id, student_code, administrative_class, department_id, study_status
+             )
+             VALUES ($1::uuid, $2::varchar, $3::varchar, $4::uuid, 'studying')`,
+            [
+              createdUser.id,
+              studentCode,
+              dto.administrativeClass,
+              departmentId,
+            ],
+          );
+        }
       });
     } catch (error) {
       if (partnerUpload) {
@@ -1575,11 +1639,59 @@ export class UsersService {
       });
     }
 
-    // PTA-001: accountExpiresAt chi admin co account.partner.manage moi duoc chinh,
+    // A.3 Xác định System Admin & department scope của target
+    const actorRoles = await em.find(UserRoleEntity, {
+      where: { userId: actorId, isActive: true },
+      relations: { role: true },
+    });
+    const isSystemAdmin = actorRoles.some(
+      (ur) => ur.role?.isSystemRole === true,
+    );
+    const isSelfUpdate = actorId === targetUserId;
+    const hasAdminOnlyField =
+      dto.employeeCode !== undefined ||
+      dto.positionTitle !== undefined ||
+      dto.departmentId !== undefined ||
+      dto.accountExpiresAt !== undefined;
+
+    let effectivePermissions: string[] | null = null;
+    const getEffectivePermissions = async (): Promise<string[]> => {
+      if (effectivePermissions === null) {
+        const { permissions } =
+          await this.authzReadRepository.getEffectiveRolesAndPermissions(
+            actorId,
+          );
+        effectivePermissions = permissions;
+      }
+      return effectivePermissions;
+    };
+
+    const hasAccountUpdatePermission =
+      isSystemAdmin ||
+      (await getEffectivePermissions()).includes('accounts.user.update');
+
+    if (!hasAccountUpdatePermission) {
+      if (!isSelfUpdate) {
+        throw new ForbiddenException({
+          success: false,
+          message: 'Bạn không có quyền cập nhật hồ sơ của nhân sự này.',
+          error: { code: 'FORBIDDEN', details: {} },
+        });
+      }
+      if (hasAdminOnlyField) {
+        throw new ForbiddenException({
+          success: false,
+          message:
+            'Bạn chỉ được cập nhật họ tên và số điện thoại trong hồ sơ của chính mình.',
+          error: { code: 'SELF_PROFILE_UPDATE_LIMITED', details: {} },
+        });
+      }
+    }
+
+    // PTA-001: accountExpiresAt chi actor co account.partner.manage moi duoc chinh,
     // và chỉ áp dụng cho tài khoản thuộc department "Đối tác".
     if (dto.accountExpiresAt !== undefined) {
-      const { permissions } =
-        await this.authzReadRepository.getEffectiveRolesAndPermissions(actorId);
+      const permissions = await getEffectivePermissions();
       if (!permissions.includes('account.partner.manage')) {
         throw new ForbiddenException({
           success: false,
@@ -1595,14 +1707,6 @@ export class UsersService {
         });
       }
     }
-    // A.3 Xác định System Admin & department scope của target
-    const actorRoles = await em.find(UserRoleEntity, {
-      where: { userId: actorId, isActive: true },
-      relations: { role: true },
-    });
-    const isSystemAdmin = actorRoles.some(
-      (ur) => ur.role?.isSystemRole === true,
-    );
 
     let scope: Set<string> | null = null;
     if (!isSystemAdmin) {
@@ -1849,6 +1953,7 @@ export class UsersService {
       positionTitle: fresh.positionTitle,
       department: departmentDto,
       directManager: directManagerDto,
+      studentProfile: await this.getStudentProfileInfo(fresh.id),
       accountStatus: fresh.accountStatus,
       employmentStatus: fresh.employmentStatus,
       mustChangePassword: fresh.mustChangePassword,
@@ -1957,6 +2062,8 @@ export class UsersService {
       };
     }
 
+    const studentProfile = await this.getStudentProfileInfo(targetUserId);
+
     // 8. Assemble response DTO
     const response: UserDetailResponseDto = {
       id: targetUser.id,
@@ -1968,6 +2075,7 @@ export class UsersService {
       positionTitle: targetUser.positionTitle,
       department: departmentDto,
       directManager: directManagerDto,
+      studentProfile,
       accountStatus: targetUser.accountStatus,
       employmentStatus: targetUser.employmentStatus,
       mustChangePassword: targetUser.mustChangePassword,
@@ -2009,6 +2117,82 @@ export class UsersService {
     }
 
     return response;
+  }
+
+  private async getStudentProfileInfo(
+    userId: string,
+  ): Promise<StudentProfileInfoDto | null> {
+    const rows = (await this.dataSource.manager.query(
+      `
+      SELECT
+        st.student_code,
+        st.administrative_class,
+        st.cohort,
+        st.major,
+        COALESCE(
+          json_agg(
+            DISTINCT jsonb_build_object(
+              'id', cs.id,
+              'code', cs.class_code,
+              'name', subj.subject_name,
+              'lecturerName', lecturer.full_name
+            )
+          ) FILTER (WHERE cs.id IS NOT NULL),
+          '[]'::json
+        ) AS class_sections
+      FROM students st
+      LEFT JOIN class_enrollments ce
+        ON ce.student_id = st.id
+       AND ce.status = 'active'
+      LEFT JOIN class_sections cs
+        ON cs.id = ce.class_section_id
+       AND cs.deleted_at IS NULL
+      LEFT JOIN subjects subj
+        ON subj.id = cs.subject_id
+       AND subj.deleted_at IS NULL
+      LEFT JOIN users lecturer
+        ON lecturer.id = cs.lecturer_user_id
+       AND lecturer.deleted_at IS NULL
+      WHERE st.user_id = $1
+        AND st.deleted_at IS NULL
+      GROUP BY st.id, st.student_code, st.administrative_class, st.cohort, st.major
+      LIMIT 1
+      `,
+      [userId],
+    )) as Array<{
+      student_code: string;
+      administrative_class: string | null;
+      cohort: string | null;
+      major: string | null;
+      class_sections:
+        | Array<{
+            id: string;
+            code: string;
+            name: string | null;
+            lecturerName: string | null;
+          }>
+        | string
+        | null;
+    }>;
+
+    const row = rows[0];
+    if (!row) return null;
+
+    const classSections = Array.isArray(row.class_sections)
+      ? row.class_sections
+      : row.class_sections
+        ? (JSON.parse(
+            row.class_sections,
+          ) as StudentProfileInfoDto['classSections'])
+        : [];
+
+    return {
+      studentCode: row.student_code,
+      administrativeClass: row.administrative_class,
+      cohort: row.cohort,
+      major: row.major,
+      classSections,
+    };
   }
 
   async getPublicProfile(
@@ -2059,7 +2243,9 @@ export class UsersService {
       .where('u.deletedAt IS NULL')
       .andWhere('u.accountStatus = :status', { status: AccountStatus.ACTIVE })
       // Tài khoản khách ẩn (VIS-BE-001) không phải nhân sự: không hiện trong danh sách/autocomplete.
-      .andWhere('(u.departmentId IS NULL OR u.departmentId <> :visitorDept)', { visitorDept: VISITOR_DEPARTMENT_ID });
+      .andWhere('(u.departmentId IS NULL OR u.departmentId <> :visitorDept)', {
+        visitorDept: VISITOR_DEPARTMENT_ID,
+      });
 
     if (search) {
       qb.andWhere(
@@ -2182,7 +2368,9 @@ export class UsersService {
       .createQueryBuilder('u')
       .where('u.deletedAt IS NULL')
       // Tài khoản khách ẩn (VIS-BE-001) không phải nhân sự.
-      .andWhere('(u.departmentId IS NULL OR u.departmentId <> :visitorDept)', { visitorDept: VISITOR_DEPARTMENT_ID });
+      .andWhere('(u.departmentId IS NULL OR u.departmentId <> :visitorDept)', {
+        visitorDept: VISITOR_DEPARTMENT_ID,
+      });
 
     if (scopeIds) {
       qb.andWhere('u.departmentId IN (:...scopeIds)', { scopeIds });
@@ -2212,12 +2400,75 @@ export class UsersService {
         { roleId: query.roleId, now },
       );
     }
+    if (query.accountType === 'student') {
+      qb.andWhere(
+        `EXISTS (
+          SELECT 1
+            FROM user_roles ur
+            JOIN roles r ON r.id = ur.role_id
+           WHERE ur.user_id = u.id
+             AND ur.is_active = true
+             AND (ur.expired_at IS NULL OR ur.expired_at > :now)
+             AND r.role_code = 'STUDENT'
+        )`,
+        { now },
+      );
+      if (query.classId?.trim()) {
+        const classIdentifier = query.classId.trim();
+        qb.andWhere(
+          `EXISTS (
+            SELECT 1
+              FROM students st
+              LEFT JOIN class_enrollments ce
+                ON ce.student_id = st.id
+               AND ce.status = 'active'
+              LEFT JOIN class_sections cs
+                ON cs.id = ce.class_section_id
+               AND cs.deleted_at IS NULL
+             WHERE st.user_id = u.id
+               AND st.deleted_at IS NULL
+               AND (
+                 lower(st.administrative_class) = lower(:classIdentifier)
+                 OR cs.id::text = :classIdentifier
+                 OR lower(cs.class_code) = lower(:classIdentifier)
+               )
+          )`,
+          { classIdentifier },
+        );
+      }
+    } else if (query.accountType === 'staff') {
+      qb.andWhere(
+        `NOT EXISTS (
+          SELECT 1
+            FROM user_roles ur
+            JOIN roles r ON r.id = ur.role_id
+           WHERE ur.user_id = u.id
+             AND ur.is_active = true
+             AND (ur.expired_at IS NULL OR ur.expired_at > :now)
+             AND r.role_code = 'STUDENT'
+        )`,
+        { now },
+      );
+    }
     if (search) {
       qb.andWhere(
         new Brackets((w) => {
           w.where('u.fullName ILIKE :s', { s: `%${search}%` })
             .orWhere('u.email ILIKE :s', { s: `%${search}%` })
-            .orWhere('u.employeeCode ILIKE :s', { s: `%${search}%` });
+            .orWhere('u.employeeCode ILIKE :s', { s: `%${search}%` })
+            .orWhere(
+              `EXISTS (
+                SELECT 1
+                  FROM students st
+                 WHERE st.user_id = u.id
+                   AND st.deleted_at IS NULL
+                   AND (
+                     st.student_code ILIKE :s
+                     OR st.administrative_class ILIKE :s
+                   )
+              )`,
+              { s: `%${search}%` },
+            );
         }),
       );
     }
@@ -2272,12 +2523,17 @@ export class UsersService {
       }
     }
 
+    const studentProfilesMap = await this.getManageStudentProfiles(userIds);
+
     // ── D. Map output ──
     const data: ManageUserItemDto[] = users.map((u) => ({
       id: u.id,
       fullName: u.fullName,
       email: u.email,
       employeeCode: u.employeeCode,
+      studentCode: studentProfilesMap.get(u.id)?.studentCode ?? null,
+      administrativeClass:
+        studentProfilesMap.get(u.id)?.administrativeClass ?? null,
       accountStatus: u.accountStatus,
       departmentId: u.departmentId,
       roles: rolesMap.get(u.id) ?? [],
@@ -2289,6 +2545,81 @@ export class UsersService {
     }));
 
     return { data, total };
+  }
+
+  async listStudentAdministrativeClasses(
+    actorId: string,
+  ): Promise<Array<{ code: string; departmentId: string | null }>> {
+    const actorRoles = await this.dataSource.manager.find(UserRoleEntity, {
+      where: { userId: actorId, isActive: true },
+      relations: { role: true },
+    });
+    const isSystemAdmin = actorRoles.some(
+      (ur) => ur.role?.isSystemRole === true,
+    );
+    const scopeIds = isSystemAdmin
+      ? null
+      : [...(await this.resolveDepartmentScope(actorId))];
+
+    const params: unknown[] = [];
+    let scopeSql = '';
+    if (scopeIds) {
+      if (scopeIds.length === 0) return [];
+      params.push(scopeIds);
+      scopeSql = 'AND st.department_id = ANY($1::uuid[])';
+    }
+
+    const rows = (await this.dataSource.manager.query(
+      `SELECT st.administrative_class AS code,
+              MIN(st.department_id::text)::uuid AS department_id
+         FROM students st
+        WHERE st.deleted_at IS NULL
+          AND st.administrative_class IS NOT NULL
+          AND btrim(st.administrative_class) <> ''
+          ${scopeSql}
+        GROUP BY st.administrative_class
+        ORDER BY st.administrative_class ASC`,
+      params,
+    )) as Array<{ code: string; department_id: string | null }>;
+
+    return rows.map((row) => ({
+      code: row.code,
+      departmentId: row.department_id,
+    }));
+  }
+
+  private async getManageStudentProfiles(userIds: string[]) {
+    const uniqueUserIds = [...new Set(userIds.filter(Boolean))];
+    if (uniqueUserIds.length === 0) {
+      return new Map<
+        string,
+        { studentCode: string; administrativeClass: string | null }
+      >();
+    }
+
+    const rows = (await this.dataSource.manager.query(
+      `
+      SELECT user_id, student_code, administrative_class
+      FROM students
+      WHERE deleted_at IS NULL
+        AND user_id = ANY($1::uuid[])
+      `,
+      [uniqueUserIds],
+    )) as Array<{
+      user_id: string;
+      student_code: string;
+      administrative_class: string | null;
+    }>;
+
+    return new Map(
+      rows.map((row) => [
+        row.user_id,
+        {
+          studentCode: row.student_code,
+          administrativeClass: row.administrative_class,
+        },
+      ]),
+    );
   }
 
   private async resolveDepartmentScope(

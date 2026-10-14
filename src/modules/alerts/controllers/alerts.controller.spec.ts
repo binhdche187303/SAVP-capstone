@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument, @typescript-eslint/unbound-method */
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard.js';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard.js';
-import { PERMISSIONS_KEY } from '../../auth/decorators/require-permissions.decorator.js';
+import { ANY_PERMISSIONS_KEY } from '../../auth/decorators/require-permissions.decorator.js';
 import { AlertsController } from './alerts.controller.js';
 
 describe('AlertsController (ASC-001 / UC-123)', () => {
@@ -57,9 +57,10 @@ describe('AlertsController (ASC-001 / UC-123)', () => {
     expect(r.meta).toEqual(meta);
   });
 
-  it('list route permission = security_alert.read', () => {
-    expect(Reflect.getMetadata(PERMISSIONS_KEY, controller.list)).toEqual([
+  it('list route permission = security_alert.read hoặc gate.access.alert.handle', () => {
+    expect(Reflect.getMetadata(ANY_PERMISSIONS_KEY, controller.list)).toEqual([
       'security_alert.read',
+      'gate.access.alert.handle',
     ]);
   });
 
@@ -80,10 +81,10 @@ describe('AlertsController (ASC-001 / UC-123)', () => {
     expect(r.data.history).toHaveLength(1);
   });
 
-  it('detail route permission = security_alert.read', () => {
-    expect(Reflect.getMetadata(PERMISSIONS_KEY, controller.detail)).toEqual([
-      'security_alert.read',
-    ]);
+  it('detail route permission = security_alert.read hoặc gate.access.alert.handle', () => {
+    expect(Reflect.getMetadata(ANY_PERMISSIONS_KEY, controller.detail)).toEqual(
+      ['security_alert.read', 'gate.access.alert.handle'],
+    );
   });
 
   it('POST acknowledge → service.acknowledge(id, userId)', async () => {
@@ -92,10 +93,10 @@ describe('AlertsController (ASC-001 / UC-123)', () => {
     expect(r.message).toBe('Security alert acknowledged successfully');
   });
 
-  it('acknowledge route permission = security_alert.acknowledge', () => {
+  it('acknowledge route permission = security_alert.acknowledge hoặc gate.access.alert.handle', () => {
     expect(
-      Reflect.getMetadata(PERMISSIONS_KEY, controller.acknowledge),
-    ).toEqual(['security_alert.acknowledge']);
+      Reflect.getMetadata(ANY_PERMISSIONS_KEY, controller.acknowledge),
+    ).toEqual(['security_alert.acknowledge', 'gate.access.alert.handle']);
   });
 
   it('POST resolve → service.resolve(id, dto, userId)', async () => {
@@ -105,10 +106,10 @@ describe('AlertsController (ASC-001 / UC-123)', () => {
     expect(r.message).toBe('Security alert resolved successfully');
   });
 
-  it('resolve route permission = security_alert.resolve', () => {
-    expect(Reflect.getMetadata(PERMISSIONS_KEY, controller.resolve)).toEqual([
-      'security_alert.resolve',
-    ]);
+  it('resolve route permission = security_alert.resolve hoặc gate.access.alert.handle', () => {
+    expect(
+      Reflect.getMetadata(ANY_PERMISSIONS_KEY, controller.resolve),
+    ).toEqual(['security_alert.resolve', 'gate.access.alert.handle']);
   });
 
   it('POST bulk-acknowledge → service.bulkAcknowledge(ids, userId)', async () => {
@@ -125,9 +126,9 @@ describe('AlertsController (ASC-001 / UC-123)', () => {
     expect(r.data.acknowledged).toEqual(['a1']);
   });
 
-  it('bulk-acknowledge route permission = security_alert.acknowledge (dùng chung quyền acknowledge)', () => {
+  it('bulk-acknowledge route permission = security_alert.acknowledge hoặc gate.access.alert.handle', () => {
     expect(
-      Reflect.getMetadata(PERMISSIONS_KEY, controller.bulkAcknowledge),
-    ).toEqual(['security_alert.acknowledge']);
+      Reflect.getMetadata(ANY_PERMISSIONS_KEY, controller.bulkAcknowledge),
+    ).toEqual(['security_alert.acknowledge', 'gate.access.alert.handle']);
   });
 });

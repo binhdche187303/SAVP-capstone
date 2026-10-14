@@ -67,11 +67,16 @@ export class HgVisionService {
 
   isConfigured() {
     return Boolean(
-      this.baseUrl &&
-        this.clientId &&
-        this.clientSecret &&
-        this.enabled,
+      this.baseUrl && this.clientId && this.clientSecret && this.enabled,
     );
+  }
+
+  isMockFallbackEnabled() {
+    const value = this.configService.get<boolean | string>(
+      'HGVISION_MOCK_FALLBACK_ENABLED',
+      false,
+    );
+    return value === true || String(value).toLowerCase() === 'true';
   }
 
   async searchFaceFromDataUrl(
@@ -91,14 +96,17 @@ export class HgVisionService {
       'class-attendance.jpg',
     );
 
-    const response = await fetch(`${this.baseUrl}/api/identification/faces/search`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
+    const response = await fetch(
+      `${this.baseUrl}/api/identification/faces/search`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: form,
+        signal: AbortSignal.timeout(this.timeoutMs),
       },
-      body: form,
-      signal: AbortSignal.timeout(this.timeoutMs),
-    });
+    );
 
     if (!response.ok) {
       const message = await response.text().catch(() => '');
@@ -216,7 +224,9 @@ export class HgVisionService {
   }
 
   private bestPlate(data: HgVisionPlateReadResponse) {
-    const plates = (data.results ?? []).flatMap((result) => result.plates ?? []);
+    const plates = (data.results ?? []).flatMap(
+      (result) => result.plates ?? [],
+    );
     return plates
       .filter((plate) => plate.plate)
       .sort((a, b) => Number(b.score ?? 0) - Number(a.score ?? 0))[0];
@@ -232,7 +242,9 @@ export class HgVisionService {
   }
 
   private get baseUrl() {
-    return this.configService.get<string>('HGVISION_BASE_URL', '').replace(/\/+$/, '');
+    return this.configService
+      .get<string>('HGVISION_BASE_URL', '')
+      .replace(/\/+$/, '');
   }
 
   private get enabled() {

@@ -1,12 +1,23 @@
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { HgVisionRecognizedFace, HgVisionService } from './hgvision.service.js';
 
-type RoleCode = 'SYSTEM_ADMIN' | 'ADMIN' | 'BUSINESS_ADMIN' | 'TEACHER' | 'STUDENT' | string;
+type RoleCode =
+  | 'SYSTEM_ADMIN'
+  | 'ADMIN'
+  | 'BUSINESS_ADMIN'
+  | 'TEACHER'
+  | 'STUDENT'
+  | string;
 
 interface ClassRow {
   id: string;
   code: string;
+  subject_code: string;
   subject: string;
   semester: string;
   teacher: string | null;
@@ -14,6 +25,7 @@ interface ClassRow {
   schedule: string | null;
   schedule_weekday: number | null;
   student_count: string;
+  administrative_classes: string[] | null;
 }
 
 interface StudentRow {
@@ -22,6 +34,7 @@ interface StudentRow {
   code: string;
   name: string;
   email: string | null;
+  administrative_class: string | null;
 }
 
 interface AttendanceRow {
@@ -70,7 +83,9 @@ export class ClassAttendanceService {
   ) {
     const roles = await this.getRoleCodes(currentUserId);
     if (!roles.includes('SYSTEM_ADMIN') && !roles.includes('ADMIN')) {
-      throw new ForbiddenException('Bạn không có quyền cập nhật cấu hình điểm danh lớp học.');
+      throw new ForbiddenException(
+        'Bạn không có quyền cập nhật cấu hình điểm danh lớp học.',
+      );
     }
 
     const current = await this.getSettings();
@@ -86,10 +101,17 @@ export class ClassAttendanceService {
       throw new BadRequestException('classStartTime must be HH:mm');
     }
     if (next.lateThresholdMinutes < 0 || next.lateThresholdMinutes > 240) {
-      throw new BadRequestException('lateThresholdMinutes must be between 0 and 240');
+      throw new BadRequestException(
+        'lateThresholdMinutes must be between 0 and 240',
+      );
     }
-    if (next.autoScanIntervalSeconds < 2 || next.autoScanIntervalSeconds > 300) {
-      throw new BadRequestException('autoScanIntervalSeconds must be between 2 and 300');
+    if (
+      next.autoScanIntervalSeconds < 2 ||
+      next.autoScanIntervalSeconds > 300
+    ) {
+      throw new BadRequestException(
+        'autoScanIntervalSeconds must be between 2 and 300',
+      );
     }
 
     await this.upsertConfig(
@@ -122,6 +144,7 @@ export class ClassAttendanceService {
       `
       SELECT cs.id,
              cs.class_code AS code,
+             subj.subject_code,
              subj.subject_name AS subject,
              sem.semester_name AS semester,
              teacher.full_name AS teacher,
@@ -137,14 +160,16 @@ export class ClassAttendanceService {
                ELSE NULL
              END AS schedule_weekday,
              COUNT(ce.id)::text AS student_count
+             , ARRAY_REMOVE(ARRAY_AGG(DISTINCT st.administrative_class), NULL) AS administrative_classes
         FROM class_sections cs
         JOIN subjects subj ON subj.id = cs.subject_id
         JOIN semesters sem ON sem.id = cs.semester_id
         LEFT JOIN users teacher ON teacher.id = cs.lecturer_user_id
         LEFT JOIN rooms room ON room.id = cs.default_room_id
         LEFT JOIN class_enrollments ce ON ce.class_section_id = cs.id AND ce.status = 'active'
+        LEFT JOIN students st ON st.id = ce.student_id AND st.deleted_at IS NULL
         ${where.sql}
-       GROUP BY cs.id, subj.subject_name, sem.semester_name, teacher.full_name, room.room_name
+       GROUP BY cs.id, subj.subject_code, subj.subject_name, sem.semester_name, teacher.full_name, room.room_name
        ORDER BY cs.class_code ASC
       `,
       params,
@@ -153,6 +178,7 @@ export class ClassAttendanceService {
     return rows.map((row) => ({
       id: row.id,
       code: row.code,
+      subjectCode: row.subject_code,
       subject: row.subject,
       semester: row.semester,
       teacher: row.teacher ?? '',
@@ -160,11 +186,19 @@ export class ClassAttendanceService {
       schedule: row.schedule ?? '',
       scheduleWeekday: row.schedule_weekday,
       studentCount: Number(row.student_count ?? 0),
+      administrativeClasses: row.administrative_classes ?? [],
     }));
   }
 
-  async getRows(currentUserId: string, classId: string, date = this.todayKey()) {
-    const resolvedClassId = await this.assertClassAccess(currentUserId, classId);
+  async getRows(
+    currentUserId: string,
+    classId: string,
+    date = this.todayKey(),
+  ) {
+    const resolvedClassId = await this.assertClassAccess(
+      currentUserId,
+      classId,
+    );
     const students = await this.getClassStudents(resolvedClassId);
     const records = (await this.dataSource.manager.query(
       `
@@ -181,7 +215,9 @@ export class ClassAttendanceService {
       `,
       [resolvedClassId, date],
     )) as AttendanceRow[];
-    const byStudent = new Map(records.map((record) => [record.student_id, record]));
+    const byStudent = new Map(
+      records.map((record) => [record.student_id, record]),
+    );
 
     return students.map((student) => {
       const record = byStudent.get(student.id);
@@ -191,6 +227,7 @@ export class ClassAttendanceService {
         code: student.code,
         name: student.name,
         email: student.email,
+        administrativeClass: student.administrative_class,
         studentId: student.id,
         classId: resolvedClassId,
         checkInAt: record?.check_in_at ?? null,
@@ -205,7 +242,11 @@ export class ClassAttendanceService {
     });
   }
 
-  async getSummary(currentUserId: string, classId: string, date = this.todayKey()) {
+  async getSummary(
+    currentUserId: string,
+    classId: string,
+    date = this.todayKey(),
+  ) {
     const rows = await this.getRows(currentUserId, classId, date);
     return this.summarizeRows(rows);
   }
@@ -227,7 +268,8 @@ export class ClassAttendanceService {
       'ADMIN',
     ]);
 
-    const direction = body.direction === 'out' || body.direction === 'leave' ? 'out' : 'in';
+    const direction =
+      body.direction === 'out' || body.direction === 'leave' ? 'out' : 'in';
     const date = this.todayKey();
     const students = await this.getClassStudents(classId);
     const rows = await this.getRows(currentUserId, classId, date);
@@ -331,7 +373,11 @@ export class ClassAttendanceService {
         now.toISOString(),
         status,
         body.snapshotImageBase64 ?? null,
-        recognition?.face ? 'hgvision-face' : body.snapshotImageBase64 ? 'webcam' : 'camera',
+        recognition?.face
+          ? 'hgvision-face'
+          : body.snapshotImageBase64
+            ? 'webcam'
+            : 'camera',
         confidence,
       ],
     )) as AttendanceRow[];
@@ -360,15 +406,29 @@ export class ClassAttendanceService {
 
   async getStudentReport(
     currentUserId: string,
-    query: { studentId?: string; mode?: string; anchorDate?: string },
+    query: {
+      studentId?: string;
+      mode?: string;
+      anchorDate?: string;
+      subjectCode?: string;
+    },
   ) {
     const roles = await this.getRoleCodes(currentUserId);
-    const student = await this.resolveStudent(currentUserId, query.studentId, roles);
+    const student = await this.resolveStudent(
+      currentUserId,
+      query.studentId,
+      roles,
+    );
     const { start, end } = this.getRangeBounds(query.mode, query.anchorDate);
+    const subjectCode =
+      query.subjectCode && query.subjectCode !== 'all'
+        ? query.subjectCode
+        : null;
     const rows = (await this.dataSource.manager.query(
       `
       SELECT cs.id AS class_id,
              cs.class_code,
+             subj.subject_code,
              subj.subject_name,
              COALESCE(room.room_name, split_part(cs.note, ' | ', 2)) AS room,
              split_part(cs.note, ' | ', 1) AS schedule,
@@ -388,9 +448,10 @@ export class ClassAttendanceService {
          AND car.attendance_date BETWEEN $2::date AND $3::date
        WHERE ce.student_id = $1
          AND ce.status = 'active'
+         AND ($4::text IS NULL OR subj.subject_code = $4)
        ORDER BY car.attendance_date DESC NULLS LAST, cs.class_code ASC
       `,
-      [student.id, start, end],
+      [student.id, start, end, subjectCode],
     )) as any[];
 
     const entries = rows
@@ -401,6 +462,7 @@ export class ClassAttendanceService {
         dateText: this.formatDateText(row.attendance_date),
         classId: row.class_id,
         classCode: row.class_code,
+        subjectCode: row.subject_code,
         className: row.subject_name,
         room: row.room ?? '',
         schedule: row.schedule ?? '',
@@ -433,7 +495,9 @@ export class ClassAttendanceService {
         return {
           ...klass,
           ...summary,
-          rate: summary.total ? Math.round((summary.checkedIn / summary.total) * 100) : 0,
+          rate: summary.total
+            ? Math.round((summary.checkedIn / summary.total) * 100)
+            : 0,
         };
       }),
     );
@@ -442,11 +506,28 @@ export class ClassAttendanceService {
 
   async getTeacherReport(
     currentUserId: string,
-    query: { classId?: string; semester?: string; mode?: string; anchorDate?: string },
+    query: {
+      classId?: string;
+      semester?: string;
+      mode?: string;
+      anchorDate?: string;
+      subjectCode?: string;
+      administrativeClass?: string;
+    },
   ) {
-    const classes = await this.getReportClasses(currentUserId, query.classId, query.semester);
+    const classes = await this.getReportClasses(
+      currentUserId,
+      query.classId,
+      query.semester,
+      query.subjectCode,
+    );
     const { start, end } = this.getRangeBounds(query.mode, query.anchorDate);
-    const rows = await this.buildClassReportRows(classes, start, end);
+    const rows = await this.buildClassReportRows(
+      classes,
+      start,
+      end,
+      query.administrativeClass,
+    );
     const totals = this.summarizeReportRows(rows);
     return {
       period: { start, end },
@@ -457,17 +538,33 @@ export class ClassAttendanceService {
 
   async exportSemesterCsv(
     currentUserId: string,
-    query: { classId?: string; semester?: string },
+    query: {
+      classId?: string;
+      semester?: string;
+      subjectCode?: string;
+      administrativeClass?: string;
+    },
   ) {
-    const classes = await this.getReportClasses(currentUserId, query.classId, query.semester);
+    const classes = await this.getReportClasses(
+      currentUserId,
+      query.classId,
+      query.semester,
+      query.subjectCode,
+    );
     const { start, end } = this.getSemesterBounds(query.semester);
-    const records = await this.getAttendanceRecords(classes.map((klass) => klass.id), start, end);
+    const records = await this.getAttendanceRecords(
+      classes.map((klass) => klass.id),
+      start,
+      end,
+      query.administrativeClass,
+    );
     const byClass = new Map(classes.map((klass) => [klass.id, klass]));
     const rows = [
       [
         'Học kỳ',
-        'Mã lớp',
+        'Mã môn học',
         'Môn học',
+        'Lớp hành chính',
         'Phòng học',
         'Giảng viên',
         'Ngày học',
@@ -482,8 +579,9 @@ export class ClassAttendanceService {
         const klass = byClass.get(record.class_id);
         return [
           klass?.semester ?? '',
-          klass?.code ?? record.class_code ?? '',
+          klass?.subjectCode ?? record.subject_code ?? '',
           klass?.subject ?? record.subject_name ?? '',
+          record.administrative_class ?? '',
           klass?.room ?? record.room ?? '',
           klass?.teacher ?? '',
           this.formatDateText(record.attendance_date),
@@ -504,7 +602,9 @@ export class ClassAttendanceService {
     const semesterPart = this.safeFilename(query.semester || 'tat-ca-hoc-ky');
     return {
       filename: `bang-chuyen-can-${classPart}-${semesterPart}.csv`,
-      csv: rows.map((row) => row.map((cell) => this.csvEscape(cell)).join(',')).join('\n'),
+      csv: rows
+        .map((row) => row.map((cell) => this.csvEscape(cell)).join(','))
+        .join('\n'),
     };
   }
 
@@ -522,8 +622,15 @@ export class ClassAttendanceService {
   }
 
   private classScopeWhere(roles: RoleCode[]) {
-    if (roles.includes('SYSTEM_ADMIN') || roles.includes('ADMIN') || roles.includes('BUSINESS_ADMIN')) {
-      return { sql: `WHERE cs.deleted_at IS NULL`, params: (_userId: string) => [] };
+    if (
+      roles.includes('SYSTEM_ADMIN') ||
+      roles.includes('ADMIN') ||
+      roles.includes('BUSINESS_ADMIN')
+    ) {
+      return {
+        sql: `WHERE cs.deleted_at IS NULL`,
+        params: (_userId: string) => [],
+      };
     }
     if (roles.includes('TEACHER')) {
       return {
@@ -554,10 +661,17 @@ export class ClassAttendanceService {
   ): Promise<string> {
     const classId = await this.resolveClassSectionId(classIdentifier);
     const roles = await this.getRoleCodes(userId);
-    if (allowedRoleCodes && !allowedRoleCodes.some((role) => roles.includes(role))) {
+    if (
+      allowedRoleCodes &&
+      !allowedRoleCodes.some((role) => roles.includes(role))
+    ) {
       throw new ForbiddenException('Bạn không có quyền thao tác lớp học này.');
     }
-    if (roles.includes('SYSTEM_ADMIN') || roles.includes('ADMIN') || roles.includes('BUSINESS_ADMIN')) {
+    if (
+      roles.includes('SYSTEM_ADMIN') ||
+      roles.includes('ADMIN') ||
+      roles.includes('BUSINESS_ADMIN')
+    ) {
       return classId;
     }
 
@@ -595,7 +709,9 @@ export class ClassAttendanceService {
   }
 
   private async resolveClassSectionId(classIdentifier: string) {
-    const normalizedCode = classIdentifier.replace(/[^a-z0-9]/gi, '').toLowerCase();
+    const normalizedCode = classIdentifier
+      .replace(/[^a-z0-9]/gi, '')
+      .toLowerCase();
     const rows = (await this.dataSource.manager.query(
       `
       SELECT cs.id
@@ -622,6 +738,7 @@ export class ClassAttendanceService {
       SELECT st.id,
              st.user_id,
              st.student_code AS code,
+             st.administrative_class,
              u.full_name AS name,
              u.email
         FROM class_enrollments ce
@@ -682,17 +799,24 @@ export class ClassAttendanceService {
   private normalizeConfidence(score: number | null | undefined) {
     const value = Number(score ?? 0);
     if (!Number.isFinite(value)) return 0;
-    return Math.max(0, Math.min(100, Math.round(value <= 1 ? value * 100 : value)));
+    return Math.max(
+      0,
+      Math.min(100, Math.round(value <= 1 ? value * 100 : value)),
+    );
   }
 
   private async getReportClasses(
     currentUserId: string,
     classId?: string,
     semester?: string,
+    subjectCode?: string,
   ) {
     let classes = await this.listClasses(currentUserId);
     if (semester && semester !== 'all') {
       classes = classes.filter((klass) => klass.semester === semester);
+    }
+    if (subjectCode && subjectCode !== 'all') {
+      classes = classes.filter((klass) => klass.subjectCode === subjectCode);
     }
     if (classId && classId !== 'all') {
       const resolvedId = await this.assertClassAccess(currentUserId, classId, [
@@ -706,8 +830,18 @@ export class ClassAttendanceService {
     return classes;
   }
 
-  private async buildClassReportRows(classes: any[], start: string, end: string) {
-    const records = await this.getAttendanceRecords(classes.map((klass) => klass.id), start, end);
+  private async buildClassReportRows(
+    classes: any[],
+    start: string,
+    end: string,
+    administrativeClass?: string,
+  ) {
+    const records = await this.getAttendanceRecords(
+      classes.map((klass) => klass.id),
+      start,
+      end,
+      administrativeClass,
+    );
     const recordsByClass = new Map<string, any[]>();
     for (const record of records) {
       const list = recordsByClass.get(record.class_id) ?? [];
@@ -718,8 +852,12 @@ export class ClassAttendanceService {
     return classes.map((klass) => {
       const classRecords = recordsByClass.get(klass.id) ?? [];
       const totalSessions = classRecords.length;
-      const attended = classRecords.filter((record) => record.check_in_at).length;
-      const late = classRecords.filter((record) => record.status === 'late').length;
+      const attended = classRecords.filter(
+        (record) => record.check_in_at,
+      ).length;
+      const late = classRecords.filter(
+        (record) => record.status === 'late',
+      ).length;
       const absent = classRecords.filter(
         (record) => !record.check_in_at || record.status === 'absent',
       ).length;
@@ -728,6 +866,10 @@ export class ClassAttendanceService {
       ).length;
       return {
         ...klass,
+        administrativeClass:
+          administrativeClass && administrativeClass !== 'all'
+            ? administrativeClass
+            : null,
         totalSessions,
         attended,
         onTime,
@@ -738,12 +880,18 @@ export class ClassAttendanceService {
     });
   }
 
-  private async getAttendanceRecords(classIds: string[], start: string, end: string) {
+  private async getAttendanceRecords(
+    classIds: string[],
+    start: string,
+    end: string,
+    administrativeClass?: string,
+  ) {
     if (classIds.length === 0) return [];
     return (await this.dataSource.manager.query(
       `
       SELECT car.class_section_id AS class_id,
              cs.class_code,
+             subj.subject_code,
              subj.subject_name,
              COALESCE(room.room_name, split_part(cs.note, ' | ', 2)) AS room,
              car.attendance_date,
@@ -753,6 +901,7 @@ export class ClassAttendanceService {
              car.confidence,
              car.evidence_image,
              st.student_code,
+             st.administrative_class,
              u.full_name AS student_name
         FROM class_attendance_records car
         JOIN class_sections cs ON cs.id = car.class_section_id
@@ -762,9 +911,17 @@ export class ClassAttendanceService {
         LEFT JOIN rooms room ON room.id = cs.default_room_id
        WHERE car.class_section_id = ANY($1::uuid[])
          AND car.attendance_date BETWEEN $2::date AND $3::date
+         AND ($4::varchar IS NULL OR lower(st.administrative_class) = lower($4::varchar))
        ORDER BY car.attendance_date ASC, cs.class_code ASC, st.student_code ASC
       `,
-      [classIds, start, end],
+      [
+        classIds,
+        start,
+        end,
+        administrativeClass && administrativeClass !== 'all'
+          ? administrativeClass
+          : null,
+      ],
     )) as any[];
   }
 
@@ -819,13 +976,20 @@ export class ClassAttendanceService {
       .toLowerCase();
   }
 
-  private async resolveStudent(userId: string, requestedStudentId: string | undefined, roles: RoleCode[]) {
+  private async resolveStudent(
+    userId: string,
+    requestedStudentId: string | undefined,
+    roles: RoleCode[],
+  ) {
     const params: unknown[] = [];
     let where = `st.user_id = $1`;
     params.push(userId);
     if (
       requestedStudentId &&
-      (roles.includes('SYSTEM_ADMIN') || roles.includes('ADMIN') || roles.includes('BUSINESS_ADMIN') || roles.includes('TEACHER'))
+      (roles.includes('SYSTEM_ADMIN') ||
+        roles.includes('ADMIN') ||
+        roles.includes('BUSINESS_ADMIN') ||
+        roles.includes('TEACHER'))
     ) {
       where = `(st.id::text = $1::text OR st.student_code = $1::varchar)`;
       params[0] = requestedStudentId;
@@ -858,15 +1022,21 @@ export class ClassAttendanceService {
   private summarizeEntries(entries: any[]) {
     const attended = entries.filter((item) => item.checkInAt).length;
     const late = entries.filter((item) => item.status === 'late').length;
-    const onTime = entries.filter((item) => item.status === 'on_time' || item.status === 'left').length;
-    const absent = entries.filter((item) => !item.checkInAt || item.status === 'absent').length;
+    const onTime = entries.filter(
+      (item) => item.status === 'on_time' || item.status === 'left',
+    ).length;
+    const absent = entries.filter(
+      (item) => !item.checkInAt || item.status === 'absent',
+    ).length;
     return {
       totalSessions: entries.length,
       attended,
       onTime,
       late,
       absent,
-      attendanceRate: entries.length ? Math.round((attended / entries.length) * 100) : 0,
+      attendanceRate: entries.length
+        ? Math.round((attended / entries.length) * 100)
+        : 0,
     };
   }
 
@@ -884,7 +1054,9 @@ export class ClassAttendanceService {
         ],
       ],
     )) as Array<{ config_key: string; config_value: string | null }>;
-    const byKey = new Map(rows.map((row) => [row.config_key, row.config_value]));
+    const byKey = new Map(
+      rows.map((row) => [row.config_key, row.config_value]),
+    );
     const classStartTime =
       byKey.get(CLASS_ATTENDANCE_START_TIME_KEY) ?? DEFAULT_CLASS_START_TIME;
     const lateThresholdMinutes = Number(
@@ -1019,12 +1191,15 @@ export class ClassAttendanceService {
   }
 
   private formatDateText(value: Date | string) {
-    return new Date(`${this.toDateKey(value)}T00:00:00`).toLocaleDateString('vi-VN', {
-      weekday: 'short',
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
+    return new Date(`${this.toDateKey(value)}T00:00:00`).toLocaleDateString(
+      'vi-VN',
+      {
+        weekday: 'short',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      },
+    );
   }
 
   private statusLabel(status: string | null | undefined) {
