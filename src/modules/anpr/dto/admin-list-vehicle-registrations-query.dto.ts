@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsUUID, IsString, MaxLength } from 'class-validator';
-import { Expose } from 'class-transformer';
+import { Expose, Transform } from 'class-transformer';
 import { ListVehicleRegistrationsQueryDto } from './list-vehicle-registrations-query.dto.js';
 
 /**
@@ -34,4 +34,18 @@ export class AdminListVehicleRegistrationsQueryDto extends ListVehicleRegistrati
   @IsString()
   @MaxLength(255)
   owner?: string;
+
+  // Ô tìm kiếm chung của FE: OR trên tên (không phân biệt dấu) / email chủ xe / biển số.
+  @ApiPropertyOptional({
+    description:
+      'Tìm chung theo tên, email chủ xe hoặc biển số (khớp một phần)',
+    maxLength: 100,
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @MaxLength(100)
+  search?: string;
 }

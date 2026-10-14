@@ -40,6 +40,10 @@ export class VehicleControlListEntity {
   })
   listType: string;
 
+  // Loại phương tiện tùy chọn (car/motorbike/truck/bus/other) — chỉ mô tả/lọc.
+  @Column({ name: 'vehicle_type', type: 'varchar', length: 20, nullable: true })
+  vehicleType: string | null;
+
   @Column({ name: 'reason', type: 'varchar', length: 255, nullable: true })
   reason: string | null;
 
