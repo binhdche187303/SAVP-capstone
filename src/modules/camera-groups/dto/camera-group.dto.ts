@@ -4,7 +4,7 @@ import { Expose } from 'class-transformer';
 export class CreateCameraGroupDto {
   @Expose({ name: 'group_code' })
   @IsString()
-  @Matches(/^[A-Za-z0-9_-]{2,50}$/, { message: 'group_code chỉ gồm chữ, số, "_" và "-" (2–50 ký tự)' })
+  @Matches(/^[A-Za-z0-9_-]{2,50}$/, { message: 'Mã nhóm chỉ gồm chữ không dấu, số, "_" hoặc "-" (2–50 ký tự)' })
   groupCode: string;
 
   @Expose({ name: 'group_name' })

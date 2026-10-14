@@ -202,6 +202,16 @@ export class VehicleRegistrationService {
         o: `%${query.owner}%`,
       });
     }
+    if (query.search) {
+      // Escape ký tự đặc biệt của LIKE để từ khóa được so khớp nguyên văn
+      const kw = `%${query.search.replace(/[\\%_]/g, '\\$&')}%`;
+      const plate = normalizePlate(query.search);
+      const plateCond = plate ? ' OR vr.plateNumber ILIKE :sp' : '';
+      qb.andWhere(
+        `(unaccent(u.fullName) ILIKE unaccent(:s) OR u.email ILIKE :s${plateCond})`,
+        { s: kw, ...(plate ? { sp: `%${plate}%` } : {}) },
+      );
+    }
 
     const [items, total] = await qb
       .orderBy('vr.createdAt', 'DESC')

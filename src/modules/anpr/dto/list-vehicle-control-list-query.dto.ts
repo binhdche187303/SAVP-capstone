@@ -12,7 +12,9 @@ import {
 import { Type, Transform, Expose } from 'class-transformer';
 import {
   CONTROL_LIST_TYPES,
+  CONTROL_LIST_VEHICLE_TYPES,
   type ControlListType,
+  type ControlListVehicleType,
 } from './create-vehicle-control-list.dto.js';
 
 /**
@@ -68,4 +70,13 @@ export class ListVehicleControlListQueryDto {
   @IsOptional()
   @IsBoolean()
   active?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Lọc theo loại phương tiện',
+    enum: CONTROL_LIST_VEHICLE_TYPES,
+  })
+  @Expose({ name: 'vehicle_type' })
+  @IsOptional()
+  @IsIn(CONTROL_LIST_VEHICLE_TYPES)
+  vehicleType?: ControlListVehicleType;
 }

@@ -60,6 +60,7 @@ export class VehicleControlListService {
       plateNumber,
       plateRaw: dto.plateRaw,
       listType: dto.listType,
+      vehicleType: dto.vehicleType ?? null,
       reason: dto.reason ?? null,
       active: true,
       createdBy: currentUserId,
@@ -92,6 +93,9 @@ export class VehicleControlListService {
     }
     if (query.listType) {
       where.listType = query.listType;
+    }
+    if (query.vehicleType) {
+      where.vehicleType = query.vehicleType;
     }
     // active=false là filter hợp lệ — PHẢI check !== undefined, KHÔNG if-truthy.
     if (query.active !== undefined) {
@@ -169,6 +173,10 @@ export class VehicleControlListService {
     }
     if (dto.active !== undefined) {
       entity.active = dto.active;
+      changed = true;
+    }
+    if (dto.vehicleType !== undefined) {
+      entity.vehicleType = dto.vehicleType;
       changed = true;
     }
     if (!changed) {

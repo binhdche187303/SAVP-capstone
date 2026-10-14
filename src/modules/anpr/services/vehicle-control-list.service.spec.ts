@@ -55,6 +55,20 @@ describe('VehicleControlListService (VCL-001 / UC8)', () => {
       expect(repo.save.mock.calls[0][0].reason).toBeNull();
     });
 
+    it('BUG-004: lưu vehicleType; không gửi → null', async () => {
+      await service.create('admin1', {
+        plateRaw: '30A12345',
+        listType: 'blocklist',
+        vehicleType: 'car',
+      } as any);
+      expect(repo.save.mock.calls[0][0].vehicleType).toBe('car');
+      await service.create('admin1', {
+        plateRaw: '30A12346',
+        listType: 'blocklist',
+      } as any);
+      expect(repo.save.mock.calls[1][0].vehicleType).toBeNull();
+    });
+
     it('DATA-03 (crux): trùng (plate, list_type) còn sống dù bản ghi cũ active=false → 409, KHÔNG save', async () => {
       repo.findOne.mockResolvedValue({
         id: 'old',
@@ -139,6 +153,13 @@ describe('VehicleControlListService (VCL-001 / UC8)', () => {
       await service.list(q({ plate: '30a-123.45' }));
       expect(repo.findAndCount.mock.calls[0][0].where.plateNumber).toBe(
         '30A12345',
+      );
+    });
+
+    it('BUG-004: filter vehicleType → where.vehicleType', async () => {
+      await service.list(q({ vehicleType: 'motorbike' }));
+      expect(repo.findAndCount.mock.calls[0][0].where.vehicleType).toBe(
+        'motorbike',
       );
     });
 
@@ -294,6 +315,15 @@ describe('VehicleControlListService (VCL-001 / UC8)', () => {
       expect(saved.active).toBe(false);
       expect(saved.plateNumber).toBe('30A12345');
       expect(saved.listType).toBe('blocklist');
+    });
+
+    it('BUG-004: đổi vehicleType; null → xóa loại xe', async () => {
+      repo.findOne.mockResolvedValue({ ...owned(), vehicleType: 'car' });
+      await service.update('cl1', { vehicleType: null });
+      expect(repo.save.mock.calls[0][0].vehicleType).toBeNull();
+      repo.findOne.mockResolvedValue(owned());
+      await service.update('cl1', { vehicleType: 'bus' });
+      expect(repo.save.mock.calls[1][0].vehicleType).toBe('bus');
     });
 
     it('undefined: KHÔNG gửi reason → giữ nguyên', async () => {

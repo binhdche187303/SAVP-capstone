@@ -16,10 +16,15 @@ import {
 } from 'class-validator';
 import { Type, Expose } from 'class-transformer';
 
-/** UC-122 (ARL-001): 7 loại sự kiện cảnh báo đã duyệt (BAO_CAO_DE_XUAT_3_BANG_ALERT_CENTER.md). */
+/**
+ * UC-122 (ARL-001): 7 loại sự kiện cảnh báo đã duyệt (BAO_CAO_DE_XUAT_3_BANG_ALERT_CENTER.md)
+ * + `vehicle_unauthorized` (xe có đăng ký nhưng chờ duyệt/bị từ chối — vehicle-control-alert.service
+ * đã sinh và đọc rule qua findEffectiveRule, trước đây chỉ có rule seed nên không tạo/sửa/lọc được).
+ */
 export const ALERT_TYPES = [
   'stranger',
   'unknown_vehicle',
+  'vehicle_unauthorized',
   'vehicle_control_match',
   'crowd',
   'intrusion',

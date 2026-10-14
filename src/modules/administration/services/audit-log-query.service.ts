@@ -8,7 +8,10 @@ import {
   AuditLogQueryRepository,
   AuditLogFilters,
 } from '../repositories/audit-log-query.repository.js';
-import { QueryAuditLogsDto } from '../dto/query-audit-logs.dto.js';
+import {
+  QueryAuditLogsDto,
+  normalizeSearchFields,
+} from '../dto/query-audit-logs.dto.js';
 import {
   AuditActionTypeDto,
   AuditLogItemDto,
@@ -98,7 +101,7 @@ export class AuditLogQueryService {
     if (query.actionType) filters.actionType = query.actionType;
     if (query.entityType) filters.entityType = query.entityType;
     if (query.severity) filters.severity = query.severity;
-    return filters;
+    return { ...filters, ...normalizeSearchFields(query) };
   }
 
   /**

@@ -8,7 +8,13 @@ export interface AuditLogFilters {
   actionType?: string;
   entityType?: string;
   severity?: string;
+  search?: string;
+  searchActionTypes?: string[];
+  searchEntityTypes?: string[];
 }
+
+/** Escape ký tự đặc biệt của LIKE để từ khóa được so khớp nguyên văn. */
+const escapeLike = (value: string): string => value.replace(/[\\%_]/g, '\\$&');
 
 export interface AuditLogRow {
   id: string;
@@ -272,6 +278,29 @@ export class AuditLogQueryRepository {
     if (filters.severity) {
       params.push(filters.severity);
       conditions.push(`al.severity = $${params.length}`);
+    }
+
+    if (filters.search) {
+      // Subquery thay vì JOIN để countMatching vẫn không cần JOIN users.
+      // Dòng user_id NULL hiển thị "Hệ thống" ở FE nên cũng khớp từ khóa đó.
+      params.push(`%${escapeLike(filters.search)}%`);
+      const p = `$${params.length}`;
+      const any: string[] = [
+        `al.user_id IN (SELECT su.id FROM users su WHERE unaccent(su.full_name) ILIKE unaccent(${p}) OR su.email ILIKE ${p})`,
+        `(al.user_id IS NULL AND unaccent('Hệ thống') ILIKE unaccent(${p}))`,
+        `replace(al.action_type, '_', ' ') ILIKE replace(${p}, '_', ' ')`,
+        `al.entity_type ILIKE ${p}`,
+        `al.ip_address ILIKE ${p}`,
+      ];
+      if (filters.searchActionTypes?.length) {
+        params.push(filters.searchActionTypes);
+        any.push(`al.action_type = ANY($${params.length})`);
+      }
+      if (filters.searchEntityTypes?.length) {
+        params.push(filters.searchEntityTypes);
+        any.push(`al.entity_type = ANY($${params.length})`);
+      }
+      conditions.push(`(${any.join(' OR ')})`);
     }
 
     const sql =

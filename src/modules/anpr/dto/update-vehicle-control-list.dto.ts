@@ -1,5 +1,17 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsBoolean, MaxLength } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsBoolean,
+  IsIn,
+  MaxLength,
+} from 'class-validator';
+import { Expose, Transform } from 'class-transformer';
+import {
+  CONTROL_LIST_VEHICLE_TYPES,
+  type ControlListVehicleType,
+  toVehicleTypeValue,
+} from './create-vehicle-control-list.dto.js';
 
 /**
  * UpdateVehicleControlListDto (VCL-001 / UC8) — body PATCH /anpr/admin/control-list/:id.
@@ -22,4 +34,18 @@ export class UpdateVehicleControlListDto {
   @IsOptional()
   @IsBoolean()
   active?: boolean;
+
+  // null/'' ⇒ xóa loại xe (về "Không xác định"); undefined ⇒ giữ nguyên.
+  @ApiPropertyOptional({
+    description: 'Loại phương tiện (null = không xác định)',
+    enum: CONTROL_LIST_VEHICLE_TYPES,
+    nullable: true,
+  })
+  @Expose({ name: 'vehicle_type' })
+  @Transform(toVehicleTypeValue)
+  @IsOptional()
+  @IsIn(CONTROL_LIST_VEHICLE_TYPES, {
+    message: 'Loại phương tiện không hợp lệ',
+  })
+  vehicleType?: ControlListVehicleType | null;
 }

@@ -289,6 +289,65 @@ describe('AuditLogQueryRepository', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // BUG-005: tìm kiếm từ khóa
+  // ---------------------------------------------------------------------------
+  describe('search filter', () => {
+    it('should OR-match actor name/email, action, entity, IP inside one AND group', async () => {
+      mockDataSource.query.mockResolvedValue([]);
+      await repository.findPaginated(
+        { search: 'admin', severity: 'info' },
+        1,
+        10,
+      );
+
+      const [sql, params] = mockDataSource.query.mock.calls[0] as [
+        string,
+        unknown[],
+      ];
+      expect(sql).toMatch(/unaccent\(su\.full_name\) ILIKE unaccent\(\$\d+\)/);
+      expect(sql).toMatch(/su\.email ILIKE/);
+      expect(sql).toMatch(/al\.entity_type ILIKE/);
+      expect(sql).toMatch(/al\.ip_address ILIKE/);
+      expect(sql).toMatch(/al\.severity = \$1 AND \(/);
+      expect(params).toContain('%admin%');
+    });
+
+    it('should escape LIKE wildcards and keep keyword as a parameter', async () => {
+      mockDataSource.query.mockResolvedValue([{ total: '0' }]);
+      await repository.countMatching({ search: "50%_x'; DROP" });
+
+      const [sql, params] = mockDataSource.query.mock.calls[0] as [
+        string,
+        unknown[],
+      ];
+      expect(sql).not.toContain('DROP');
+      expect(sql).not.toMatch(/\bJOIN\b/i);
+      expect(params[0]).toBe("%50\\%\\_x'; DROP%");
+    });
+
+    it('should add action/entity codes resolved from Vietnamese labels as OR', async () => {
+      mockDataSource.query.mockResolvedValue([]);
+      await repository.findPaginated(
+        {
+          search: 'đăng nhập',
+          searchActionTypes: ['login'],
+          searchEntityTypes: ['auth'],
+        },
+        1,
+        10,
+      );
+
+      const [sql, params] = mockDataSource.query.mock.calls[0] as [
+        string,
+        unknown[],
+      ];
+      expect(sql).toMatch(/OR al\.action_type = ANY\(\$2\)/);
+      expect(sql).toMatch(/OR al\.entity_type = ANY\(\$3\)/);
+      expect(params.slice(0, 3)).toEqual(['%đăng nhập%', ['login'], ['auth']]);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // T023: Pagination correctness — page 2 with 45 records returns rows 21-40
   // ---------------------------------------------------------------------------
   describe('T023 — pagination correctness', () => {
