@@ -63,7 +63,12 @@ export class UserJourneyController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('zones.gate_log.read')
   @UsePipes(JOURNEY_PIPE)
-  async userJourney(@Query() query: UserJourneyQueryDto) {
+  async userJourney(
+    @Query() query: UserJourneyQueryDto,
+    @CurrentUser() user: { userId: string },
+  ) {
+    // Quyền riêng tư: admin xem mọi người, MANAGER chỉ phòng ban mình — kiểm + ghi audit trước khi đọc.
+    await this.userJourneyService.authorizeView(user.userId, query.userId, query.date ?? query.to);
     const data = query.to
       ? await this.userJourneyService.getUserJourneyRange(
           query.userId,
