@@ -9,6 +9,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import {
+  Between,
   DataSource,
   In,
   LessThan,
@@ -45,6 +46,7 @@ import {
 import { RoomEventEntity } from '../../rooms/entities/room-event.entity.js';
 import { RoomEntity } from '../../rooms/entities/room.entity.js';
 import {
+  NotificationEntity,
   NotificationType,
   NotificationChannel,
 } from '../../notifications/entities/notification.entity.js';
@@ -74,6 +76,9 @@ const SUPPORTED_REQUEST_TYPES = [
   MeetingRequestType.UPDATE_ROOM,
 ];
 
+const AUTO_REJECT_ROOM_TAKEN_REASON =
+  'Phòng đã được cấp cho cuộc họp khác trong cùng khung giờ. Vui lòng chọn phòng hoặc thời gian khác.';
+
 interface MeetingApprovalResult {
   meetingId: string;
   meetingTitle: string;
@@ -96,6 +101,7 @@ interface MeetingApprovalResult {
   decisionNote: string | null;
   oldRoomName: string | null;
   newRoomName: string | null;
+  targetRoomId: string;
 }
 
 @Injectable()
@@ -576,6 +582,7 @@ export class MeetingRequestReviewService {
         decisionNote: dto.decisionNote || null,
         oldRoomName,
         newRoomName,
+        targetRoomId,
       };
     });
 
@@ -601,6 +608,15 @@ export class MeetingRequestReviewService {
       action: 'approved',
     });
 
+    await this.rejectConflictingPendingRequests(
+      requestId,
+      approvalResult.targetRoomId,
+      approvalResult.meetingStartTime,
+      approvalResult.meetingEndTime,
+      authUser,
+      clientContext,
+    );
+
     return new ApproveResponseDto({
       requestId,
       approvalStatus: ApprovalStatus.APPROVED,
@@ -608,6 +624,68 @@ export class MeetingRequestReviewService {
       bookingId: approvalResult.bookingId,
       appliedAt: approvalResult.appliedAt,
     });
+  }
+
+  /**
+   * Sau khi duyệt 1 yêu cầu, tự từ chối các yêu cầu PENDING khác xin cùng phòng
+   * trùng khung giờ (tính cả buffer) — các yêu cầu đó chắc chắn không thể duyệt
+   * được nữa (approve() sẽ chặn ROOM_CONFLICT), nên báo ngay cho người đặt để
+   * kịp chọn phòng khác thay vì treo tới khi hết hạn. Tái dùng reject() để có
+   * đủ audit/meeting event/thông báo (kèm gợi ý phòng trống) như từ chối tay.
+   * Best-effort: lỗi từng yêu cầu chỉ log, KHÔNG ảnh hưởng yêu cầu vừa duyệt.
+   */
+  private async rejectConflictingPendingRequests(
+    approvedRequestId: string,
+    roomId: string,
+    startTime: Date,
+    endTime: Date,
+    authUser: AuthUser,
+    clientContext: ClientContext,
+  ): Promise<void> {
+    let candidateIds: string[] = [];
+    try {
+      const bufferMs = await this.getRoomBookingBufferMs();
+      const rows: Array<{ id: string }> = await this.dataSource.manager.query(
+        `SELECT mr.id
+           FROM meeting_requests mr
+           JOIN meetings m ON m.id = mr.meeting_id
+          WHERE mr.approval_status = $1
+            AND mr.id <> $2
+            AND mr.request_type = ANY($3)
+            AND COALESCE(mr.target_room_id, m.room_id) = $4
+            AND COALESCE(mr.requested_start_time, m.start_time) < $5
+            AND COALESCE(mr.requested_end_time, m.end_time) > $6`,
+        [
+          ApprovalStatus.PENDING,
+          approvedRequestId,
+          SUPPORTED_REQUEST_TYPES,
+          roomId,
+          new Date(endTime.getTime() + bufferMs),
+          new Date(startTime.getTime() - bufferMs),
+        ],
+      );
+      candidateIds = rows.map((r) => r.id);
+    } catch (error) {
+      this.logger.warn(
+        `[Approve] Failed to find conflicting pending requests for ${approvedRequestId}: ${(error as Error).message}`,
+      );
+      return;
+    }
+
+    for (const id of candidateIds) {
+      try {
+        await this.reject(
+          id,
+          { rejectionReason: AUTO_REJECT_ROOM_TAKEN_REASON },
+          authUser,
+          clientContext,
+        );
+      } catch (error) {
+        this.logger.warn(
+          `[Approve] Auto-reject conflicting request ${id} failed: ${(error as Error).message}`,
+        );
+      }
+    }
   }
 
   private async enqueueApprovalNotifications(
@@ -1217,7 +1295,7 @@ export class MeetingRequestReviewService {
    * giờ họp gốc với CREATE_MEETING, giờ MỚI xin đổi với UPDATE_TIME/UPDATE_ROOM)
    * mà chưa ai duyệt/từ chối, tự chuyển sang EXPIRED. Gọi bởi cron
    * `meeting-request-expire` (scheduler.service.ts), gated SCHEDULER_ENABLED &&
-   * SCHEDULER_MEETING_REQUEST_EXPIRE_ENABLED (default OFF). Mỗi request xử lý
+   * SCHEDULER_MEETING_REQUEST_EXPIRE_ENABLED (default ON). Mỗi request xử lý
    * trong transaction riêng, lỗi 1 request KHÔNG chặn batch.
    */
   async expireOverdueBatch(): Promise<{
@@ -1257,10 +1335,134 @@ export class MeetingRequestReviewService {
     return { scanned: candidates.length, expired, failed };
   }
 
+  /**
+   * Nhắc người duyệt các meeting_requests PENDING sắp tới deadline
+   * (requestedStartTime) trong vòng `meeting_request_reminder_minutes`
+   * (system_configs, mặc định 120 phút). Gọi bởi cron
+   * `meeting-request-reminder`, gated SCHEDULER_ENABLED &&
+   * SCHEDULER_MEETING_REQUEST_REMINDER_ENABLED (default ON).
+   *
+   * - Mỗi request chỉ nhắc 1 lần: đã có notification
+   *   MEETING_REQUEST_APPROVAL_REMINDER cho request đó thì bỏ qua.
+   * - Request gửi khi đã nằm trong cửa sổ nhắc thì không nhắc — người duyệt
+   *   vừa nhận MEETING_REQUEST_CREATED rồi.
+   * - Không nhắc chính người gửi (không được tự duyệt, FR-004b).
+   */
+  async remindPendingApprovalsBatch(): Promise<{
+    scanned: number;
+    reminded: number;
+    failed: number;
+  }> {
+    const leadMs = await this.getApprovalReminderLeadMs();
+    const now = new Date();
+    const candidates = await this.dataSource
+      .getRepository(MeetingRequestEntity)
+      .find({
+        where: {
+          approvalStatus: ApprovalStatus.PENDING,
+          requestType: In([
+            MeetingRequestType.CREATE_MEETING,
+            MeetingRequestType.UPDATE_TIME,
+            MeetingRequestType.UPDATE_ROOM,
+          ]),
+          requestedStartTime: Between(now, new Date(now.getTime() + leadMs)),
+        },
+      });
+
+    const due = candidates.filter(
+      (r) =>
+        r.meetingId &&
+        r.requestedStartTime &&
+        r.requestedAt.getTime() <= r.requestedStartTime.getTime() - leadMs,
+    );
+    if (due.length === 0) {
+      return { scanned: candidates.length, reminded: 0, failed: 0 };
+    }
+
+    const alreadyReminded = new Set(
+      (
+        await this.dataSource.getRepository(NotificationEntity).find({
+          select: { relatedEntityId: true },
+          where: {
+            notificationType:
+              NotificationType.MEETING_REQUEST_APPROVAL_REMINDER,
+            relatedEntityType: 'meeting_request',
+            relatedEntityId: In(due.map((r) => r.id)),
+          },
+        })
+      ).map((n) => n.relatedEntityId),
+    );
+    const pending = due.filter((r) => !alreadyReminded.has(r.id));
+    if (pending.length === 0) {
+      return { scanned: candidates.length, reminded: 0, failed: 0 };
+    }
+
+    const approverIds =
+      await this.meetingsService.getMeetingRequestApproverIds();
+    const meetings = await this.dataSource.getRepository(MeetingEntity).find({
+      where: { id: In(pending.map((r) => r.meetingId!)) },
+    });
+    const titleById = new Map(meetings.map((m) => [m.id, m.title]));
+
+    let reminded = 0;
+    let failed = 0;
+    for (const request of pending) {
+      const recipientUserIds = approverIds.filter(
+        (id) => id !== request.requestedBy,
+      );
+      if (recipientUserIds.length === 0) continue;
+      const title = titleById.get(request.meetingId!) ?? '';
+      try {
+        await this.notificationsService.createNotification({
+          notificationType: NotificationType.MEETING_REQUEST_APPROVAL_REMINDER,
+          channel: NotificationChannel.IN_APP,
+          subject: `Yêu cầu cuộc họp "${title}" sắp đến giờ nhưng chưa được duyệt`,
+          content: `Yêu cầu cuộc họp "${title}" lúc ${formatDateTimeVN(request.requestedStartTime!)} vẫn đang chờ duyệt. Nếu không được duyệt trước giờ họp, yêu cầu sẽ tự hết hạn.`,
+          relatedEntityType: 'meeting_request',
+          relatedEntityId: request.id,
+          recipientScope: 'user_list',
+          recipientUserIds,
+        });
+        reminded++;
+      } catch (e) {
+        failed++;
+        this.logger.error(
+          `remindPendingApprovalsBatch: request ${request.id} failed: ${
+            e instanceof Error ? e.message : 'unknown'
+          }`,
+        );
+      }
+    }
+    return { scanned: candidates.length, reminded, failed };
+  }
+
+  private async getApprovalReminderLeadMs(): Promise<number> {
+    const DEFAULT_MINUTES = 120;
+    try {
+      const config = await this.dataSource
+        .getRepository(SystemConfigEntity)
+        .findOne({
+          where: { configKey: 'meeting_request_reminder_minutes' },
+          order: { updatedAt: 'DESC' },
+        });
+      const parsed = parseInt(config?.configValue ?? '', 10);
+      if (isNaN(parsed) || parsed <= 0) return DEFAULT_MINUTES * 60_000;
+      return parsed * 60_000;
+    } catch {
+      return DEFAULT_MINUTES * 60_000;
+    }
+  }
+
   /** Idempotent guard: re-check PENDING trong lock, trả false nếu đã xử lý ở tick khác. */
   private async expireOne(requestId: string): Promise<boolean> {
     let expiredMeetingId: string | null = null;
     let expiredRequestType: MeetingRequestType | null = null;
+    let notifyTarget: {
+      requesterId: string;
+      hostId: string | null;
+      meetingTitle: string;
+      startTime: Date | null;
+    } | null = null;
 
     const done = await this.dataSource.transaction(async (em) => {
       const request = await em.findOne(MeetingRequestEntity, {
@@ -1279,6 +1481,12 @@ export class MeetingRequestReviewService {
       }
       expiredMeetingId = meeting.id;
       expiredRequestType = request.requestType;
+      notifyTarget = {
+        requesterId: request.requestedBy,
+        hostId: meeting.hostId,
+        meetingTitle: meeting.title,
+        startTime: request.requestedStartTime,
+      };
 
       const isUpdateRequest =
         request.requestType === MeetingRequestType.UPDATE_TIME ||
@@ -1388,6 +1596,61 @@ export class MeetingRequestReviewService {
       }
     }
 
+    if (done && expiredMeetingId && notifyTarget) {
+      await this.notifyRequestExpired(
+        requestId,
+        expiredMeetingId,
+        expiredRequestType,
+        notifyTarget,
+      );
+    }
+
     return done;
+  }
+
+  /**
+   * Best-effort — báo người đặt (+ chủ trì nếu khác người) rằng yêu cầu đã
+   * hết hạn do không được duyệt trước giờ họp. Lỗi gửi KHÔNG ảnh hưởng việc
+   * expire (đã commit ở transaction trên).
+   */
+  private async notifyRequestExpired(
+    requestId: string,
+    meetingId: string,
+    requestType: MeetingRequestType | null,
+    target: {
+      requesterId: string;
+      hostId: string | null;
+      meetingTitle: string;
+      startTime: Date | null;
+    },
+  ): Promise<void> {
+    const isUpdateRequest =
+      requestType === MeetingRequestType.UPDATE_TIME ||
+      requestType === MeetingRequestType.UPDATE_ROOM;
+    const recipientUserIds = [target.requesterId];
+    if (target.hostId && target.hostId !== target.requesterId) {
+      recipientUserIds.push(target.hostId);
+    }
+    const when = target.startTime
+      ? ` lúc ${formatDateTimeVN(target.startTime)}`
+      : '';
+    try {
+      await this.notificationsService.createNotification({
+        notificationType: NotificationType.MEETING_REQUEST_EXPIRED,
+        channel: NotificationChannel.IN_APP,
+        subject: `Yêu cầu cuộc họp "${target.meetingTitle}" đã hết hạn`,
+        content: isUpdateRequest
+          ? `Yêu cầu đổi lịch cuộc họp "${target.meetingTitle}"${when} đã hết hạn do không được duyệt kịp. Cuộc họp giữ nguyên lịch cũ.`
+          : `Yêu cầu cuộc họp "${target.meetingTitle}"${when} đã hết hạn do không được duyệt trước giờ họp. Cuộc họp đã bị hủy.`,
+        relatedEntityType: 'meeting',
+        relatedEntityId: meetingId,
+        recipientScope: 'user_list',
+        recipientUserIds,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `[expireOne] Failed to notify expiry of request ${requestId}: ${(error as Error).message}`,
+      );
+    }
   }
 }

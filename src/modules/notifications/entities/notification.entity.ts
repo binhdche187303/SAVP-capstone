@@ -19,6 +19,10 @@ export enum NotificationType {
   MEETING_REQUEST_CREATED = 'meeting_request_created',
   MEETING_REQUEST_APPROVED = 'meeting_request_approved',
   MEETING_REQUEST_REJECTED = 'meeting_request_rejected',
+  // Cron meeting-request-expire: báo người đặt + chủ trì khi yêu cầu hết hạn.
+  MEETING_REQUEST_EXPIRED = 'meeting_request_expired',
+  // Cron meeting-request-reminder: nhắc người duyệt yêu cầu sắp đến giờ họp.
+  MEETING_REQUEST_APPROVAL_REMINDER = 'meeting_request_approval_reminder',
   MEETING_TIME_UPDATED = 'meeting_time_updated',
   MEETING_ROOM_UPDATED = 'meeting_room_updated',
   MEETING_PARTICIPANT_REMOVED = 'meeting_participant_removed',

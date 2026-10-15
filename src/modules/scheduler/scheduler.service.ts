@@ -57,6 +57,7 @@ export class SchedulerService {
   private readonly autoCompleteEnabled: boolean;
   private readonly meetingStatusEnabled: boolean;
   private readonly meetingRequestExpireEnabled: boolean;
+  private readonly meetingRequestReminderEnabled: boolean;
   private readonly securityAlertAutoResolveEnabled: boolean;
   private readonly recordingMaxDurationEnabled: boolean;
   private readonly kpiRollupEnabled: boolean;
@@ -153,10 +154,15 @@ export class SchedulerService {
       'SCHEDULER_MEETING_STATUS_ENABLED',
       false,
     );
-    // F-R4b: cron tự expire meeting_requests PENDING quá deadline (default OFF).
+    // F-R4b: cron tự expire meeting_requests PENDING quá deadline (default ON).
     this.meetingRequestExpireEnabled = this.configService.get<boolean>(
       'SCHEDULER_MEETING_REQUEST_EXPIRE_ENABLED',
-      false,
+      true,
+    );
+    // Cron nhắc người duyệt meeting_requests PENDING sắp đến giờ họp (default ON).
+    this.meetingRequestReminderEnabled = this.configService.get<boolean>(
+      'SCHEDULER_MEETING_REQUEST_REMINDER_ENABLED',
+      true,
     );
     // ASC-001: cron tự resolve security_alerts không tái phát quá N phút (default OFF).
     this.securityAlertAutoResolveEnabled = this.configService.get<boolean>(
@@ -195,7 +201,7 @@ export class SchedulerService {
     );
 
     this.logger.log(
-      `SchedulerService initialized — enabled=${this.schedulerEnabled} | no-show=${this.noShowEnabled} | auto-release=${this.autoReleaseEnabled} | reminder=${this.reminderEnabled} | device-offline-detect=${this.deviceOfflineDetectEnabled} | face-sync=${this.faceSyncEnabled} | early-vacancy=${this.earlyVacancyEnabled} | ivss-sync=${this.ivssSyncEnabled} | ivss-portrait=${this.ivssPortraitEnabled} | restricted-zone=${this.restrictedZoneEnabled} | crowd-alert=${this.crowdAlertEnabled} | gate-pairing=${this.gatePairingEnabled} | auto-complete=${this.autoCompleteEnabled} | meeting-status=${this.meetingStatusEnabled} | meeting-request-expire=${this.meetingRequestExpireEnabled} | security-alert-auto-resolve=${this.securityAlertAutoResolveEnabled} | recording-max-duration=${this.recordingMaxDurationEnabled} | kpi-rollup=${this.kpiRollupEnabled} | visitor=${this.visitorEnabled} | report-schedule=${this.reportScheduleEnabled} | device-maintenance=${this.deviceMaintenanceEnabled}`,
+      `SchedulerService initialized — enabled=${this.schedulerEnabled} | no-show=${this.noShowEnabled} | auto-release=${this.autoReleaseEnabled} | reminder=${this.reminderEnabled} | device-offline-detect=${this.deviceOfflineDetectEnabled} | face-sync=${this.faceSyncEnabled} | early-vacancy=${this.earlyVacancyEnabled} | ivss-sync=${this.ivssSyncEnabled} | ivss-portrait=${this.ivssPortraitEnabled} | restricted-zone=${this.restrictedZoneEnabled} | crowd-alert=${this.crowdAlertEnabled} | gate-pairing=${this.gatePairingEnabled} | auto-complete=${this.autoCompleteEnabled} | meeting-status=${this.meetingStatusEnabled} | meeting-request-expire=${this.meetingRequestExpireEnabled} | meeting-request-reminder=${this.meetingRequestReminderEnabled} | security-alert-auto-resolve=${this.securityAlertAutoResolveEnabled} | recording-max-duration=${this.recordingMaxDurationEnabled} | kpi-rollup=${this.kpiRollupEnabled} | visitor=${this.visitorEnabled} | report-schedule=${this.reportScheduleEnabled} | device-maintenance=${this.deviceMaintenanceEnabled}`,
     );
   }
 
@@ -370,7 +376,7 @@ export class SchedulerService {
    * chuyển EXPIRED: CREATE_MEETING → meeting CANCELLED; UPDATE_TIME/UPDATE_ROOM
    * → meeting revert SCHEDULED (giữ nguyên giờ/phòng cũ).
    * Gate SCHEDULER_ENABLED && SCHEDULER_MEETING_REQUEST_EXPIRE_ENABLED (default
-   * OFF). KHÔNG ném ra cron (ARCH-02).
+   * ON). KHÔNG ném ra cron (ARCH-02).
    */
   @Cron(CronExpression.EVERY_MINUTE, { name: 'meeting-request-expire' })
   async expireMeetingRequests(): Promise<void> {
@@ -384,6 +390,32 @@ export class SchedulerService {
     } catch (e) {
       this.logger.error(
         `[Scheduler] meeting-request-expire failed: ${
+          e instanceof Error ? e.message : 'unknown'
+        }`,
+      );
+    }
+  }
+
+  /**
+   * Nhắc người duyệt meeting_requests PENDING sắp đến giờ họp (mỗi request
+   * nhắc 1 lần). Gate SCHEDULER_ENABLED &&
+   * SCHEDULER_MEETING_REQUEST_REMINDER_ENABLED (default ON). KHÔNG ném ra cron.
+   */
+  @Cron(CronExpression.EVERY_5_MINUTES, { name: 'meeting-request-reminder' })
+  async remindPendingMeetingRequests(): Promise<void> {
+    if (!this.schedulerEnabled || !this.meetingRequestReminderEnabled) return;
+
+    try {
+      const r =
+        await this.meetingRequestReviewService.remindPendingApprovalsBatch();
+      if (r.reminded > 0 || r.failed > 0) {
+        this.logger.log(
+          `[Scheduler] meeting-request-reminder: scanned=${r.scanned} reminded=${r.reminded} failed=${r.failed}`,
+        );
+      }
+    } catch (e) {
+      this.logger.error(
+        `[Scheduler] meeting-request-reminder failed: ${
           e instanceof Error ? e.message : 'unknown'
         }`,
       );

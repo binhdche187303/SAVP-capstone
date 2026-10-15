@@ -751,6 +751,10 @@ export class MeetingsController {
         start,
         end,
       );
+    const faultyEquipmentsMap =
+      await this.meetingsService.getFaultyEquipmentsMap(
+        rooms.map((room) => room.id),
+      );
 
     return {
       success: true,
@@ -783,6 +787,8 @@ export class MeetingsController {
         allowRecording: room.allowRecording,
 
         pendingConflicts: pendingConflictsMap.get(room.id) ?? [],
+
+        faultyEquipments: faultyEquipmentsMap.get(room.id) ?? [],
       })),
     };
   }

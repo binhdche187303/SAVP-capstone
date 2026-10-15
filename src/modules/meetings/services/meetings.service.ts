@@ -195,6 +195,11 @@ import {
   AGENDA_ATTACHMENT_ALLOWED_MIME_TYPES,
   AGENDA_ATTACHMENT_MIME_TO_EXTENSIONS,
 } from '../constants/agenda-attachment.constants.js';
+
+export type FaultyRoomEquipment = Pick<
+  EquipmentEntity,
+  'id' | 'equipmentName' | 'equipmentType' | 'healthStatus' | 'lastIssueNote'
+>;
 export interface AuthUser {
   userId: string;
   jti?: string;
@@ -348,6 +353,43 @@ export class MeetingsService {
    * phòng có được coi là "available" hay không (chỉ approved/active mới chặn,
    * xem getRoomAvailability/getAvailableRooms).
    */
+  // Thiết bị hỏng/mất kết nối đang gắn từng phòng — hiện ngay trên danh sách
+  // phòng trống để người đặt chọn phòng hợp nhu cầu (không loại phòng khỏi danh sách).
+  async getFaultyEquipmentsMap(
+    roomIds: string[],
+  ): Promise<Map<string, FaultyRoomEquipment[]>> {
+    const map = new Map<string, FaultyRoomEquipment[]>();
+    if (roomIds.length === 0) return map;
+
+    const rows = await this.dataSource.getRepository(EquipmentEntity).find({
+      where: {
+        currentRoomId: In(roomIds),
+        healthStatus: In([HealthStatus.FAULTY, HealthStatus.OFFLINE]),
+      },
+      select: {
+        id: true,
+        currentRoomId: true,
+        equipmentName: true,
+        equipmentType: true,
+        healthStatus: true,
+        lastIssueNote: true,
+      },
+    });
+    for (const eq of rows) {
+      if (!eq.currentRoomId) continue;
+      const list = map.get(eq.currentRoomId) ?? [];
+      list.push({
+        id: eq.id,
+        equipmentName: eq.equipmentName,
+        equipmentType: eq.equipmentType,
+        healthStatus: eq.healthStatus,
+        lastIssueNote: eq.lastIssueNote,
+      });
+      map.set(eq.currentRoomId, list);
+    }
+    return map;
+  }
+
   async getPendingRoomConflictsMap(
     roomIds: string[],
     startTime: Date,
@@ -910,6 +952,10 @@ export class MeetingsService {
       .where('room.isActive = :isActive', { isActive: true })
       .andWhere('room.currentStatus != :inactiveStatus', {
         inactiveStatus: 'inactive',
+      })
+      // Loai ca phong admin dat "Ngung hoat dong"/"Bao tri" (khop check trong create()).
+      .andWhere('room.administrativeStatus NOT IN (:...blockedAdminStatuses)', {
+        blockedAdminStatuses: ['inactive', 'maintenance'],
       });
 
     if (minCapacity) {
@@ -973,7 +1019,8 @@ export class MeetingsService {
     if (
       !room ||
       room.currentStatus === 'inactive' ||
-      room.administrativeStatus === 'inactive'
+      room.administrativeStatus === 'inactive' ||
+      room.administrativeStatus === 'maintenance'
     ) {
       throw new NotFoundException({
         success: false,
@@ -1673,7 +1720,8 @@ export class MeetingsService {
       if (
         !newRoom.isActive ||
         newRoom.currentStatus === RoomStatus.INACTIVE ||
-        newRoom.administrativeStatus === RoomStatus.INACTIVE
+        newRoom.administrativeStatus === RoomStatus.INACTIVE ||
+        newRoom.administrativeStatus === RoomStatus.MAINTENANCE
       ) {
         throw new ConflictException({
           success: false,
@@ -2403,6 +2451,10 @@ export class MeetingsService {
       .andWhere('room.currentStatus != :inactiveStatus', {
         inactiveStatus: 'inactive',
       })
+      // Loai ca phong admin dat "Ngung hoat dong"/"Bao tri" (khop check trong create()).
+      .andWhere('room.administrativeStatus NOT IN (:...blockedAdminStatuses)', {
+        blockedAdminStatuses: ['inactive', 'maintenance'],
+      })
       .getMany();
 
     // Chỉ approved/active chặn phòng — pending không chặn (không còn tự động
@@ -2659,7 +2711,8 @@ export class MeetingsService {
       !newRoom ||
       !newRoom.isActive ||
       newRoom.currentStatus === 'inactive' ||
-      newRoom.administrativeStatus === 'inactive'
+      newRoom.administrativeStatus === 'inactive' ||
+      newRoom.administrativeStatus === 'maintenance'
     ) {
       throw new UnprocessableEntityException({
         success: false,

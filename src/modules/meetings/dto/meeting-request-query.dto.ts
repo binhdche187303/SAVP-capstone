@@ -17,7 +17,15 @@ export class MeetingRequestQueryDto {
 
   @IsOptional()
   @IsString()
-  @IsIn(['pending', 'approved', 'rejected', 'applied', 'cancelled', 'all'])
+  @IsIn([
+    'pending',
+    'approved',
+    'rejected',
+    'applied',
+    'cancelled',
+    'expired',
+    'all',
+  ])
   approvalStatus?: string;
 
   @IsOptional()

@@ -66,6 +66,7 @@ describe('EquipmentService.reportFault (UC-62)', () => {
   function setup(opts: {
     equipment?: EquipmentEntity | null;
     auditFails?: boolean;
+    room?: Record<string, unknown> | null;
   }) {
     const equipment =
       opts.equipment === undefined ? makeEquipment() : opts.equipment;
@@ -94,6 +95,10 @@ describe('EquipmentService.reportFault (UC-62)', () => {
     } as unknown as import('typeorm').Repository<EquipmentEntity>;
     const dataSource = {
       transaction,
+      getRepository: jest.fn(() => ({
+        findOne: jest.fn().mockResolvedValue(opts.room ?? null),
+        find: jest.fn().mockResolvedValue([]),
+      })),
     } as unknown as import('typeorm').DataSource;
 
     const notificationsService = {
@@ -104,7 +109,14 @@ describe('EquipmentService.reportFault (UC-62)', () => {
       dataSource,
       notificationsService,
     );
-    return { service, findOne, fakeEm, transaction, equipment };
+    return {
+      service,
+      findOne,
+      fakeEm,
+      transaction,
+      equipment,
+      notificationsService,
+    };
   }
 
   it('[S1] healthStatus=faulty OK → set faulty, lastIssueReportedAt, lastIssueNote', async () => {
@@ -278,5 +290,38 @@ describe('EquipmentService.reportFault (UC-62)', () => {
       (c) => c[0] === AuditLogEntity,
     );
     expect(savedAudit).toBeUndefined();
+  });
+  it('[S12] luu vi tri (phong + site) luc bao hong vao audit + thong bao', async () => {
+    const { service, fakeEm, notificationsService } = setup({
+      equipment: makeEquipment({ currentRoomId: 'room-1' }),
+      room: {
+        id: 'room-1',
+        roomName: 'Phong hop A101',
+        siteName: 'Toa nha A',
+        areaName: 'Tang 1',
+      },
+    });
+    await service.reportFault(
+      equipmentId,
+      dto({ healthStatus: HealthStatus.FAULTY }),
+      userId,
+      ip,
+    );
+    const audit = fakeEm.save.mock.calls.find(
+      (c) => c[0] === AuditLogEntity,
+    )?.[1] as { newValueJson: Record<string, unknown> };
+    expect(audit.newValueJson.location).toEqual({
+      roomId: 'room-1',
+      roomName: 'Phong hop A101',
+      siteName: 'Toa nha A',
+      areaName: 'Tang 1',
+    });
+    expect(notificationsService.createNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining(
+          'tại phòng Phong hop A101 - Toa nha A',
+        ) as string,
+      }),
+    );
   });
 });
