@@ -405,7 +405,7 @@ export class MeetingRequestReviewService {
 
       meeting.status = MeetingStatus.SCHEDULED;
       if (meeting.startTime?.getTime() !== targetStartTime?.getTime()) {
-        meeting.reminderSentAt = null; // đổi giờ ⇒ nhắc lại theo giờ mới
+        meeting.reminderSentJson = {}; // đổi giờ ⇒ nhắc lại theo giờ mới
       }
       meeting.startTime = targetStartTime;
       meeting.endTime = targetEndTime;
@@ -1462,55 +1462,82 @@ export class MeetingRequestReviewService {
   }
 
   /**
-   * Nhắc thành viên trước giờ họp theo `meetings.reminder_minutes` (người đặt lịch chọn,
-   * mặc định 10). Gọi bởi cron `notification-reminder` mỗi phút. Chỉ cuộc họp đã duyệt
-   * (scheduled) và chưa bắt đầu. Đánh dấu `reminder_sent_at` trong cùng câu UPDATE trước
-   * khi gửi ⇒ nhiều tick / nhiều instance không gửi trùng.
+   * Nhắc thành viên trước giờ họp theo `meetings.reminder_channels_json` (mỗi kênh một
+   * mốc phút, mặc định thông báo 10 phút). Gọi bởi cron `notification-reminder` mỗi phút.
+   * Chỉ cuộc họp đã duyệt (scheduled), chưa bắt đầu. Kênh gửi được: in_app, email;
+   * message / sms chưa có bộ gửi nên chỉ lưu cấu hình. Đánh dấu `reminder_sent_json`
+   * trong transaction (FOR UPDATE SKIP LOCKED) trước khi gửi ⇒ không gửi trùng.
    */
   async remindUpcomingMeetingsBatch(): Promise<{ reminded: number; failed: number }> {
-    type Due = { id: string; title: string; start_time: Date; reminder_minutes: number; room_name: string | null };
-    // UPDATE ... RETURNING trên postgres driver trả [rows, affectedCount].
-    const res: [Due[], number] = await this.dataSource.query(`
-        UPDATE meetings m SET reminder_sent_at = NOW()
-          FROM (
-            SELECT mm.id, r.room_name FROM meetings mm
-              LEFT JOIN rooms r ON r.id = mm.room_id
-             WHERE mm.deleted_at IS NULL AND mm.status = 'scheduled'
-               AND mm.reminder_minutes > 0 AND mm.reminder_sent_at IS NULL
-               AND mm.start_time > NOW()
-               AND mm.start_time <= NOW() + make_interval(mins => mm.reminder_minutes)
-             FOR UPDATE OF mm SKIP LOCKED
-          ) d
-         WHERE m.id = d.id
-        RETURNING m.id, m.title, m.start_time, m.reminder_minutes, d.room_name`);
-    const due = Array.isArray(res[0]) ? res[0] : (res as unknown as Due[]);
+    type Due = { id: string; title: string; start_time: Date; room_name: string | null; channel: 'in_app' | 'email' };
+    const due: Due[] = await this.dataSource.transaction(async (em) => {
+      const rows: Due[] = await em.query(`
+        SELECT mm.id, mm.title, mm.start_time, r.room_name, c->>'channel' AS channel
+          FROM meetings mm
+          CROSS JOIN LATERAL jsonb_array_elements(mm.reminder_channels_json) c
+          LEFT JOIN rooms r ON r.id = mm.room_id
+         WHERE mm.deleted_at IS NULL AND mm.status = 'scheduled'
+           AND mm.start_time > NOW()
+           AND c->>'channel' IN ('in_app', 'email')
+           AND NOT (mm.reminder_sent_json ? (c->>'channel'))
+           AND mm.start_time <= NOW() + make_interval(mins => (c->>'minutes')::int)
+         FOR UPDATE OF mm SKIP LOCKED`);
+      for (const row of rows) {
+        await em.query(
+          `UPDATE meetings SET reminder_sent_json = reminder_sent_json || jsonb_build_object($2::text, NOW()) WHERE id = $1`,
+          [row.id, row.channel],
+        );
+      }
+      return rows;
+    });
     let reminded = 0;
     let failed = 0;
     for (const m of due) {
-      const rows: Array<{ user_id: string }> = await this.dataSource.query(
-        `SELECT DISTINCT user_id FROM meeting_participants
-          WHERE meeting_id = $1 AND user_id IS NOT NULL AND invitation_status <> 'declined'`,
+      const rows: Array<{ user_id: string; email: string | null }> = await this.dataSource.query(
+        `SELECT DISTINCT mp.user_id, u.email FROM meeting_participants mp
+           JOIN users u ON u.id = mp.user_id
+          WHERE mp.meeting_id = $1 AND mp.invitation_status <> 'declined'`,
         [m.id],
       );
       if (rows.length === 0) continue;
       const start = new Date(m.start_time);
-      const mins = Math.max(1, Math.round((start.getTime() - Date.now()) / 60_000));
+      const left = Math.max(1, Math.round((start.getTime() - Date.now()) / 60_000));
+      const leftText = left >= 1440 && left % 1440 === 0 ? `${left / 1440} ngày`
+        : left >= 60 && left % 60 === 0 ? `${left / 60} giờ` : `${left} phút`;
+      const subject = `Sắp đến giờ họp: ${m.title}`;
+      const content = `Cuộc họp "${m.title}" bắt đầu lúc ${formatDateTimeVN(start)}${m.room_name ? ` tại ${m.room_name}` : ''} (còn khoảng ${leftText}).`;
       try {
-        await this.notificationsService.createNotification({
-          notificationType: NotificationType.REMINDER,
-          channel: NotificationChannel.IN_APP,
-          subject: `Sắp đến giờ họp: ${m.title}`,
-          content: `Cuộc họp "${m.title}" bắt đầu lúc ${formatDateTimeVN(start)}${m.room_name ? ` tại ${m.room_name}` : ''} (còn khoảng ${mins} phút).`,
-          relatedEntityType: 'meeting',
-          relatedEntityId: m.id,
-          recipientScope: 'user_list',
-          recipientUserIds: rows.map((x) => x.user_id),
-        });
+        if (m.channel === 'in_app') {
+          await this.notificationsService.createNotification({
+            notificationType: NotificationType.REMINDER,
+            channel: NotificationChannel.IN_APP,
+            subject,
+            content,
+            relatedEntityType: 'meeting',
+            relatedEntityId: m.id,
+            recipientScope: 'user_list',
+            recipientUserIds: rows.map((x) => x.user_id),
+          });
+        } else {
+          // Gửi riêng từng người để không lộ email của thành viên khác.
+          for (const p of rows.filter((x) => x.email)) {
+            await this.notificationsService.enqueueEmailNotification({
+              notificationType: NotificationType.REMINDER,
+              channel: NotificationChannel.EMAIL,
+              subject,
+              content,
+              relatedEntityType: 'meeting',
+              relatedEntityId: m.id,
+              toEmails: [p.email as string],
+              recipientUserIds: [p.user_id],
+            });
+          }
+        }
         reminded++;
       } catch (e) {
         failed++;
         this.logger.error(
-          `remindUpcomingMeetingsBatch: meeting ${m.id} failed: ${e instanceof Error ? e.message : 'unknown'}`,
+          `remindUpcomingMeetingsBatch: meeting ${m.id} (${m.channel}) failed: ${e instanceof Error ? e.message : 'unknown'}`,
         );
       }
     }

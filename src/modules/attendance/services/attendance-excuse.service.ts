@@ -54,7 +54,7 @@ export class AttendanceExcuseService {
       });
     }
     const meeting = await this.loadMeeting(meetingId);
-    this.assertWithinWindow(meeting);
+    this.assertNotEnded(meeting);
 
     const [participant] = await this.dataSource.query(
       `SELECT id, excuse_status FROM meeting_participants
@@ -215,6 +215,17 @@ export class AttendanceExcuseService {
     return meeting;
   }
 
+  /** UEL 4.1: thành viên chỉ tự gửi lý do trước / trong cuộc họp; kết thúc là khoá. */
+  private assertNotEnded(meeting: MeetingRow) {
+    if (meeting.status === 'completed' || Date.now() > new Date(meeting.end_time).getTime()) {
+      throw new ConflictException({
+        message: 'Đã khóa vì cuộc họp đã kết thúc. Liên hệ chủ trì hoặc thư ký để ghi lý do thay.',
+        error: 'EXCUSE_LOCKED',
+      });
+    }
+  }
+
+  /** Chủ trì / thư ký duyệt lý do: còn 24 giờ sau khi kết thúc. */
   private assertWithinWindow(meeting: MeetingRow) {
     if (Date.now() > new Date(meeting.end_time).getTime() + EXCUSE_WINDOW_MS) {
       throw new ConflictException({

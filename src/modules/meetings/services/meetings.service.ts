@@ -30,6 +30,8 @@ import {
   MeetingType,
   MeetingMode,
   MeetingVisibilityLevel,
+  DEFAULT_MEETING_REMINDERS,
+  type MeetingReminderChannel,
 } from '../entities/meeting.entity.js';
 import {
   MeetingRequestEntity,
@@ -1295,7 +1297,7 @@ export class MeetingsService {
             timezone: 'Asia/Ho_Chi_Minh',
             expectedAttendeeCount: dto.expectedAttendeeCount || null,
             attendanceEnabled: dto.attendanceEnabled ?? true,
-            reminderMinutes: dto.reminderMinutes ?? 10,
+            reminderChannelsJson: normalizeReminders(dto.reminders),
             calendarType,
             calendarDepartmentId,
             attendeeComposition: dto.attendeeComposition?.trim() || null,
@@ -1347,7 +1349,7 @@ export class MeetingsService {
               meetingMode: dto.meetingMode,
               expectedAttendeeCount: dto.expectedAttendeeCount,
               attendanceEnabled: dto.attendanceEnabled ?? true,
-              reminderMinutes: dto.reminderMinutes ?? 10,
+              reminders: normalizeReminders(dto.reminders),
               calendarType,
               attendeeComposition: dto.attendeeComposition,
               secretaryId,
@@ -2113,7 +2115,7 @@ export class MeetingsService {
             endTime: newEndTime,
             roomId: newRoomIdValue || targetRoomId,
             updatedBy: authUser.userId,
-            reminderSentAt: null, // đổi giờ ⇒ nhắc lại theo giờ mới
+            reminderSentJson: {}, // đổi giờ ⇒ nhắc lại theo giờ mới
           });
 
           // Meeting mới tạo có đúng 1 MeetingRequest PENDING (từ createMeeting,
@@ -2725,18 +2727,6 @@ export class MeetingsService {
         success: false,
         message: 'Không thể đổi phòng trên hệ thống khi cuộc họp đã bắt đầu.',
         error: { code: 'MEETING_ALREADY_STARTED', details: { meetingId } },
-      });
-    }
-
-    if (meeting.recurrenceRuleId && meeting.parentMeetingId === null) {
-      throw new ConflictException({
-        success: false,
-        message:
-          'Không thể đổi phòng cho cuộc họp định kỳ. Vui lòng thao tác trên từng cuộc họp cụ thể.',
-        error: {
-          code: 'RECURRING_SERIES_UPDATE_NOT_SUPPORTED',
-          details: { meetingId },
-        },
       });
     }
 
@@ -4522,7 +4512,7 @@ export class MeetingsService {
         recurrenceRuleId: meeting.recurrenceRuleId,
         parentMeetingId: meeting.parentMeetingId,
         attendanceEnabled: meeting.attendanceEnabled,
-        reminderMinutes: meeting.reminderMinutes,
+        reminders: meeting.reminderChannelsJson ?? [],
       }),
       room: room
         ? new DetailRoomDto({
@@ -7462,4 +7452,15 @@ export class MeetingsService {
       throw error;
     }
   }
+}
+
+/** Bỏ trùng kênh (giữ mục đầu); undefined ⇒ mặc định thông báo 10 phút. */
+function normalizeReminders(
+  list: MeetingReminderChannel[] | undefined,
+): MeetingReminderChannel[] {
+  if (!list) return [...DEFAULT_MEETING_REMINDERS];
+  const seen = new Set<string>();
+  return list
+    .filter((x) => !seen.has(x.channel) && seen.add(x.channel))
+    .map((x) => ({ channel: x.channel, minutes: x.minutes }));
 }

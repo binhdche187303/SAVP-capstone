@@ -15,6 +15,7 @@ import { CrowdAlertService } from '../crowd-alert/services/crowd-alert.service.j
 import { SecurityAlertAutoResolveService } from '../alerts/services/security-alert-auto-resolve.service.js';
 import { GateLogPairingService } from '../zones/services/gate-log-pairing.service.js';
 import { LiveMeetingService } from '../live-meeting/services/live-meeting.service.js';
+import { MeetingPrepService } from '../meetings/services/meeting-prep.service.js';
 import { MeetingRequestReviewService } from '../meetings/services/meeting-request-review.service.js';
 import { RecordingSessionService } from '../recording/services/recording-session.service.js';
 import { RecordingSystemConfigService } from '../recording/services/recording-system-config.service.js';
@@ -81,6 +82,7 @@ export class SchedulerService {
     private readonly gateLogPairingService: GateLogPairingService,
     private readonly liveMeetingService: LiveMeetingService,
     private readonly meetingRequestReviewService: MeetingRequestReviewService,
+    private readonly meetingPrepService: MeetingPrepService,
     private readonly securityAlertAutoResolveService: SecurityAlertAutoResolveService,
     private readonly recordingSessionService: RecordingSessionService,
     private readonly recordingSystemConfigService: RecordingSystemConfigService,
@@ -680,7 +682,7 @@ export class SchedulerService {
   }
 
   /**
-   * Nhắc thành viên trước giờ họp (meetings.reminder_minutes, mặc định 10 phút) — in-app.
+   * Nhắc thành viên trước giờ họp (meetings.reminder_channels_json, mặc định thông báo 10 phút) — in-app / email.
    * Gate SCHEDULER_ENABLED && SCHEDULER_NOTIFICATION_REMINDER_ENABLED (default ON).
    */
   @Cron(CronExpression.EVERY_MINUTE, { name: 'notification-reminder' })
@@ -688,6 +690,10 @@ export class SchedulerService {
     if (!this.schedulerEnabled || !this.reminderEnabled) return;
     try {
       const r = await this.meetingRequestReviewService.remindUpcomingMeetingsBatch();
+      const rep = await this.meetingPrepService.remindReportsBatch();
+      if (rep.reminded > 0) {
+        this.logger.log(`[Scheduler] notification-reminder: report reminders=${rep.reminded}`);
+      }
       if (r.reminded > 0 || r.failed > 0) {
         this.logger.log(
           `[Scheduler] notification-reminder: reminded=${r.reminded} failed=${r.failed}`,

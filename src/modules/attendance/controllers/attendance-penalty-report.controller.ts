@@ -47,6 +47,30 @@ export class AttendancePenaltyReportController {
     return { success: true, data };
   }
 
+  @Get('meetings')
+  @ApiOperation({ summary: 'Báo cáo theo cuộc họp có điểm danh trong khoảng thời gian' })
+  async meetings(
+    @CurrentUser() actor: { userId: string },
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('departmentId') departmentId?: string,
+    @Query('search') search?: string,
+  ) {
+    const data = await this.service.getMeetingSummary(actor.userId, { from, to, departmentId, search });
+    return { success: true, data };
+  }
+
+  @Get('meetings/:meetingId')
+  @ApiOperation({ summary: 'Chi tiết điểm danh 1 cuộc họp' })
+  async meeting(
+    @CurrentUser() actor: { userId: string },
+    @Param('meetingId', ParseUUIDPipe) meetingId: string,
+    @Query('departmentId') departmentId?: string,
+  ) {
+    const data = await this.service.getMeetingDetail(actor.userId, meetingId, departmentId);
+    return { success: true, data };
+  }
+
   @Get()
   @ApiOperation({ summary: 'Bảng tổng hợp theo người (đơn vị hoặc toàn trường)' })
   async summary(

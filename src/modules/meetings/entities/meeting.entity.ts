@@ -47,6 +47,13 @@ export enum MeetingVisibilityLevel {
   PUBLIC = 'public',
 }
 
+export type MeetingReminderChannelType = 'in_app' | 'email' | 'message' | 'sms';
+export interface MeetingReminderChannel {
+  channel: MeetingReminderChannelType;
+  minutes: number;
+}
+export const DEFAULT_MEETING_REMINDERS: MeetingReminderChannel[] = [{ channel: 'in_app', minutes: 10 }];
+
 @Entity('meetings')
 export class MeetingEntity {
   @PrimaryGeneratedColumn('uuid')
@@ -135,13 +142,13 @@ export class MeetingEntity {
   @Column({ name: 'secretary_id', type: 'uuid', nullable: true })
   secretaryId: string | null;
 
-  /** Nhắc thành viên trước giờ họp N phút (0 = không nhắc). */
-  @Column({ name: 'reminder_minutes', type: 'smallint', default: 10 })
-  reminderMinutes: number;
+  /** Nhắc trước giờ họp theo kênh: [{ channel: in_app|email|message|sms, minutes }]; [] = không nhắc. */
+  @Column({ name: 'reminder_channels_json', type: 'jsonb', default: () => `'[{"channel":"in_app","minutes":10}]'::jsonb` })
+  reminderChannelsJson: MeetingReminderChannel[];
 
-  /** Đã gửi nhắc trước họp; reset về null khi đổi giờ họp. */
-  @Column({ name: 'reminder_sent_at', type: 'timestamptz', nullable: true })
-  reminderSentAt: Date | null;
+  /** Kênh đã gửi nhắc { channel: ISO time }; reset về {} khi đổi giờ họp. */
+  @Column({ name: 'reminder_sent_json', type: 'jsonb', default: () => `'{}'::jsonb` })
+  reminderSentJson: Record<string, string>;
 
   @Column({ name: 'expected_attendee_count', type: 'integer', nullable: true })
   expectedAttendeeCount: number | null;

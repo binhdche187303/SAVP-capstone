@@ -10,6 +10,10 @@ import { UserEntity } from '../../../modules/accounts/entities/user.entity.js';
 
 export enum NotificationType {
   MEETING_INVITE = 'meeting_invite',
+  // Lịch UEL: yêu cầu nộp báo cáo trước họp / trình ký biên bản.
+  MEETING_REPORT_REQUESTED = 'meeting_report_requested',
+  MINUTES_SIGNOFF_REQUESTED = 'minutes_signoff_requested',
+  MINUTES_SIGNOFF_RESULT = 'minutes_signoff_result',
   REMINDER = 'reminder',
   CANCELLATION = 'cancellation',
   NO_SHOW_ALERT = 'no_show_alert',

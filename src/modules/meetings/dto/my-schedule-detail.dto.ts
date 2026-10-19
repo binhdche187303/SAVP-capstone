@@ -11,7 +11,7 @@ export class DetailMeetingDto {
   recurrenceRuleId: string | null;
   parentMeetingId: string | null;
   attendanceEnabled?: boolean;
-  reminderMinutes?: number;
+  reminders?: Array<{ channel: string; minutes: number }>;
 
   constructor(data: DetailMeetingDto) {
     this.meetingId = data.meetingId;
@@ -25,7 +25,7 @@ export class DetailMeetingDto {
     this.recurrenceRuleId = data.recurrenceRuleId;
     this.parentMeetingId = data.parentMeetingId;
     this.attendanceEnabled = data.attendanceEnabled ?? true;
-    this.reminderMinutes = data.reminderMinutes ?? 10;
+    this.reminders = data.reminders ?? [];
   }
 }
 

@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { AuthzReadRepository } from '../../../modules/auth/repositories/authz-read.repository.js';
 import { SCHOOL_APPROVER_DEPT_KEY } from '../../meetings/services/calendar-roles.service.js';
@@ -159,15 +159,139 @@ export class AttendancePenaltyReportService {
   }
 
   /**
+   * Báo cáo theo cuộc họp (UEL 4.3): danh sách cuộc họp có điểm danh trong khoảng thời gian.
+   * Trưởng đơn vị chỉ tính thành viên thuộc đơn vị mình; toàn trường lọc được theo đơn vị.
+   */
+  async getMeetingSummary(
+    actorId: string,
+    q: { from?: string; to?: string; departmentId?: string; search?: string },
+  ) {
+    const { scope, departmentId: ownDept } = await this.resolveScope(actorId);
+    if (!scope) {
+      throw new ForbiddenException({
+        message: 'Chỉ trưởng đơn vị, P.HC, BGH hoặc quản trị được xem báo cáo theo cuộc họp',
+        error: 'PERMISSION_DENIED',
+      });
+    }
+    const range = this.parseRange(q.from, q.to);
+    const deptFilter = scope === 'unit' ? ownDept : q.departmentId || null;
+    const search = q.search?.trim() ? `%${q.search.trim().toLowerCase()}%` : null;
+
+    const rows = await this.dataSource.query(
+      `${this.baseCte()}
+       SELECT r.meeting_id AS "meetingId", r.meeting_code AS "meetingCode", r.title,
+              r.start_time AS "startTime", r.end_time AS "endTime",
+              rm.room_name AS "roomName", h.full_name AS "hostName",
+              COUNT(*)::int AS invited,
+              COUNT(*) FILTER (WHERE r.category = 'present')::int AS present,
+              COUNT(*) FILTER (WHERE r.category = 'late')::int AS late,
+              COUNT(*) FILTER (WHERE r.category = 'left_early')::int AS "leftEarly",
+              COUNT(*) FILTER (WHERE r.category = 'absent')::int AS absent,
+              COUNT(*) FILTER (WHERE r.category = 'excused')::int AS excused,
+              COUNT(*) FILTER (WHERE r.excuse_status = 'pending')::int AS "pendingExcuses",
+              COALESCE(SUM(r.points), 0)::int AS "totalPoints"
+         FROM rows r
+         JOIN users u ON u.id = r.user_id
+         LEFT JOIN users h ON h.id = r.host_id
+         LEFT JOIN rooms rm ON rm.id = r.room_id
+        WHERE ($3::uuid IS NULL OR u.department_id = $3::uuid)
+          AND ($4::text IS NULL OR lower(r.title) LIKE $4 OR lower(COALESCE(r.meeting_code, '')) LIKE $4)
+        GROUP BY r.meeting_id, r.meeting_code, r.title, r.start_time, r.end_time, rm.room_name, h.full_name
+        ORDER BY r.start_time DESC`,
+      [range.from, range.to, deptFilter, search],
+    );
+    const departments = await this.listDepartments(scope, ownDept);
+    const sum = (k: string) => rows.reduce((s: number, r: any) => s + Number(r[k]), 0);
+    return {
+      scope,
+      from: range.from.toISOString(),
+      to: range.to.toISOString(),
+      departmentId: deptFilter,
+      departments,
+      rows,
+      totals: {
+        meetings: rows.length,
+        invited: sum('invited'),
+        totalPoints: sum('totalPoints'),
+        late: sum('late'),
+        leftEarly: sum('leftEarly'),
+        absent: sum('absent'),
+        excused: sum('excused'),
+      },
+    };
+  }
+
+  /** Chi tiết 1 cuộc họp: danh sách thành viên + tình trạng + điểm (cùng phạm vi đơn vị như trên). */
+  async getMeetingDetail(actorId: string, meetingId: string, departmentId?: string) {
+    const { scope, departmentId: ownDept } = await this.resolveScope(actorId);
+    if (!scope) {
+      throw new ForbiddenException({
+        message: 'Chỉ trưởng đơn vị, P.HC, BGH hoặc quản trị được xem báo cáo theo cuộc họp',
+        error: 'PERMISSION_DENIED',
+      });
+    }
+    const deptFilter = scope === 'unit' ? ownDept : departmentId || null;
+    const [meeting] = await this.dataSource.query(
+      `SELECT m.id, m.meeting_code AS "meetingCode", m.title, m.start_time AS "startTime", m.end_time AS "endTime",
+              rm.room_name AS "roomName", h.full_name AS "hostName", s.full_name AS "secretaryName"
+         FROM meetings m
+         LEFT JOIN rooms rm ON rm.id = m.room_id
+         LEFT JOIN users h ON h.id = m.host_id
+         LEFT JOIN users s ON s.id = m.secretary_id
+        WHERE m.id = $1 AND m.deleted_at IS NULL AND m.attendance_enabled`,
+      [meetingId],
+    );
+    if (!meeting) {
+      throw new NotFoundException({
+        message: 'Cuộc họp không tồn tại hoặc không bật điểm danh',
+        error: 'MEETING_NOT_FOUND',
+      });
+    }
+    // CTE lọc theo giờ bắt đầu: lấy khoảng ±1s quanh giờ họp
+    const start = new Date(meeting.startTime).getTime();
+    const items = await this.dataSource.query(
+      `${this.baseCte()}
+       SELECT r.user_id AS "userId", u.full_name AS "fullName", u.email, u.employee_code AS "employeeCode",
+              d.department_name AS "departmentName",
+              r.check_in_time AS "checkInTime", r.check_out_time AS "checkOutTime",
+              r.category, r.points, r.late_minutes AS "lateMinutes",
+              r.excuse_status AS "excuseStatus", r.excuse_reason AS "excuseReason",
+              r.excuse_review_note AS "excuseReviewNote", r.record_note AS note
+         FROM rows r
+         JOIN users u ON u.id = r.user_id
+         LEFT JOIN departments d ON d.id = u.department_id
+        WHERE r.meeting_id = $3::uuid
+          AND ($4::uuid IS NULL OR u.department_id = $4::uuid)
+        ORDER BY r.points ASC, u.full_name`,
+      [new Date(start - 1000), new Date(start + 1000), meetingId, deptFilter],
+    );
+    const list = items.map((i: any) => ({ ...i, points: Number(i.points) }));
+    return { meeting, summary: this.summarize(list), items: list };
+  }
+
+  private async listDepartments(scope: PenaltyScope, ownDept: string | null) {
+    return scope === 'school'
+      ? this.dataSource.query(
+          `SELECT id, department_name AS "departmentName" FROM departments
+            WHERE deleted_at IS NULL ORDER BY department_name`,
+        )
+      : this.dataSource.query(
+          `SELECT id, department_name AS "departmentName" FROM departments WHERE id = $1`,
+          [ownDept],
+        );
+  }
+
+  /**
    * CTE "rows": 1 dòng / (cuộc họp đã kết thúc có điểm danh, thành viên).
    * $1 = from, $2 = to (theo giờ bắt đầu họp).
    */
   private baseCte() {
     return `
       WITH base AS (
-        SELECT m.id AS meeting_id, m.meeting_code, m.title, m.start_time,
+        SELECT m.id AS meeting_id, m.meeting_code, m.title, m.start_time, m.end_time, m.host_id, m.room_id,
                mp.user_id, mp.excuse_status, mp.excuse_reason, mp.excuse_review_note,
                ar.late_minutes, ar.penalty_points AS record_points,
+               ar.check_in_time, ar.check_out_time, ar.note AS record_note,
                CASE
                  WHEN mp.excuse_status = 'approved' OR ar.violation_rule_code = 'EXCUSED' THEN 'excused'
                  WHEN ar.id IS NULL THEN 'absent'
