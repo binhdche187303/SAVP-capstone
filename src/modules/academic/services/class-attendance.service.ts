@@ -63,8 +63,11 @@ export class ClassAttendanceService {
     private readonly hgVisionService: HgVisionService,
   ) {}
 
-  async getSettings() {
-    const values = await this.getClassAttendanceConfigValues();
+  async getSettings(classId?: string, administrativeClass?: string) {
+    const values = await this.getClassAttendanceConfigValues(
+      classId,
+      administrativeClass,
+    );
     return {
       classStartTime: values.classStartTime,
       lateThresholdMinutes: values.lateThresholdMinutes,
@@ -79,6 +82,8 @@ export class ClassAttendanceService {
       classStartTime?: string;
       lateThresholdMinutes?: number;
       autoScanIntervalSeconds?: number;
+      classId?: string;
+      administrativeClass?: string;
     },
   ) {
     const roles = await this.getRoleCodes(currentUserId);
@@ -88,7 +93,10 @@ export class ClassAttendanceService {
       );
     }
 
-    const current = await this.getSettings();
+    const current = await this.getSettings(
+      body.classId,
+      body.administrativeClass,
+    );
     const next = {
       classStartTime: body.classStartTime ?? current.classStartTime,
       lateThresholdMinutes:
@@ -115,25 +123,37 @@ export class ClassAttendanceService {
     }
 
     await this.upsertConfig(
-      CLASS_ATTENDANCE_START_TIME_KEY,
+      this.getScopedConfigKey(
+        CLASS_ATTENDANCE_START_TIME_KEY,
+        body.classId,
+        body.administrativeClass,
+      ),
       next.classStartTime,
       'string',
       currentUserId,
     );
     await this.upsertConfig(
-      CLASS_ATTENDANCE_LATE_THRESHOLD_KEY,
+      this.getScopedConfigKey(
+        CLASS_ATTENDANCE_LATE_THRESHOLD_KEY,
+        body.classId,
+        body.administrativeClass,
+      ),
       String(next.lateThresholdMinutes),
       'number',
       currentUserId,
     );
     await this.upsertConfig(
-      CLASS_ATTENDANCE_AUTO_SCAN_INTERVAL_KEY,
+      this.getScopedConfigKey(
+        CLASS_ATTENDANCE_AUTO_SCAN_INTERVAL_KEY,
+        body.classId,
+        body.administrativeClass,
+      ),
       String(next.autoScanIntervalSeconds),
       'number',
       currentUserId,
     );
 
-    return this.getSettings();
+    return this.getSettings(body.classId, body.administrativeClass);
   }
 
   async listClasses(currentUserId: string) {
@@ -151,12 +171,12 @@ export class ClassAttendanceService {
              COALESCE(room.room_name, split_part(cs.note, ' | ', 2)) AS room,
              split_part(cs.note, ' | ', 1) AS schedule,
              CASE
-               WHEN split_part(cs.note, ' | ', 1) ILIKE 'Thu 2%' THEN 1
-               WHEN split_part(cs.note, ' | ', 1) ILIKE 'Thu 3%' THEN 2
-               WHEN split_part(cs.note, ' | ', 1) ILIKE 'Thu 4%' THEN 3
-               WHEN split_part(cs.note, ' | ', 1) ILIKE 'Thu 5%' THEN 4
-               WHEN split_part(cs.note, ' | ', 1) ILIKE 'Thu 6%' THEN 5
-               WHEN split_part(cs.note, ' | ', 1) ILIKE 'Thu 7%' THEN 6
+               WHEN split_part(cs.note, ' | ', 1) ILIKE 'Thu 2%' OR split_part(cs.note, ' | ', 1) ILIKE 'Thứ 2%' THEN 1
+               WHEN split_part(cs.note, ' | ', 1) ILIKE 'Thu 3%' OR split_part(cs.note, ' | ', 1) ILIKE 'Thứ 3%' THEN 2
+               WHEN split_part(cs.note, ' | ', 1) ILIKE 'Thu 4%' OR split_part(cs.note, ' | ', 1) ILIKE 'Thứ 4%' THEN 3
+               WHEN split_part(cs.note, ' | ', 1) ILIKE 'Thu 5%' OR split_part(cs.note, ' | ', 1) ILIKE 'Thứ 5%' THEN 4
+               WHEN split_part(cs.note, ' | ', 1) ILIKE 'Thu 6%' OR split_part(cs.note, ' | ', 1) ILIKE 'Thứ 6%' THEN 5
+               WHEN split_part(cs.note, ' | ', 1) ILIKE 'Thu 7%' OR split_part(cs.note, ' | ', 1) ILIKE 'Thứ 7%' THEN 6
                ELSE NULL
              END AS schedule_weekday,
              COUNT(ce.id)::text AS student_count
@@ -255,6 +275,7 @@ export class ClassAttendanceService {
     currentUserId: string,
     body: {
       classId?: string;
+      administrativeClass?: string;
       direction?: 'in' | 'out' | 'enter' | 'leave';
       snapshotImageBase64?: string;
     },
@@ -330,7 +351,10 @@ export class ClassAttendanceService {
     const now = new Date();
     let status = target.status;
     if (direction === 'in') {
-      const settings = await this.getClassAttendanceConfigValues();
+      const settings = await this.getClassAttendanceConfigValues(
+        classId,
+        body.administrativeClass,
+      );
       status = this.isLate(now, settings) ? 'late' : 'on_time';
     } else {
       status = 'left';
@@ -1040,32 +1064,78 @@ export class ClassAttendanceService {
     };
   }
 
-  private async getClassAttendanceConfigValues() {
+  private getScopedConfigKey(
+    key: string,
+    classId?: string,
+    administrativeClass?: string,
+  ) {
+    if (!classId) return key;
+    const scope = `${classId}.${administrativeClass || 'all'}`.replace(
+      /[^a-zA-Z0-9_.-]/g,
+      '_',
+    );
+    return `${key}.${scope}`;
+  }
+
+  private async getClassAttendanceConfigValues(
+    classId?: string,
+    administrativeClass?: string,
+  ) {
+    const scopedKeys = [
+      this.getScopedConfigKey(
+        CLASS_ATTENDANCE_START_TIME_KEY,
+        classId,
+        administrativeClass,
+      ),
+      this.getScopedConfigKey(
+        CLASS_ATTENDANCE_LATE_THRESHOLD_KEY,
+        classId,
+        administrativeClass,
+      ),
+      this.getScopedConfigKey(
+        CLASS_ATTENDANCE_AUTO_SCAN_INTERVAL_KEY,
+        classId,
+        administrativeClass,
+      ),
+    ];
     const rows = (await this.dataSource.manager.query(
       `SELECT config_key, config_value
          FROM system_configs
         WHERE config_key = ANY($1::varchar[])
           AND is_active = true`,
       [
-        [
-          CLASS_ATTENDANCE_START_TIME_KEY,
-          CLASS_ATTENDANCE_LATE_THRESHOLD_KEY,
-          CLASS_ATTENDANCE_AUTO_SCAN_INTERVAL_KEY,
-        ],
+        classId
+          ? [
+              ...scopedKeys,
+              CLASS_ATTENDANCE_START_TIME_KEY,
+              CLASS_ATTENDANCE_LATE_THRESHOLD_KEY,
+              CLASS_ATTENDANCE_AUTO_SCAN_INTERVAL_KEY,
+            ]
+          : [
+              CLASS_ATTENDANCE_START_TIME_KEY,
+              CLASS_ATTENDANCE_LATE_THRESHOLD_KEY,
+              CLASS_ATTENDANCE_AUTO_SCAN_INTERVAL_KEY,
+            ],
       ],
     )) as Array<{ config_key: string; config_value: string | null }>;
     const byKey = new Map(
       rows.map((row) => [row.config_key, row.config_value]),
     );
     const classStartTime =
-      byKey.get(CLASS_ATTENDANCE_START_TIME_KEY) ?? DEFAULT_CLASS_START_TIME;
+      byKey.get(scopedKeys[0]) ??
+      byKey.get(CLASS_ATTENDANCE_START_TIME_KEY) ??
+      DEFAULT_CLASS_START_TIME;
+    const lateThresholdValue =
+      byKey.get(scopedKeys[1]) ??
+      byKey.get(CLASS_ATTENDANCE_LATE_THRESHOLD_KEY);
+    const autoScanIntervalValue =
+      byKey.get(scopedKeys[2]) ??
+      byKey.get(CLASS_ATTENDANCE_AUTO_SCAN_INTERVAL_KEY);
     const lateThresholdMinutes = Number(
-      byKey.get(CLASS_ATTENDANCE_LATE_THRESHOLD_KEY) ??
-        DEFAULT_LATE_THRESHOLD_MINUTES,
+      lateThresholdValue ?? DEFAULT_LATE_THRESHOLD_MINUTES,
     );
     const autoScanIntervalSeconds = Number(
-      byKey.get(CLASS_ATTENDANCE_AUTO_SCAN_INTERVAL_KEY) ??
-        DEFAULT_AUTO_SCAN_INTERVAL_SECONDS,
+      autoScanIntervalValue ?? DEFAULT_AUTO_SCAN_INTERVAL_SECONDS,
     );
     return {
       classStartTime: /^\d{2}:\d{2}$/.test(classStartTime)

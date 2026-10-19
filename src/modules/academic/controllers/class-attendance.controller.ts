@@ -19,8 +19,11 @@ export class ClassAttendanceController {
   constructor(private readonly service: ClassAttendanceService) {}
 
   @Get('settings')
-  async getSettings() {
-    const data = await this.service.getSettings();
+  async getSettings(
+    @Query('classId') classId?: string,
+    @Query('administrativeClass') administrativeClass?: string,
+  ) {
+    const data = await this.service.getSettings(classId, administrativeClass);
     return {
       success: true,
       message: 'Class attendance settings retrieved successfully',
@@ -36,6 +39,8 @@ export class ClassAttendanceController {
       classStartTime?: string;
       lateThresholdMinutes?: number;
       autoScanIntervalSeconds?: number;
+      classId?: string;
+      administrativeClass?: string;
     },
   ) {
     const data = await this.service.updateSettings(user.userId, body);
@@ -90,6 +95,7 @@ export class ClassAttendanceController {
     @Body()
     body: {
       classId?: string;
+      administrativeClass?: string;
       direction?: 'in' | 'out' | 'enter' | 'leave';
       snapshotImageBase64?: string;
     },
