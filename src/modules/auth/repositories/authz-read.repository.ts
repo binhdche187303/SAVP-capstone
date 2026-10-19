@@ -6,6 +6,12 @@ interface AuthzRow {
   permission_code: string | null;
 }
 
+const CLERK_PERMISSIONS = [
+  'meeting_request.read',
+  'meeting_request.approve',
+  'meeting_request.reject',
+];
+
 @Injectable()
 export class AuthzReadRepository {
   constructor(private readonly dataSource: DataSource) {}
@@ -43,6 +49,18 @@ export class AuthzReadRepository {
           .filter((value): value is string => Boolean(value)),
       ),
     );
+
+    // Lịch tuần UEL: văn thư đơn vị (users.is_unit_clerk) được duyệt lịch như trưởng phòng.
+    // Phạm vi duyệt (đơn vị / cấp trường) do MeetingsService kiểm theo phòng ban.
+    const [clerk] = await this.dataSource.query(
+      `SELECT 1 FROM users WHERE id = $1 AND is_unit_clerk = true AND department_id IS NOT NULL`,
+      [userId],
+    );
+    if (clerk) {
+      for (const code of CLERK_PERMISSIONS) {
+        if (!permissions.includes(code)) permissions.push(code);
+      }
+    }
 
     return { roles, permissions };
   }

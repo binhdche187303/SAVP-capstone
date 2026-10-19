@@ -115,6 +115,34 @@ export class MeetingEntity {
   @Column({ type: 'varchar', length: 60, default: 'Asia/Ho_Chi_Minh' })
   timezone: string;
 
+  /** Cuộc họp có ghi nhận điểm danh (camera / thủ công / cảnh báo). */
+  @Column({ name: 'attendance_enabled', type: 'boolean', default: true })
+  attendanceEnabled: boolean;
+
+  /** Lịch tuần UEL: UNIT | SCHOOL_LEADERSHIP | SCHOOL_OTHER. */
+  @Column({ name: 'calendar_type', type: 'varchar', length: 30, default: 'UNIT' })
+  calendarType: string;
+
+  /** Đơn vị sở hữu lịch đơn vị (= đơn vị người đặt lúc tạo). */
+  @Column({ name: 'calendar_department_id', type: 'uuid', nullable: true })
+  calendarDepartmentId: string | null;
+
+  /** "Thành phần tham gia" dạng chữ hiển thị trên lịch tuần. */
+  @Column({ name: 'attendee_composition', type: 'text', nullable: true })
+  attendeeComposition: string | null;
+
+  /** Thư ký cuộc họp — điểm danh thủ công cùng Chủ trì. */
+  @Column({ name: 'secretary_id', type: 'uuid', nullable: true })
+  secretaryId: string | null;
+
+  /** Nhắc thành viên trước giờ họp N phút (0 = không nhắc). */
+  @Column({ name: 'reminder_minutes', type: 'smallint', default: 10 })
+  reminderMinutes: number;
+
+  /** Đã gửi nhắc trước họp; reset về null khi đổi giờ họp. */
+  @Column({ name: 'reminder_sent_at', type: 'timestamptz', nullable: true })
+  reminderSentAt: Date | null;
+
   @Column({ name: 'expected_attendee_count', type: 'integer', nullable: true })
   expectedAttendeeCount: number | null;
 
@@ -150,6 +178,10 @@ export class MeetingEntity {
   @ManyToOne(() => UserEntity, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'host_id' })
   host: UserEntity | null;
+
+  @ManyToOne(() => UserEntity, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'secretary_id' })
+  secretary: UserEntity | null;
 
   @ManyToOne(() => MeetingRecurrenceRuleEntity, {
     nullable: true,

@@ -5,6 +5,9 @@ import {
   IsDateString,
   MaxLength,
   Matches,
+  IsBoolean,
+  IsIn,
+  ValidateIf,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 
@@ -65,4 +68,16 @@ export class UpdateUserDto {
     { message: 'accountExpiresAt phải là thời điểm hợp lệ (ISO 8601)' },
   )
   accountExpiresAt?: string;
+
+  /** Lịch tuần UEL: văn thư của đơn vị (cần quyền meeting.calendar_role.manage). */
+  @IsOptional()
+  @IsBoolean({ message: 'isUnitClerk phải là true/false' })
+  isUnitClerk?: boolean;
+
+  /** Lịch tuần UEL: chức danh Ban Giám hiệu; null = gỡ (cần quyền meeting.calendar_role.manage). */
+  @ValidateIf((_, v) => v !== undefined && v !== null)
+  @IsIn(['HIEU_TRUONG', 'PHO_HIEU_TRUONG', 'BI_THU', 'PHO_BI_THU'], {
+    message: 'Chức danh lãnh đạo không hợp lệ',
+  })
+  leadershipTitle?: string | null;
 }

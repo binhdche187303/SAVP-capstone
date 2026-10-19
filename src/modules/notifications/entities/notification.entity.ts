@@ -68,6 +68,9 @@ export enum NotificationType {
   VISITOR_REGISTERED = 'visitor_registered',
   VISITOR_ARRIVED = 'visitor_arrived',
   VISITOR_LEFT = 'visitor_left',
+  // Lý do vắng / trễ / về sớm — gửi tới chủ trì/thư ký; kết quả duyệt gửi lại thành viên
+  ATTENDANCE_EXCUSE_SUBMITTED = 'attendance_excuse_submitted',
+  ATTENDANCE_EXCUSE_REVIEWED = 'attendance_excuse_reviewed',
   VISITOR_OVERSTAY = 'visitor_overstay',
   VISITOR_MUST_LEAVE = 'visitor_must_leave',
   VISITOR_EMAIL = 'visitor_email',

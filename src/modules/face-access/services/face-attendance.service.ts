@@ -11,7 +11,10 @@ import {
 } from '../../../common/ports/visitor-face-event-hook.js';
 import { WebsocketService } from '../../websocket/websocket.service.js';
 import { PersonWatchlistCheckService } from '../../alerts/services/person-watchlist-check.service.js';
-import { getAttendanceLateGraceMinutes } from '../../attendance/utils/get-late-grace-minutes.util.js';
+import {
+  getAttendanceEarlyLeaveMinutes,
+  getAttendanceLateGraceMinutes,
+} from '../../attendance/utils/get-late-grace-minutes.util.js';
 
 interface MappingRow {
   user_id: string;
@@ -23,6 +26,7 @@ interface MeetingRow {
   end_time: Date | string;
   actual_end_time: Date | string | null;
   status: string;
+  attendance_enabled?: boolean;
 }
 
 /**
@@ -97,7 +101,7 @@ export class FaceAttendanceService implements FaceVerifyHook {
 
     // Load meeting. Không thấy → anomaly.
     const meetings: MeetingRow[] = await this.dataSource.manager.query(
-      `SELECT id, start_time, end_time, actual_end_time, status
+      `SELECT id, start_time, end_time, actual_end_time, status, attendance_enabled
          FROM meetings WHERE id = $1 LIMIT 1`,
       [meetingId],
     );
@@ -105,6 +109,14 @@ export class FaceAttendanceService implements FaceVerifyHook {
     if (!meeting) {
       this.logger.warn(
         `verify no-meeting: meetingId=${meetingId} (user=${userId}) không tồn tại — no record.`,
+      );
+      return;
+    }
+
+    // Cuộc họp không bật điểm danh ⇒ không ghi record (cả vào lẫn ra).
+    if (meeting.attendance_enabled === false) {
+      this.logger.log(
+        `verify skip (attendance disabled): meeting=${meetingId} user=${userId}.`,
       );
       return;
     }
@@ -273,7 +285,13 @@ export class FaceAttendanceService implements FaceVerifyHook {
       return; // KHÔNG update, KHÔNG event.
     }
 
-    const leftEarly = verifyTime.getTime() < effectiveEnd.getTime();
+    // Về sớm = ra trước giờ kết thúc quá mốc cấu hình (mặc định 15 phút).
+    const earlyLeaveMinutes = await getAttendanceEarlyLeaveMinutes(
+      this.dataSource.manager,
+    );
+    const leftEarly =
+      verifyTime.getTime() <
+      effectiveEnd.getTime() - earlyLeaveMinutes * 60_000;
     await this.dataSource.manager.query(
       `UPDATE attendance_records SET check_out_time = $2, left_early = $3, updated_at = now() WHERE id = $1`,
       [rec.id, verifyTime, leftEarly],

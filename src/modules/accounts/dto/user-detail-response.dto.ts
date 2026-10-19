@@ -39,6 +39,8 @@ export class UserDetailResponseDto {
   phoneNumber: string | null;
   avatarUrl: string | null;
   positionTitle: string | null;
+  isUnitClerk: boolean;
+  leadershipTitle: string | null;
   department: DepartmentInfoDto | null;
   directManager: DirectManagerInfoDto | null;
   studentProfile: StudentProfileInfoDto | null;

@@ -104,7 +104,7 @@ export class SchedulerService {
     );
     this.reminderEnabled = this.configService.get<boolean>(
       'SCHEDULER_NOTIFICATION_REMINDER_ENABLED',
-      false,
+      true,
     );
     this.deviceOfflineDetectEnabled = this.configService.get<boolean>(
       'DEVICE_OFFLINE_DETECT_ENABLED',
@@ -680,23 +680,26 @@ export class SchedulerService {
   }
 
   /**
-   * Meeting reminder notification job.
-   * Cron: SCHEDULER_NOTIFICATION_REMINDER_CRON (default: every hour)
-   *
-   * TODO: Gọi NotificationsService.sendScheduledReminders() khi implement.
+   * Nhắc thành viên trước giờ họp (meetings.reminder_minutes, mặc định 10 phút) — in-app.
+   * Gate SCHEDULER_ENABLED && SCHEDULER_NOTIFICATION_REMINDER_ENABLED (default ON).
    */
-  @Cron(CronExpression.EVERY_HOUR, { name: 'notification-reminder' })
-  sendReminders(): Promise<void> {
-    // KHÔNG `async`: thân hàm chưa có await nào (stub, xem TODO dưới) — eslint
-    // require-await. Vẫn trả Promise để chữ ký gọi được bằng `await` không đổi.
-    if (!this.schedulerEnabled || !this.reminderEnabled)
-      return Promise.resolve();
-
-    this.logger.log(
-      '[Scheduler] sendReminders() triggered — TODO: implement reminder notification logic.',
-    );
-    // TODO: inject NotificationsService và gọi sendScheduledReminders()
-    return Promise.resolve();
+  @Cron(CronExpression.EVERY_MINUTE, { name: 'notification-reminder' })
+  async sendReminders(): Promise<void> {
+    if (!this.schedulerEnabled || !this.reminderEnabled) return;
+    try {
+      const r = await this.meetingRequestReviewService.remindUpcomingMeetingsBatch();
+      if (r.reminded > 0 || r.failed > 0) {
+        this.logger.log(
+          `[Scheduler] notification-reminder: reminded=${r.reminded} failed=${r.failed}`,
+        );
+      }
+    } catch (e) {
+      this.logger.error(
+        `[Scheduler] notification-reminder failed: ${
+          e instanceof Error ? e.message : 'unknown'
+        }`,
+      );
+    }
   }
 
   /**

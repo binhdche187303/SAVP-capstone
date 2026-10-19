@@ -290,6 +290,14 @@ export class MeetingRequestReviewService {
         });
       }
 
+      if (!(await this.meetingsService.canReviewMeeting(authUser.userId, meeting.id))) {
+        throw new ForbiddenException({
+          success: false,
+          message: 'Yêu cầu này không thuộc phạm vi duyệt của bạn',
+          error: { code: 'NOT_IN_APPROVAL_SCOPE' },
+        });
+      }
+
       if (
         request.requestedBy === authUser.userId ||
         meeting.organizerId === authUser.userId
@@ -396,6 +404,9 @@ export class MeetingRequestReviewService {
       await em.save(MeetingRequestEntity, request);
 
       meeting.status = MeetingStatus.SCHEDULED;
+      if (meeting.startTime?.getTime() !== targetStartTime?.getTime()) {
+        meeting.reminderSentAt = null; // đổi giờ ⇒ nhắc lại theo giờ mới
+      }
       meeting.startTime = targetStartTime;
       meeting.endTime = targetEndTime;
       meeting.roomId = targetRoomId;
@@ -599,7 +610,9 @@ export class MeetingRequestReviewService {
 
     // Best-effort — realtime cho hàng đợi /manager/meeting-approvals (xem
     // MeetingsService#emitMeetingRequestRealtime).
-    const approverIds = await this.meetingsService.getMeetingRequestApproverIds();
+    const approverIds = await this.meetingsService.getMeetingRequestApproverIds(
+      approvalResult.meetingId,
+    );
     this.meetingsService.emitMeetingRequestUpdate(approverIds, {
       requestId,
       meetingId: approvalResult.meetingId,
@@ -1040,6 +1053,14 @@ export class MeetingRequestReviewService {
         });
       }
 
+      if (!(await this.meetingsService.canReviewMeeting(authUser.userId, meeting.id))) {
+        throw new ForbiddenException({
+          success: false,
+          message: 'Yêu cầu này không thuộc phạm vi duyệt của bạn',
+          error: { code: 'NOT_IN_APPROVAL_SCOPE' },
+        });
+      }
+
       if (
         request.requestedBy === authUser.userId ||
         meeting.organizerId === authUser.userId
@@ -1157,7 +1178,9 @@ export class MeetingRequestReviewService {
     );
 
     // Best-effort — realtime cho hàng đợi /manager/meeting-approvals.
-    const approverIds = await this.meetingsService.getMeetingRequestApproverIds();
+    const approverIds = await this.meetingsService.getMeetingRequestApproverIds(
+      rejectResult.meetingId,
+    );
     this.meetingsService.emitMeetingRequestUpdate(approverIds, {
       requestId,
       meetingId: rejectResult.meetingId,
@@ -1397,8 +1420,6 @@ export class MeetingRequestReviewService {
       return { scanned: candidates.length, reminded: 0, failed: 0 };
     }
 
-    const approverIds =
-      await this.meetingsService.getMeetingRequestApproverIds();
     const meetings = await this.dataSource.getRepository(MeetingEntity).find({
       where: { id: In(pending.map((r) => r.meetingId!)) },
     });
@@ -1407,6 +1428,10 @@ export class MeetingRequestReviewService {
     let reminded = 0;
     let failed = 0;
     for (const request of pending) {
+      const approverIds =
+        await this.meetingsService.getMeetingRequestApproverIds(
+          request.meetingId ?? undefined,
+        );
       const recipientUserIds = approverIds.filter(
         (id) => id !== request.requestedBy,
       );
@@ -1434,6 +1459,62 @@ export class MeetingRequestReviewService {
       }
     }
     return { scanned: candidates.length, reminded, failed };
+  }
+
+  /**
+   * Nhắc thành viên trước giờ họp theo `meetings.reminder_minutes` (người đặt lịch chọn,
+   * mặc định 10). Gọi bởi cron `notification-reminder` mỗi phút. Chỉ cuộc họp đã duyệt
+   * (scheduled) và chưa bắt đầu. Đánh dấu `reminder_sent_at` trong cùng câu UPDATE trước
+   * khi gửi ⇒ nhiều tick / nhiều instance không gửi trùng.
+   */
+  async remindUpcomingMeetingsBatch(): Promise<{ reminded: number; failed: number }> {
+    type Due = { id: string; title: string; start_time: Date; reminder_minutes: number; room_name: string | null };
+    // UPDATE ... RETURNING trên postgres driver trả [rows, affectedCount].
+    const res: [Due[], number] = await this.dataSource.query(`
+        UPDATE meetings m SET reminder_sent_at = NOW()
+          FROM (
+            SELECT mm.id, r.room_name FROM meetings mm
+              LEFT JOIN rooms r ON r.id = mm.room_id
+             WHERE mm.deleted_at IS NULL AND mm.status = 'scheduled'
+               AND mm.reminder_minutes > 0 AND mm.reminder_sent_at IS NULL
+               AND mm.start_time > NOW()
+               AND mm.start_time <= NOW() + make_interval(mins => mm.reminder_minutes)
+             FOR UPDATE OF mm SKIP LOCKED
+          ) d
+         WHERE m.id = d.id
+        RETURNING m.id, m.title, m.start_time, m.reminder_minutes, d.room_name`);
+    const due = Array.isArray(res[0]) ? res[0] : (res as unknown as Due[]);
+    let reminded = 0;
+    let failed = 0;
+    for (const m of due) {
+      const rows: Array<{ user_id: string }> = await this.dataSource.query(
+        `SELECT DISTINCT user_id FROM meeting_participants
+          WHERE meeting_id = $1 AND user_id IS NOT NULL AND invitation_status <> 'declined'`,
+        [m.id],
+      );
+      if (rows.length === 0) continue;
+      const start = new Date(m.start_time);
+      const mins = Math.max(1, Math.round((start.getTime() - Date.now()) / 60_000));
+      try {
+        await this.notificationsService.createNotification({
+          notificationType: NotificationType.REMINDER,
+          channel: NotificationChannel.IN_APP,
+          subject: `Sắp đến giờ họp: ${m.title}`,
+          content: `Cuộc họp "${m.title}" bắt đầu lúc ${formatDateTimeVN(start)}${m.room_name ? ` tại ${m.room_name}` : ''} (còn khoảng ${mins} phút).`,
+          relatedEntityType: 'meeting',
+          relatedEntityId: m.id,
+          recipientScope: 'user_list',
+          recipientUserIds: rows.map((x) => x.user_id),
+        });
+        reminded++;
+      } catch (e) {
+        failed++;
+        this.logger.error(
+          `remindUpcomingMeetingsBatch: meeting ${m.id} failed: ${e instanceof Error ? e.message : 'unknown'}`,
+        );
+      }
+    }
+    return { reminded, failed };
   }
 
   private async getApprovalReminderLeadMs(): Promise<number> {
@@ -1581,7 +1662,9 @@ export class MeetingRequestReviewService {
     if (done && expiredMeetingId) {
       try {
         const approverIds =
-          await this.meetingsService.getMeetingRequestApproverIds();
+          await this.meetingsService.getMeetingRequestApproverIds(
+            expiredMeetingId,
+          );
         this.meetingsService.emitMeetingRequestUpdate(approverIds, {
           requestId,
           meetingId: expiredMeetingId,

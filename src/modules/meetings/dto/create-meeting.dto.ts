@@ -12,6 +12,7 @@ import {
   Validate,
   ValidateNested,
   Matches,
+  IsIn,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { IsFutureDateConstraint } from '../validators/is-future-date.validator.js';
@@ -34,6 +35,13 @@ export class CreateMeetingDto {
   })
   @IsOptional()
   hostId?: string;
+
+  /** Thư ký: phải là người tham gia hoặc người đặt lịch. */
+  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, {
+    message: 'secretaryId phải là định dạng UUID',
+  })
+  @IsOptional()
+  secretaryId?: string;
 
   @IsDateString(
     { strict: true },
@@ -71,6 +79,27 @@ export class CreateMeetingDto {
   @Min(1, { message: 'expected_attendee_count phải lớn hơn hoặc bằng 1' })
   @IsOptional()
   expectedAttendeeCount?: number;
+
+  /** Có điểm danh hay không (mặc định có). */
+  @IsBoolean({ message: 'attendance_enabled phải là boolean' })
+  @IsOptional()
+  attendanceEnabled?: boolean;
+
+  /** Nhắc trước giờ họp (phút), 0 = không nhắc; mặc định 10. */
+  @IsIn([0, 5, 10, 15, 30, 60], { message: 'reminderMinutes phải là 0, 5, 10, 15, 30 hoặc 60' })
+  @IsOptional()
+  reminderMinutes?: number;
+
+  /** Nhóm lịch (Lịch tuần UEL), mặc định lịch đơn vị. */
+  @IsIn(['UNIT', 'SCHOOL_LEADERSHIP', 'SCHOOL_OTHER'], { message: 'Nhóm lịch không hợp lệ' })
+  @IsOptional()
+  calendarType?: 'UNIT' | 'SCHOOL_LEADERSHIP' | 'SCHOOL_OTHER';
+
+  /** Thành phần tham gia (chữ tự do: cá nhân, đơn vị, khách ngoài). */
+  @IsString()
+  @MaxLength(1000, { message: 'Thành phần tham gia tối đa 1000 ký tự' })
+  @IsOptional()
+  attendeeComposition?: string;
 
   @IsBoolean({ message: 'capacity_override_confirmed phải là boolean' })
   @IsOptional()

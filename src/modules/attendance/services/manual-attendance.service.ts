@@ -28,7 +28,10 @@ import {
 import { AuditLogsService } from '../../../modules/administration/services/audit-logs.service.js';
 import { AuthzReadRepository } from '../../../modules/auth/repositories/authz-read.repository.js';
 import { computeLateFlags } from '../utils/compute-late-flags.util.js';
-import { getAttendanceLateGraceMinutes } from '../utils/get-late-grace-minutes.util.js';
+import {
+  getAttendanceEarlyLeaveMinutes,
+  getAttendanceLateGraceMinutes,
+} from '../utils/get-late-grace-minutes.util.js';
 import {
   ManualAttendanceResponseDto,
   toManualAttendanceResponse,
@@ -49,6 +52,9 @@ const AUDIT_ENTITY_TYPE = 'attendance_records';
  * Mirror data-access của read-side (`attendance.service.ts`): TypeORM `@InjectRepository`,
  * ném lỗi `new <Http>Exception({ message, error: 'CODE' })`. KHÔNG sửa read-side/cột entity.
  */
+
+/** Host/Thư ký được sửa điểm danh tới 24 giờ sau giờ kết thúc cuộc họp. */
+const ATTENDANCE_EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 @Injectable()
 export class ManualAttendanceService {
   private readonly logger = new Logger(ManualAttendanceService.name);
@@ -175,9 +181,27 @@ export class ManualAttendanceService {
       });
     }
 
+    // Về sớm do chủ trì/thư ký ghi tay: bắt buộc ghi chú (quy định điểm danh dòng 4).
+    const reason = dto.reason?.trim() ?? '';
+    if (
+      (dto.attendanceStatus as string) === (AttendanceRecordStatus.LEFT_EARLY as string) &&
+      reason.length === 0
+    ) {
+      throw new BadRequestException({
+        message: 'Vui lòng nhập ghi chú khi ghi nhận Về sớm',
+        error: 'NOTE_REQUIRED',
+      });
+    }
+
     const record = await this.loadRecord(meetingId, recordId);
     const fromStatus = record.attendanceStatus;
+    if (reason) record.note = reason;
     record.attendanceStatus = dto.attendanceStatus as AttendanceRecordStatus;
+    if (dto.violationRuleCode !== undefined) {
+      record.violationRuleCode = await this.resolveViolationRuleCode(
+        dto.violationRuleCode,
+      );
+    }
     const saved = await this.attendanceRecordRepo.save(record);
 
     await this.writeAudit({
@@ -248,12 +272,16 @@ export class ManualAttendanceService {
         this.attendanceRecordRepo.manager,
         this.configService,
       );
+      const earlyLeaveMinutes = await getAttendanceEarlyLeaveMinutes(
+        this.attendanceRecordRepo.manager,
+      );
       const flags = computeLateFlags(
         newCheckIn,
         meeting.startTime,
         newCheckOut,
         meeting.endTime,
         graceMinutes,
+        earlyLeaveMinutes,
       );
       record.isLate = flags.isLate;
       record.lateMinutes = flags.lateMinutes;
@@ -358,6 +386,25 @@ export class ManualAttendanceService {
   // ===== Helpers =====
 
   /** Load meeting (404) + meeting-status gate (409). Mirror read-side validateAndGetMeeting. */
+  /** Hình thức thư ký chọn tay phải tồn tại + đang bật; null/'' = bỏ chọn (suy từ trạng thái). */
+  private async resolveViolationRuleCode(
+    code: string | null,
+  ): Promise<string | null> {
+    if (!code) return null;
+    const rows: Array<{ rule_code: string }> =
+      await this.attendanceRecordRepo.manager.query(
+        `SELECT rule_code FROM attendance_violation_rules WHERE rule_code = $1 AND is_active = true LIMIT 1`,
+        [code],
+      );
+    if (!rows.length) {
+      throw new BadRequestException({
+        message: 'Hình thức vi phạm không tồn tại hoặc đã tắt',
+        error: 'INVALID_VIOLATION_RULE',
+      });
+    }
+    return rows[0].rule_code;
+  }
+
   private async loadMeetingAndGate(meetingId: string): Promise<MeetingEntity> {
     const meeting = await this.meetingRepo.findOne({
       where: { id: meetingId, deletedAt: IsNull() },
@@ -366,6 +413,12 @@ export class ManualAttendanceService {
       throw new NotFoundException({
         message: 'Meeting not found',
         error: 'MEETING_NOT_FOUND',
+      });
+    }
+    if (meeting.attendanceEnabled === false) {
+      throw new BadRequestException({
+        message: 'Cuộc họp này không bật điểm danh',
+        error: 'ATTENDANCE_DISABLED',
       });
     }
     this.assertMeetingOpen(meeting);
@@ -397,7 +450,10 @@ export class ManualAttendanceService {
     }
   }
 
-  /** Ownership-check (§4.5): SYSTEM_ADMIN/BUSINESS_ADMIN bypass; else phải là Host của meeting. */
+  /**
+   * Ownership-check (§4.5): SYSTEM_ADMIN/BUSINESS_ADMIN bypass; else phải là Host hoặc Thư ký
+   * của meeting. Host/Thư ký chỉ sửa được tới 24 giờ sau giờ kết thúc (409 ATTENDANCE_LOCKED).
+   */
   private async assertHostOrAdmin(
     meeting: MeetingEntity,
     actorUserId: string,
@@ -407,7 +463,17 @@ export class ManualAttendanceService {
     if (roles.includes(SYSTEM_ADMIN) || roles.includes(BUSINESS_ADMIN)) {
       return;
     }
+    const lockAt = new Date(meeting.endTime).getTime() + ATTENDANCE_EDIT_WINDOW_MS;
+    if (Date.now() > lockAt) {
+      throw new ConflictException({
+        message: 'Đã quá 24 giờ sau khi cuộc họp kết thúc, không thể sửa điểm danh',
+        error: 'ATTENDANCE_LOCKED',
+      });
+    }
     if (meeting.hostId && meeting.hostId === actorUserId) {
+      return;
+    }
+    if (meeting.secretaryId && meeting.secretaryId === actorUserId) {
       return;
     }
     // Host theo participant_role='host' (spec mô tả host) — fallback.
