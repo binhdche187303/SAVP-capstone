@@ -1,4 +1,4 @@
-﻿                                                    import * as Joi from 'joi';
+﻿import * as Joi from 'joi';
 
 /**
  * Joi validation schema cho toàn bộ env variables của backend.
@@ -25,7 +25,6 @@ export const envValidationSchema = Joi.object({
   // Trang docs Swagger/OpenAPI phơi toàn bộ bề mặt API ra public — bật mặc
   // định cho demo/bảo vệ, có công tắc tắt khi cần (production siết chặt).
   SWAGGER_ENABLED: Joi.boolean().default(true),
-  VISITORS_ENABLED: Joi.boolean().default(false),
 
   // ─── B. Database ─────────────────────────────────────────────────────────────
   DB_HOST: Joi.string().required(),
@@ -38,6 +37,7 @@ export const envValidationSchema = Joi.object({
   DB_SYNCHRONIZE: Joi.boolean().default(false),
   DB_LOGGING: Joi.boolean().default(false),
   DB_MIGRATIONS_RUN: Joi.boolean().default(false),
+  DB_SCHEMA_SYNC_BEFORE_MIGRATIONS: Joi.boolean().default(false),
 
   // ─── C. Redis ────────────────────────────────────────────────────────────────
   REDIS_HOST: Joi.string().required(),
@@ -99,6 +99,7 @@ export const envValidationSchema = Joi.object({
 
   // ─── F. Rate Limit ───────────────────────────────────────────────────────────
   RATE_LIMIT_ENABLED: Joi.boolean().default(true),
+  TRUST_PROXY_HOPS: Joi.number().integer().min(0).max(5).default(1),
   AUTH_LOGIN_RATE_LIMIT_MAX_ATTEMPTS: Joi.number().integer().default(5),
   AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS: Joi.number().integer().default(300),
   AUTH_OTP_REQUEST_RATE_LIMIT_MAX_ATTEMPTS: Joi.number().integer().default(3),
@@ -222,6 +223,12 @@ export const envValidationSchema = Joi.object({
   // ─── K2. Device Probe (IOT-014) ──────────────────────────────────────────────
   DEVICE_OFFLINE_DETECT_ENABLED: Joi.boolean().default(true),
   RTSP_PROBE_TIMEOUT_MS: Joi.number().integer().min(100).default(3000),
+  DEVICE_OFFLINE_FAIL_THRESHOLD: Joi.number().integer().min(1).default(3),
+  DEVICE_PROBE_CONCURRENCY: Joi.number()
+    .integer()
+    .min(1)
+    .max(500)
+    .default(50),
   // A5 (IOT-005): timeout riêng cho runtime RTSP probe (chẩn đoán đơn lẻ, chờ lâu hơn batch).
   RTSP_RUNTIME_PROBE_TIMEOUT_MS: Joi.number().integer().min(100).default(10000),
 
@@ -232,6 +239,20 @@ export const envValidationSchema = Joi.object({
   // REC-002: ffmpeg + nơi lưu file recording.
   FFMPEG_PATH: Joi.string().default('ffmpeg'),
   RECORDING_STORAGE_PATH: Joi.string().default('./storage/recordings'),
+  MOCK_RECORDING_ENABLED: Joi.boolean().default(false),
+  CAMERA_PROVIDER: Joi.string().valid('ivss', 'hgvision').default('ivss'),
+  HGVISION_ENABLED: Joi.boolean().default(false),
+  HGVISION_BASE_URL: Joi.string().uri().allow('').default(''),
+  HGVISION_CLIENT_ID: Joi.string().allow('').default(''),
+  HGVISION_CLIENT_SECRET: Joi.string().allow('').default(''),
+  HGVISION_MOCK_FALLBACK_ENABLED: Joi.boolean().default(false),
+  HGVISION_SCOPE: Joi.string().default('faces:read plates:read cameras:read'),
+  HGVISION_TIMEOUT_MS: Joi.number().integer().min(1000).default(8000),
+  HGVISION_POLL_INTERVAL_MS: Joi.number()
+    .integer()
+    .min(1000)
+    .max(60000)
+    .default(5000),
   // REC-005: ffprobe trích metadata media (best-effort).
   FFPROBE_PATH: Joi.string().default('ffprobe'),
   // NSC-001 (#31): token nội bộ cho POST /internal/no-show-cases (fail-closed nếu rỗng).
@@ -272,6 +293,14 @@ export const envValidationSchema = Joi.object({
     .default(8000),
   // IPS-001 (#37): cron đồng bộ person IVSS (gated default OFF) + lead/grace (phút).
   SCHEDULER_IVSS_SYNC_ENABLED: Joi.boolean().default(false),
+  SCHEDULER_KPI_ROLLUP_ENABLED: Joi.boolean().default(false),
+  VISITORS_ENABLED: Joi.boolean().default(false),
+  SCHEDULER_VISITOR_ENABLED: Joi.boolean().default(false),
+  VISITOR_FACEGATE_ENABLED: Joi.boolean().default(false),
+  REPORT_CENTER_ENABLED: Joi.boolean().default(false),
+  SCHEDULER_REPORT_SCHEDULE_ENABLED: Joi.boolean().default(false),
+  SCHEDULER_DEVICE_MAINTENANCE_ENABLED: Joi.boolean().default(false),
+  KPI_ROLLUP_READ_ENABLED: Joi.boolean().default(true),
   IVSS_SYNC_LEAD_MINUTES: Joi.number().integer().min(1).default(5),
   IVSS_SYNC_GRACE_MINUTES: Joi.number().integer().min(0).default(5),
   // IRP-001 (#40): broadcast realtime presence qua WS (gated default OFF).
