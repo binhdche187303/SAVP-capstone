@@ -7,29 +7,29 @@ export class CreateClassAttendanceRecordsAndSeedDemo20261011000002 implements Mi
     '$2b$10$szGAzI6OAO0nxSI4OSsCuuwQVvan0AJW2XjzvMlHb2VeNGgBusgm6';
 
   private readonly demoStudents = [
-    ['SV001', 'student.demo', 'student@meetingsys.vn', 'Le Minh Sinh'],
+    ['SV001', 'student.demo', 'student@meetingsys.vn', 'Lê Minh Sinh'],
     [
       'SV002',
       'nam.nguyen',
       'nam.nguyen@smartracking.edu.vn',
-      'Nguyen Hoang Nam',
+      'Nguyễn Hoàng Nam',
     ],
-    ['SV003', 'lan.ngo', 'lan.ngo@smartracking.edu.vn', 'Ngo Thi Lan'],
-    ['SV004', 'huy.do', 'huy.do@smartracking.edu.vn', 'Do Gia Huy'],
-    ['SV005', 'mai.tran', 'mai.tran@smartracking.edu.vn', 'Tran Ngoc Mai'],
-    ['SV006', 'anh.pham', 'anh.pham@smartracking.edu.vn', 'Pham Duc Anh'],
-    ['SV007', 'thao.vo', 'thao.vo@smartracking.edu.vn', 'Vo Minh Thao'],
-    ['SV008', 'khoa.le', 'khoa.le@smartracking.edu.vn', 'Le Dang Khoa'],
+    ['SV003', 'lan.ngo', 'lan.ngo@smartracking.edu.vn', 'Ngô Thị Lan'],
+    ['SV004', 'huy.do', 'huy.do@smartracking.edu.vn', 'Đỗ Gia Huy'],
+    ['SV005', 'mai.tran', 'mai.tran@smartracking.edu.vn', 'Trần Ngọc Mai'],
+    ['SV006', 'anh.pham', 'anh.pham@smartracking.edu.vn', 'Phạm Đức Anh'],
+    ['SV007', 'thao.vo', 'thao.vo@smartracking.edu.vn', 'Võ Minh Thảo'],
+    ['SV008', 'khoa.le', 'khoa.le@smartracking.edu.vn', 'Lê Đăng Khoa'],
   ];
 
   private readonly classes = [
     {
       code: 'WEB101-01',
       subjectCode: 'WEB101',
-      subjectName: 'Lap trinh Web',
+      subjectName: 'Lập trình Web',
       scheduleWeekday: 1,
-      scheduleText: 'Thu 2, 08:00 - 10:30',
-      roomText: 'Phong hoc A101',
+      scheduleText: 'Thứ 2, 08:00 - 10:30',
+      roomText: 'Phòng học A101',
       studentCodes: [
         'SV001',
         'SV002',
@@ -43,19 +43,19 @@ export class CreateClassAttendanceRecordsAndSeedDemo20261011000002 implements Mi
     {
       code: 'AI202-01',
       subjectCode: 'AI202',
-      subjectName: 'Tri tue nhan tao ung dung',
+      subjectName: 'Trí tuệ nhân tạo ứng dụng',
       scheduleWeekday: 3,
-      scheduleText: 'Thu 4, 13:30 - 16:00',
-      roomText: 'Phong hoc A102',
+      scheduleText: 'Thứ 4, 13:30 - 16:00',
+      roomText: 'Phòng học A102',
       studentCodes: ['SV001', 'SV002', 'SV003', 'SV005', 'SV006', 'SV008'],
     },
     {
       code: 'DB303-01',
       subjectCode: 'DB303',
-      subjectName: 'Co so du lieu nang cao',
+      subjectName: 'Cơ sở dữ liệu nâng cao',
       scheduleWeekday: 5,
-      scheduleText: 'Thu 6, 09:00 - 11:30',
-      roomText: 'Phong hoc B203',
+      scheduleText: 'Thứ 6, 09:00 - 11:30',
+      roomText: 'Phòng học B203',
       studentCodes: ['SV001', 'SV003', 'SV004', 'SV005', 'SV007'],
     },
   ];

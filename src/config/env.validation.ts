@@ -25,6 +25,7 @@ export const envValidationSchema = Joi.object({
   // Trang docs Swagger/OpenAPI phơi toàn bộ bề mặt API ra public — bật mặc
   // định cho demo/bảo vệ, có công tắc tắt khi cần (production siết chặt).
   SWAGGER_ENABLED: Joi.boolean().default(true),
+  VISITORS_ENABLED: Joi.boolean().default(false),
 
   // ─── B. Database ─────────────────────────────────────────────────────────────
   DB_HOST: Joi.string().required(),
