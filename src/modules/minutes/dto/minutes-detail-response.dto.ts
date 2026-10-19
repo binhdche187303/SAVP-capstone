@@ -154,10 +154,18 @@ export class MinutesAttachmentSummaryDto {
 export class MinutesPermissionsDto {
   canEdit: boolean;
   canIssue: boolean;
+  canDelete?: boolean;
+  canLiveShare?: boolean;
+  signoffLocked?: boolean;
 
-  constructor(canEdit: boolean, canIssue: boolean) {
+  constructor(
+    canEdit: boolean,
+    canIssue: boolean,
+    extra: { canDelete?: boolean; canLiveShare?: boolean; signoffLocked?: boolean } = {},
+  ) {
     this.canEdit = canEdit;
     this.canIssue = canIssue;
+    Object.assign(this, extra);
   }
 }
 

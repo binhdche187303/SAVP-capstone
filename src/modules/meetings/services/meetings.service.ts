@@ -30,6 +30,8 @@ import {
   MeetingType,
   MeetingMode,
   MeetingVisibilityLevel,
+  DEFAULT_MEETING_REMINDERS,
+  type MeetingReminderChannel,
 } from '../entities/meeting.entity.js';
 import {
   MeetingRequestEntity,
@@ -132,6 +134,7 @@ import { RemoveParticipantBodyDto } from '../dto/remove-participant-body.dto.js'
 import { RemoveParticipantResponseDto } from '../dto/remove-participant-response.dto.js';
 import { AddExternalParticipantDto } from '../dto/add-external-participant.dto.js';
 import type { IAddExternalParticipantResponse } from '../dto/add-external-participant-response.dto.js';
+import { SCHOOL_APPROVER_DEPT_KEY } from './calendar-roles.service.js';
 import { RemoveScope } from '../types/remove-scope.type.js';
 import type { IAddInternalParticipantResponse } from '../dto/add-internal-participant-response.dto.js';
 import { MyScheduleQueryDto } from '../dto/my-schedule-query.dto.js';
@@ -195,6 +198,11 @@ import {
   AGENDA_ATTACHMENT_ALLOWED_MIME_TYPES,
   AGENDA_ATTACHMENT_MIME_TO_EXTENSIONS,
 } from '../constants/agenda-attachment.constants.js';
+
+export type FaultyRoomEquipment = Pick<
+  EquipmentEntity,
+  'id' | 'equipmentName' | 'equipmentType' | 'healthStatus' | 'lastIssueNote'
+>;
 export interface AuthUser {
   userId: string;
   jti?: string;
@@ -348,6 +356,43 @@ export class MeetingsService {
    * phòng có được coi là "available" hay không (chỉ approved/active mới chặn,
    * xem getRoomAvailability/getAvailableRooms).
    */
+  // Thiết bị hỏng/mất kết nối đang gắn từng phòng — hiện ngay trên danh sách
+  // phòng trống để người đặt chọn phòng hợp nhu cầu (không loại phòng khỏi danh sách).
+  async getFaultyEquipmentsMap(
+    roomIds: string[],
+  ): Promise<Map<string, FaultyRoomEquipment[]>> {
+    const map = new Map<string, FaultyRoomEquipment[]>();
+    if (roomIds.length === 0) return map;
+
+    const rows = await this.dataSource.getRepository(EquipmentEntity).find({
+      where: {
+        currentRoomId: In(roomIds),
+        healthStatus: In([HealthStatus.FAULTY, HealthStatus.OFFLINE]),
+      },
+      select: {
+        id: true,
+        currentRoomId: true,
+        equipmentName: true,
+        equipmentType: true,
+        healthStatus: true,
+        lastIssueNote: true,
+      },
+    });
+    for (const eq of rows) {
+      if (!eq.currentRoomId) continue;
+      const list = map.get(eq.currentRoomId) ?? [];
+      list.push({
+        id: eq.id,
+        equipmentName: eq.equipmentName,
+        equipmentType: eq.equipmentType,
+        healthStatus: eq.healthStatus,
+        lastIssueNote: eq.lastIssueNote,
+      });
+      map.set(eq.currentRoomId, list);
+    }
+    return map;
+  }
+
   async getPendingRoomConflictsMap(
     roomIds: string[],
     startTime: Date,
@@ -910,6 +955,10 @@ export class MeetingsService {
       .where('room.isActive = :isActive', { isActive: true })
       .andWhere('room.currentStatus != :inactiveStatus', {
         inactiveStatus: 'inactive',
+      })
+      // Loai ca phong admin dat "Ngung hoat dong"/"Bao tri" (khop check trong create()).
+      .andWhere('room.administrativeStatus NOT IN (:...blockedAdminStatuses)', {
+        blockedAdminStatuses: ['inactive', 'maintenance'],
       });
 
     if (minCapacity) {
@@ -973,7 +1022,8 @@ export class MeetingsService {
     if (
       !room ||
       room.currentStatus === 'inactive' ||
-      room.administrativeStatus === 'inactive'
+      room.administrativeStatus === 'inactive' ||
+      room.administrativeStatus === 'maintenance'
     ) {
       throw new NotFoundException({
         success: false,
@@ -995,11 +1045,66 @@ export class MeetingsService {
       }
     }
 
+    // Lịch tuần UEL — nhóm lịch: lịch cấp trường chỉ văn thư đăng ký; lịch lãnh đạo trường
+    // phải do thành viên Ban Giám hiệu chủ trì.
+    const calendarType = dto.calendarType ?? 'UNIT';
+    const [actor] = await this.dataSource.query(
+      `SELECT department_id, is_unit_clerk FROM users WHERE id = $1`,
+      [authUser.userId],
+    );
+    if (calendarType !== 'UNIT' && !actor?.is_unit_clerk) {
+      throw new ForbiddenException({
+        success: false,
+        message: 'Chỉ văn thư đơn vị được đăng ký lịch lãnh đạo trường / lịch hoạt động khác',
+        error: { code: 'CALENDAR_TYPE_NOT_ALLOWED', details: { field: 'calendarType' } },
+      });
+    }
+    if (calendarType === 'SCHOOL_LEADERSHIP') {
+      const [host] = await this.dataSource.query(
+        `SELECT leadership_title FROM users WHERE id = $1`,
+        [hostId],
+      );
+      if (!host?.leadership_title) {
+        throw new BadRequestException({
+          success: false,
+          message: 'Lịch lãnh đạo trường phải do thành viên Ban Giám hiệu chủ trì',
+          error: { code: 'HOST_NOT_LEADERSHIP', details: { field: 'hostId' } },
+        });
+      }
+    }
+    if (calendarType === 'UNIT' && hostId !== authUser.userId) {
+      const [host] = await this.dataSource.query(
+        `SELECT department_id, leadership_title FROM users WHERE id = $1`,
+        [hostId],
+      );
+      const sameUnit = !!actor?.department_id && host?.department_id === actor.department_id;
+      if (!host || (!sameUnit && !host.leadership_title)) {
+        throw new BadRequestException({
+          success: false,
+          message: 'Lịch đơn vị phải do người trong đơn vị hoặc Ban Giám hiệu chủ trì',
+          error: { code: 'HOST_NOT_IN_UNIT', details: { field: 'hostId' } },
+        });
+      }
+    }
+    const calendarDepartmentId: string | null = actor?.department_id ?? null;
+
     const allParticipantIds = [...(dto.participantUserIds || [])];
     if (!allParticipantIds.includes(hostId)) {
       allParticipantIds.push(hostId);
     }
+    // Thư ký luôn là người tham gia (để vào phòng họp, xem ghi chú, điểm danh).
+    if (dto.secretaryId && !allParticipantIds.includes(dto.secretaryId)) {
+      allParticipantIds.push(dto.secretaryId);
+    }
     const uniqueParticipantIds = [...new Set(allParticipantIds)];
+    const secretaryId = dto.secretaryId || null;
+    if (secretaryId && secretaryId !== authUser.userId && !uniqueParticipantIds.includes(secretaryId)) {
+      throw new BadRequestException({
+        success: false,
+        message: 'Thư ký phải là người tham gia cuộc họp',
+        error: { code: 'SECRETARY_NOT_PARTICIPANT', details: { field: 'secretaryId' } },
+      });
+    }
 
     if (uniqueParticipantIds.length > 0) {
       const existingUsers = await this.dataSource
@@ -1123,7 +1228,11 @@ export class MeetingsService {
       endTime,
     );
 
-    const approverIds = await this.resolveApproverIds();
+    let approverIds = await this.resolveCalendarApproverIds(
+      calendarType,
+      calendarDepartmentId,
+    );
+    if (approverIds.length === 0) approverIds = await this.resolveApproverIds();
     // Người đặt phòng TỰ MÌNH có quyền duyệt (VD Manager) → auto-approve luôn thay vì
     // bắt xếp hàng chờ duyệt: mirror MeetingRequestReviewService.approve()'s guard
     // SELF_APPROVAL_NOT_ALLOWED (chặn tự duyệt yêu cầu do chính mình tạo) — nếu người
@@ -1187,6 +1296,12 @@ export class MeetingsService {
             visibilityLevel: 'internal' as any,
             timezone: 'Asia/Ho_Chi_Minh',
             expectedAttendeeCount: dto.expectedAttendeeCount || null,
+            attendanceEnabled: dto.attendanceEnabled ?? true,
+            reminderChannelsJson: normalizeReminders(dto.reminders),
+            calendarType,
+            calendarDepartmentId,
+            attendeeComposition: dto.attendeeComposition?.trim() || null,
+            secretaryId,
             createdBy: authUser.userId,
           });
           await em.save(MeetingEntity, meeting);
@@ -1233,6 +1348,11 @@ export class MeetingsService {
               meetingType: dto.meetingType,
               meetingMode: dto.meetingMode,
               expectedAttendeeCount: dto.expectedAttendeeCount,
+              attendanceEnabled: dto.attendanceEnabled ?? true,
+              reminders: normalizeReminders(dto.reminders),
+              calendarType,
+              attendeeComposition: dto.attendeeComposition,
+              secretaryId,
               capacityOverrideConfirmed: dto.capacityOverrideConfirmed,
               participantUserIds: dto.participantUserIds,
               externalParticipants: dto.externalParticipants,
@@ -1673,7 +1793,8 @@ export class MeetingsService {
       if (
         !newRoom.isActive ||
         newRoom.currentStatus === RoomStatus.INACTIVE ||
-        newRoom.administrativeStatus === RoomStatus.INACTIVE
+        newRoom.administrativeStatus === RoomStatus.INACTIVE ||
+        newRoom.administrativeStatus === RoomStatus.MAINTENANCE
       ) {
         throw new ConflictException({
           success: false,
@@ -1994,6 +2115,7 @@ export class MeetingsService {
             endTime: newEndTime,
             roomId: newRoomIdValue || targetRoomId,
             updatedBy: authUser.userId,
+            reminderSentJson: {}, // đổi giờ ⇒ nhắc lại theo giờ mới
           });
 
           // Meeting mới tạo có đúng 1 MeetingRequest PENDING (từ createMeeting,
@@ -2177,7 +2299,7 @@ export class MeetingsService {
       // duyệt, KHÔNG báo participants qua email (họ chưa thấy thay đổi
       // nào được xác nhận trên meeting) ──
       try {
-        const approverIds = await this.resolveApproverIds();
+        const approverIds = await this.resolveApproverIds(meeting.id);
         if (approverIds.length > 0) {
           await this.notificationsService.createNotification({
             notificationType: NotificationType.MEETING_REQUEST_CREATED,
@@ -2403,6 +2525,10 @@ export class MeetingsService {
       .andWhere('room.currentStatus != :inactiveStatus', {
         inactiveStatus: 'inactive',
       })
+      // Loai ca phong admin dat "Ngung hoat dong"/"Bao tri" (khop check trong create()).
+      .andWhere('room.administrativeStatus NOT IN (:...blockedAdminStatuses)', {
+        blockedAdminStatuses: ['inactive', 'maintenance'],
+      })
       .getMany();
 
     // Chỉ approved/active chặn phòng — pending không chặn (không còn tự động
@@ -2604,18 +2730,6 @@ export class MeetingsService {
       });
     }
 
-    if (meeting.recurrenceRuleId && meeting.parentMeetingId === null) {
-      throw new ConflictException({
-        success: false,
-        message:
-          'Không thể đổi phòng cho cuộc họp định kỳ. Vui lòng thao tác trên từng cuộc họp cụ thể.',
-        error: {
-          code: 'RECURRING_SERIES_UPDATE_NOT_SUPPORTED',
-          details: { meetingId },
-        },
-      });
-    }
-
     const isOwner =
       meeting.organizerId === authUser.userId ||
       meeting.hostId === authUser.userId;
@@ -2659,7 +2773,8 @@ export class MeetingsService {
       !newRoom ||
       !newRoom.isActive ||
       newRoom.currentStatus === 'inactive' ||
-      newRoom.administrativeStatus === 'inactive'
+      newRoom.administrativeStatus === 'inactive' ||
+      newRoom.administrativeStatus === 'maintenance'
     ) {
       throw new UnprocessableEntityException({
         success: false,
@@ -3012,7 +3127,7 @@ export class MeetingsService {
       // duyệt, KHÔNG báo participants qua email (phòng thực tế chưa được
       // xác nhận trên meeting) ──
       try {
-        const approverIds = await this.resolveApproverIds();
+        const approverIds = await this.resolveApproverIds(meeting.id);
         if (approverIds.length > 0) {
           await this.notificationsService.createNotification({
             notificationType: NotificationType.MEETING_REQUEST_CREATED,
@@ -4286,7 +4401,7 @@ export class MeetingsService {
     // ── 1. Load meeting with organizer and host ──
     const meeting = await this.dataSource.getRepository(MeetingEntity).findOne({
       where: { id: meetingId },
-      relations: { organizer: true, host: true },
+      relations: { organizer: true, host: true, secretary: true },
     });
 
     if (!meeting || meeting.deletedAt) {
@@ -4396,6 +4511,8 @@ export class MeetingsService {
         status: meeting.status,
         recurrenceRuleId: meeting.recurrenceRuleId,
         parentMeetingId: meeting.parentMeetingId,
+        attendanceEnabled: meeting.attendanceEnabled,
+        reminders: meeting.reminderChannelsJson ?? [],
       }),
       room: room
         ? new DetailRoomDto({
@@ -4420,6 +4537,13 @@ export class MeetingsService {
             id: meeting.host.id,
             fullName: meeting.host.fullName,
             email: meeting.host.email,
+          })
+        : null,
+      secretary: meeting.secretary
+        ? new DetailUserDto({
+            id: meeting.secretary.id,
+            fullName: meeting.secretary.fullName,
+            email: meeting.secretary.email,
           })
         : null,
       participants: (participants ?? []).map(
@@ -5567,8 +5691,47 @@ export class MeetingsService {
    * notification khi request được tạo, giữ nhất quán "ai thấy request thì
    * người đó nhận update realtime".
    */
-  async getMeetingRequestApproverIds(): Promise<string[]> {
-    return this.resolveApproverIds();
+  async getMeetingRequestApproverIds(meetingId?: string): Promise<string[]> {
+    return this.resolveApproverIds(meetingId);
+  }
+
+  /**
+   * Lịch tuần UEL — người duyệt theo nhóm lịch: lịch đơn vị → trưởng phòng (MANAGER) và
+   * văn thư của đơn vị đó; lịch cấp trường → trưởng phòng và văn thư của đơn vị duyệt cấp
+   * trường (system_configs meeting.school_approver_department_id). Rỗng nếu chưa cấu hình.
+   */
+  async resolveCalendarApproverIds(
+    calendarType: string,
+    calendarDepartmentId: string | null,
+  ): Promise<string[]> {
+    let departmentId = calendarDepartmentId;
+    if (calendarType !== 'UNIT') {
+      const [cfg] = await this.dataSource.query(
+        `SELECT config_value FROM system_configs WHERE config_key = $1 AND is_active = true`,
+        [SCHOOL_APPROVER_DEPT_KEY],
+      );
+      departmentId = cfg?.config_value || null;
+    }
+    if (!departmentId) return [];
+    const rows: { id: string }[] = await this.dataSource.query(
+      `SELECT u.id FROM users u
+        WHERE u.department_id = $1 AND u.deleted_at IS NULL AND u.account_status = 'active'
+          AND (u.is_unit_clerk OR EXISTS (
+                SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+                 WHERE ur.user_id = u.id AND ur.is_active
+                   AND (ur.expired_at IS NULL OR ur.expired_at > now())
+                   AND r.role_code = 'MANAGER'))`,
+      [departmentId],
+    );
+    return rows.map((r) => r.id);
+  }
+
+  /** Người dùng có được duyệt yêu cầu của cuộc họp này không (SYSTEM_ADMIN luôn được). */
+  async canReviewMeeting(userId: string, meetingId: string): Promise<boolean> {
+    const { roles } = await this.authzRepo.getEffectiveRolesAndPermissions(userId);
+    if (roles.includes('SYSTEM_ADMIN')) return true;
+    const approverIds = await this.resolveApproverIds(meetingId);
+    return approverIds.includes(userId);
   }
 
   /** Bắn realtime `meeting_request.updated` — public để MeetingRequestReviewService tái dùng. */
@@ -5585,8 +5748,25 @@ export class MeetingsService {
     this.emitMeetingRequestRealtime(approverIds, payload);
   }
 
-  private async resolveApproverIds(): Promise<string[]> {
+  private async resolveMeetingCalendarApproverIds(meetingId: string): Promise<string[]> {
+    const [m] = await this.dataSource.query(
+      `SELECT calendar_type, calendar_department_id FROM meetings WHERE id = $1`,
+      [meetingId],
+    );
+    if (!m) return [];
+    return this.resolveCalendarApproverIds(m.calendar_type, m.calendar_department_id);
+  }
+
+  private async resolveApproverIds(meetingId?: string): Promise<string[]> {
     try {
+      if (meetingId) {
+        // Lỗi tra nhóm lịch không được chặn fallback bên dưới (vẫn phải có người duyệt).
+        const ids = await this.resolveMeetingCalendarApproverIds(meetingId).catch(
+          () => [] as string[],
+        );
+        if (ids.length > 0) return ids;
+      }
+
       const config = await this.dataSource
         .getRepository(SystemConfigEntity)
         .findOne({
@@ -7041,6 +7221,8 @@ export class MeetingsService {
           'meeting.hostId',
           'meeting.startTime',
           'meeting.endTime',
+          'meeting.calendarType',
+          'meeting.attendeeComposition',
           'room.id',
           'room.roomName',
           'decider.id',
@@ -7098,12 +7280,22 @@ export class MeetingsService {
         (r) => r === 'SYSTEM_ADMIN' || r === 'BUSINESS_ADMIN',
       );
       if (!isAdmin) {
+        // Lịch tuần UEL: trưởng phòng / văn thư chỉ thấy lịch đơn vị mình; đơn vị duyệt
+        // cấp trường thấy thêm lịch lãnh đạo trường + lịch hoạt động khác.
         qb.andWhere(
-          `(requester.direct_manager_id = :userId
-            OR requester.department_id IN (
-              SELECT d.id FROM departments d WHERE d.manager_user_id = :userId
-            ))`,
-          { userId: authUser.userId },
+          `EXISTS (
+            SELECT 1 FROM users me
+             WHERE me.id = :userId AND me.department_id IS NOT NULL
+               AND (me.is_unit_clerk OR EXISTS (
+                     SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+                      WHERE ur.user_id = me.id AND ur.is_active
+                        AND (ur.expired_at IS NULL OR ur.expired_at > now())
+                        AND r.role_code = 'MANAGER'))
+               AND me.department_id::text = CASE WHEN meeting.calendar_type = 'UNIT'
+                     THEN meeting.calendar_department_id::text
+                     ELSE (SELECT config_value FROM system_configs WHERE config_key = :schoolKey) END
+          )`,
+          { userId: authUser.userId, schoolKey: SCHOOL_APPROVER_DEPT_KEY },
         );
       }
 
@@ -7233,6 +7425,8 @@ export class MeetingsService {
                 hostId: mr.meeting.hostId,
                 startTime: mr.meeting.startTime,
                 endTime: mr.meeting.endTime,
+                calendarType: mr.meeting.calendarType,
+                attendeeComposition: mr.meeting.attendeeComposition,
               }
             : null,
           // F-R3: snapshot giờ/phòng CŨ — chỉ dùng khi request là UPDATE_TIME/
@@ -7258,4 +7452,15 @@ export class MeetingsService {
       throw error;
     }
   }
+}
+
+/** Bỏ trùng kênh (giữ mục đầu); undefined ⇒ mặc định thông báo 10 phút. */
+function normalizeReminders(
+  list: MeetingReminderChannel[] | undefined,
+): MeetingReminderChannel[] {
+  if (!list) return [...DEFAULT_MEETING_REMINDERS];
+  const seen = new Set<string>();
+  return list
+    .filter((x) => !seen.has(x.channel) && seen.add(x.channel))
+    .map((x) => ({ channel: x.channel, minutes: x.minutes }));
 }

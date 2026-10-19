@@ -225,6 +225,7 @@ describe('UsersService', () => {
               {
                 role: {
                   id: 'sysadmin-role-id',
+                  roleCode: 'SYSTEM_ADMIN',
                   isSystemRole: true,
                 },
               },
@@ -506,7 +507,7 @@ describe('UsersService', () => {
       em.find.mockImplementation(async (entityClass: unknown, options: any) => {
         if (entityClass === UserRoleEntity) {
           if (options?.where?.userId === authUserId) {
-            return [{ role: { id: 'sysadmin-role-id', isSystemRole: true } }];
+            return [{ role: { id: 'sysadmin-role-id', roleCode: 'SYSTEM_ADMIN', isSystemRole: true } }];
           }
           if (options?.where?.userId === targetUserId) {
             return [activeRole];
@@ -543,7 +544,7 @@ describe('UsersService', () => {
       em.find.mockImplementation(async (entityClass: unknown, options: any) => {
         if (entityClass === UserRoleEntity) {
           if (options?.where?.userId === authUserId) {
-            return [{ role: { id: 'sysadmin-role-id', isSystemRole: true } }];
+            return [{ role: { id: 'sysadmin-role-id', roleCode: 'SYSTEM_ADMIN', isSystemRole: true } }];
           }
           if (options?.where?.userId === targetUserId) {
             return [activeRole];
@@ -1517,7 +1518,14 @@ describe('UsersService', () => {
       em.find.mockImplementation(async (entityClass, options: any) => {
         if (entityClass === UserRoleEntity) {
           if (options?.where?.userId === actorId) {
-            return [{ role: { isSystemRole: !!opts.actorIsSystemAdmin } }];
+            return [
+              {
+                role: {
+                  roleCode: opts.actorIsSystemAdmin ? 'SYSTEM_ADMIN' : 'EMPLOYEE',
+                  isSystemRole: !!opts.actorIsSystemAdmin,
+                },
+              },
+            ];
           }
           if (options?.where?.userId === targetUserId) {
             return opts.freshRoles ?? [];
@@ -2193,7 +2201,12 @@ describe('UsersService', () => {
         if (entity === UserRoleEntity) {
           if (o?.where?.userId === actorId) {
             return [
-              { role: { isSystemRole: opts.actorIsSystemAdmin !== false } },
+              {
+                role: {
+                  roleCode: opts.actorIsSystemAdmin !== false ? 'SYSTEM_ADMIN' : 'EMPLOYEE',
+                  isSystemRole: opts.actorIsSystemAdmin !== false,
+                },
+              },
             ];
           }
           if (o?.where?.userId === targetUserId) {
@@ -2434,7 +2447,12 @@ describe('UsersService', () => {
         if (entity === UserRoleEntity) {
           if (o?.where?.userId === actorId) {
             return [
-              { role: { isSystemRole: opts.actorIsSystemAdmin !== false } },
+              {
+                role: {
+                  roleCode: opts.actorIsSystemAdmin !== false ? 'SYSTEM_ADMIN' : 'EMPLOYEE',
+                  isSystemRole: opts.actorIsSystemAdmin !== false,
+                },
+              },
             ];
           }
           if (o?.where?.userId === targetUserId) {
@@ -2929,7 +2947,12 @@ describe('UsersService', () => {
       em.find.mockImplementation(async (entity, o: any) => {
         if (entity === UserRoleEntity && o?.where?.userId === actorId) {
           return [
-            { role: { isSystemRole: opts.actorIsSystemAdmin !== false } },
+            {
+                role: {
+                  roleCode: opts.actorIsSystemAdmin !== false ? 'SYSTEM_ADMIN' : 'EMPLOYEE',
+                  isSystemRole: opts.actorIsSystemAdmin !== false,
+                },
+              },
           ];
         }
         if (entity === DepartmentEntity) return []; // collectDepartmentScope children

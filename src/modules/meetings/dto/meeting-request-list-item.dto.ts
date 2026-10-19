@@ -107,6 +107,8 @@ export class MeetingRequestListItemDto {
     hostId: string | null;
     startTime: Date | null;
     endTime: Date | null;
+    calendarType?: string;
+    attendeeComposition?: string | null;
   } | null;
 
   /**
@@ -166,6 +168,8 @@ export class MeetingRequestListItemDto {
       hostId: string | null;
       startTime: Date | null;
       endTime: Date | null;
+      calendarType?: string;
+      attendeeComposition?: string | null;
     } | null,
     oldMeetingSnapshot: {
       startTime: Date | null;

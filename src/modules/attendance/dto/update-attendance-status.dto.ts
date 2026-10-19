@@ -35,4 +35,13 @@ export class UpdateAttendanceStatusDto {
   @IsString()
   @MaxLength(1000, { message: 'reason cannot exceed 1000 characters' })
   reason?: string;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Hình thức vi phạm chọn tay (rule_code); null = suy theo trạng thái',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  violationRuleCode?: string | null;
 }

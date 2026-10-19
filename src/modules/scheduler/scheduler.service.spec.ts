@@ -137,6 +137,11 @@ describe('SchedulerService (NSL-001 + EVD-001 + IPS-001 + GAP-001 cron wiring)',
         expired: 0,
         failed: 0,
       })),
+      remindPendingApprovalsBatch: jest.fn(async () => ({
+        scanned: 0,
+        reminded: 0,
+        failed: 0,
+      })),
     };
     securityAlertAutoResolveMock = {
       autoResolveExpired: jest.fn(async () => ({ scanned: 0, resolved: 0 })),
@@ -525,8 +530,20 @@ describe('SchedulerService (NSL-001 + EVD-001 + IPS-001 + GAP-001 cron wiring)',
   });
 
   // ── F-R4b: cron meeting-request-expire ──
-  it('expireMeetingRequests gate OFF (default) → KHÔNG gọi expireOverdueBatch', async () => {
-    cfg = { SCHEDULER_ENABLED: true }; // SCHEDULER_MEETING_REQUEST_EXPIRE_ENABLED default false
+  it('expireMeetingRequests mặc định ON → gọi expireOverdueBatch', async () => {
+    cfg = { SCHEDULER_ENABLED: true }; // SCHEDULER_MEETING_REQUEST_EXPIRE_ENABLED default true
+    const s = await build();
+    await s.expireMeetingRequests();
+    expect(meetingRequestReviewMock.expireOverdueBatch).toHaveBeenCalledTimes(
+      1,
+    );
+  });
+
+  it('expireMeetingRequests cờ riêng = false → KHÔNG gọi expireOverdueBatch', async () => {
+    cfg = {
+      SCHEDULER_ENABLED: true,
+      SCHEDULER_MEETING_REQUEST_EXPIRE_ENABLED: false,
+    };
     const s = await build();
     await s.expireMeetingRequests();
     expect(meetingRequestReviewMock.expireOverdueBatch).not.toHaveBeenCalled();
@@ -564,6 +581,46 @@ describe('SchedulerService (NSL-001 + EVD-001 + IPS-001 + GAP-001 cron wiring)',
       new Error('boom'),
     );
     await expect(s.expireMeetingRequests()).resolves.toBeUndefined();
+  });
+
+  // ── cron meeting-request-reminder ──
+  it('remindPendingMeetingRequests mặc định ON → gọi remindPendingApprovalsBatch', async () => {
+    cfg = { SCHEDULER_ENABLED: true };
+    const s = await build();
+    await s.remindPendingMeetingRequests();
+    expect(
+      meetingRequestReviewMock.remindPendingApprovalsBatch,
+    ).toHaveBeenCalledTimes(1);
+  });
+
+  it('remindPendingMeetingRequests cờ riêng = false → KHÔNG chạy', async () => {
+    cfg = {
+      SCHEDULER_ENABLED: true,
+      SCHEDULER_MEETING_REQUEST_REMINDER_ENABLED: false,
+    };
+    const s = await build();
+    await s.remindPendingMeetingRequests();
+    expect(
+      meetingRequestReviewMock.remindPendingApprovalsBatch,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('remindPendingMeetingRequests: SCHEDULER_ENABLED=false → KHÔNG chạy', async () => {
+    cfg = { SCHEDULER_ENABLED: false };
+    const s = await build();
+    await s.remindPendingMeetingRequests();
+    expect(
+      meetingRequestReviewMock.remindPendingApprovalsBatch,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('remindPendingMeetingRequests: batch throw → KHÔNG ném ra cron (ARCH-02)', async () => {
+    cfg = { SCHEDULER_ENABLED: true };
+    const s = await build();
+    meetingRequestReviewMock.remindPendingApprovalsBatch.mockRejectedValueOnce(
+      new Error('boom'),
+    );
+    await expect(s.remindPendingMeetingRequests()).resolves.toBeUndefined();
   });
 
   // ── ASC-001: cron security-alert-auto-resolve ──

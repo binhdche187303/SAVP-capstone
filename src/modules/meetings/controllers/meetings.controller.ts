@@ -49,6 +49,8 @@ import { MeetingsService } from '../services/meetings.service.js';
 import type { UpdateMeetingTimeResponse } from '../services/meetings.service.js';
 
 import { MeetingRequestReviewService } from '../services/meeting-request-review.service.js';
+import { MeetingPrepService } from '../services/meeting-prep.service.js';
+import { MeetingSeriesService } from '../services/meeting-series.service.js';
 
 import { CancelMeetingDto } from '../dto/cancel-meeting.dto.js';
 
@@ -148,6 +150,10 @@ export class MeetingsController {
     private readonly meetingListService: MeetingListService,
 
     private readonly meetingUpdateService: MeetingUpdateService,
+
+    private readonly meetingPrepService: MeetingPrepService,
+
+    private readonly meetingSeriesService: MeetingSeriesService,
   ) {}
 
   @Post('meetings')
@@ -182,13 +188,22 @@ export class MeetingsController {
 
     const authUserId = user?.userId;
 
-    const result = await this.meetingsService.create(
-      dto,
+    // Lịch UEL mục 16: có quy tắc lặp ⇒ tạo cả chuỗi (trả về lần đầu + danh sách).
+    const result = dto.recurrence
+      ? await this.meetingSeriesService.createSeries(dto, { userId: authUserId! }, { ipAddress, userAgent })
+      : await this.meetingsService.create(
+          dto,
 
-      { userId: authUserId! },
+          { userId: authUserId! },
 
-      { ipAddress, userAgent },
-    );
+          { ipAddress, userAgent },
+        );
+    if (!dto.recurrence) {
+      await this.meetingPrepService.applyCreateOptions(result.id, {
+        reportRequirement: dto.reportRequirement,
+        signoff: dto.signoff,
+      });
+    }
 
     return {
       success: true,
@@ -751,6 +766,10 @@ export class MeetingsController {
         start,
         end,
       );
+    const faultyEquipmentsMap =
+      await this.meetingsService.getFaultyEquipmentsMap(
+        rooms.map((room) => room.id),
+      );
 
     return {
       success: true,
@@ -783,6 +802,8 @@ export class MeetingsController {
         allowRecording: room.allowRecording,
 
         pendingConflicts: pendingConflictsMap.get(room.id) ?? [],
+
+        faultyEquipments: faultyEquipmentsMap.get(room.id) ?? [],
       })),
     };
   }

@@ -75,6 +75,14 @@ export class UserEntity {
   })
   positionTitle: string | null;
 
+  /** Lịch tuần UEL: văn thư của đơn vị (department_id). */
+  @Column({ name: 'is_unit_clerk', type: 'boolean', default: false })
+  isUnitClerk: boolean;
+
+  /** Lịch tuần UEL: chức danh Ban Giám hiệu (HIEU_TRUONG | PHO_HIEU_TRUONG | BI_THU | PHO_BI_THU). */
+  @Column({ name: 'leadership_title', type: 'varchar', length: 30, nullable: true })
+  leadershipTitle: string | null;
+
   @Column({
     name: 'employment_status',
     type: 'varchar',

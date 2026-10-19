@@ -37,6 +37,7 @@ import { EquipmentResponseDto } from '../dto/equipment-response.dto.js';
 import { EquipmentFaultConfirmationResponseDto } from '../dto/equipment-fault-confirmation-response.dto.js';
 import {
   EquipmentFaultHistoryItemDto,
+  EquipmentFaultLocation,
   EquipmentFaultEventType,
 } from '../dto/equipment-fault-history-item.dto.js';
 import { RoomEquipmentGapItemDto } from '../dto/room-equipment-gap-item.dto.js';
@@ -420,6 +421,41 @@ export class EquipmentService {
       assetStatus: equipment.assetStatus,
     };
 
+    // A.5: snapshot vị trí (phòng + site) lúc báo hỏng — lưu vào audit để lịch sử
+    // vẫn biết hỏng ở đâu kể cả khi thiết bị bị chuyển phòng sau đó.
+    // Best-effort: tra vị trí lỗi thì vẫn cho báo hỏng, chỉ thiếu vị trí.
+    let room: Pick<
+      RoomEntity,
+      'id' | 'roomName' | 'siteName' | 'areaName'
+    > | null = null;
+    if (equipment.currentRoomId) {
+      try {
+        room = await this.dataSource.getRepository(RoomEntity).findOne({
+          where: { id: equipment.currentRoomId },
+          select: {
+            id: true,
+            roomName: true,
+            siteName: true,
+            areaName: true,
+          },
+        });
+      } catch (err) {
+        this.logger.warn(
+          `Failed to load room for equipment fault ${equipment.id}: ${
+            err instanceof Error ? err.message : 'Unknown'
+          }`,
+        );
+      }
+    }
+    const location = room
+      ? {
+          roomId: room.id,
+          roomName: room.roomName,
+          siteName: room.siteName,
+          areaName: room.areaName,
+        }
+      : null;
+
     // Phase B — cập nhật trong transaction
     const saved = await this.dataSource.transaction(async (em) => {
       if (dto.healthStatus) {
@@ -451,6 +487,7 @@ export class EquipmentService {
             assetStatus: saved.assetStatus,
             lastIssueReportedAt: saved.lastIssueReportedAt,
             lastIssueNote: saved.lastIssueNote,
+            location,
           },
           ipAddress: ipAddress ?? null,
           severity: AuditLogSeverity.WARNING,
@@ -468,19 +505,15 @@ export class EquipmentService {
     // Phase D — notify BUSINESS_ADMIN (fail-separate, KHÔNG rollback nghiệp vụ)
     try {
       const adminIds = await this.resolveBusinessAdminIds();
-      const room = saved.currentRoomId
-        ? await this.dataSource.getRepository(RoomEntity).findOne({
-            where: { id: saved.currentRoomId },
-            select: { id: true, roomName: true },
-          })
-        : null;
       await this.notificationsService.createNotification({
         notificationType: NotificationType.EQUIPMENT_FAULT_REPORTED,
         channel: NotificationChannel.IN_APP,
         subject: 'Thiết bị hỏng cần xử lý',
         content: `Thiết bị ${saved.equipmentName} (${saved.equipmentCode})${
           room ? ' tại phòng ' + room.roomName : ''
-        } vừa được báo lỗi: ${dto.issueNote}`,
+        }${room?.siteName ? ' - ' + room.siteName : ''} vừa được báo lỗi: ${
+          dto.issueNote
+        }`,
         relatedEntityType: 'equipment',
         relatedEntityId: saved.id,
         recipientScope: 'user_list',
@@ -491,6 +524,8 @@ export class EquipmentService {
           healthStatus: saved.healthStatus,
           assetStatus: saved.assetStatus,
           roomId: saved.currentRoomId,
+          roomName: room?.roomName ?? null,
+          siteName: room?.siteName ?? null,
           issueNote: dto.issueNote,
         },
       });
@@ -853,6 +888,7 @@ export class EquipmentService {
       const nv = (row.newValueJson ?? {}) as Record<string, unknown>;
       let eventType: EquipmentFaultEventType | null = null;
       let note: string | null = null;
+      let location: EquipmentFaultLocation | null = null;
 
       if (row.actionType === 'confirm') {
         eventType = 'confirmed';
@@ -863,6 +899,7 @@ export class EquipmentService {
       ) {
         eventType = 'reported';
         note = (nv.lastIssueNote as string | undefined) ?? null;
+        location = (nv.location as EquipmentFaultLocation | undefined) ?? null;
       } else if (
         row.actionType === 'update' &&
         row.severity === AuditLogSeverity.INFO &&
@@ -886,6 +923,7 @@ export class EquipmentService {
             (nv.healthStatusAtConfirmation as string | undefined) ??
             null,
           assetStatus: (nv.assetStatus as string | undefined) ?? null,
+          location,
           createdAt: row.createdAt,
         }),
       );

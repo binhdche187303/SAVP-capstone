@@ -10,6 +10,10 @@ import { UserEntity } from '../../../modules/accounts/entities/user.entity.js';
 
 export enum NotificationType {
   MEETING_INVITE = 'meeting_invite',
+  // Lịch UEL: yêu cầu nộp báo cáo trước họp / trình ký biên bản.
+  MEETING_REPORT_REQUESTED = 'meeting_report_requested',
+  MINUTES_SIGNOFF_REQUESTED = 'minutes_signoff_requested',
+  MINUTES_SIGNOFF_RESULT = 'minutes_signoff_result',
   REMINDER = 'reminder',
   CANCELLATION = 'cancellation',
   NO_SHOW_ALERT = 'no_show_alert',
@@ -19,6 +23,10 @@ export enum NotificationType {
   MEETING_REQUEST_CREATED = 'meeting_request_created',
   MEETING_REQUEST_APPROVED = 'meeting_request_approved',
   MEETING_REQUEST_REJECTED = 'meeting_request_rejected',
+  // Cron meeting-request-expire: báo người đặt + chủ trì khi yêu cầu hết hạn.
+  MEETING_REQUEST_EXPIRED = 'meeting_request_expired',
+  // Cron meeting-request-reminder: nhắc người duyệt yêu cầu sắp đến giờ họp.
+  MEETING_REQUEST_APPROVAL_REMINDER = 'meeting_request_approval_reminder',
   MEETING_TIME_UPDATED = 'meeting_time_updated',
   MEETING_ROOM_UPDATED = 'meeting_room_updated',
   MEETING_PARTICIPANT_REMOVED = 'meeting_participant_removed',
@@ -64,6 +72,9 @@ export enum NotificationType {
   VISITOR_REGISTERED = 'visitor_registered',
   VISITOR_ARRIVED = 'visitor_arrived',
   VISITOR_LEFT = 'visitor_left',
+  // Lý do vắng / trễ / về sớm — gửi tới chủ trì/thư ký; kết quả duyệt gửi lại thành viên
+  ATTENDANCE_EXCUSE_SUBMITTED = 'attendance_excuse_submitted',
+  ATTENDANCE_EXCUSE_REVIEWED = 'attendance_excuse_reviewed',
   VISITOR_OVERSTAY = 'visitor_overstay',
   VISITOR_MUST_LEAVE = 'visitor_must_leave',
   VISITOR_EMAIL = 'visitor_email',

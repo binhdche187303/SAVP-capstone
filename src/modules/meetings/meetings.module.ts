@@ -20,6 +20,11 @@ import { GuestAccessModule } from '../guest-access/guest-access.module.js';
 import { WebsocketModule } from '../websocket/websocket.module.js';
 import { MeetingsController } from './controllers/meetings.controller.js';
 import { MeetingRequestsController } from './controllers/meeting-requests.controller.js';
+import { CalendarRolesController } from './controllers/calendar-roles.controller.js';
+import { CalendarRolesService } from './services/calendar-roles.service.js';
+import { MeetingPrepController, MinutesInboxController } from './controllers/meeting-prep.controller.js';
+import { MeetingPrepService } from './services/meeting-prep.service.js';
+import { MeetingSeriesService } from './services/meeting-series.service.js';
 import { MeetingsService } from './services/meetings.service.js';
 import { MeetingRequestReviewService } from './services/meeting-request-review.service.js';
 import { ParticipantImportService } from './services/participant-import.service.js';
@@ -73,9 +78,12 @@ import { FromToConstraint } from './validators/from-to.constraint.js';
       RecordingConfigEntity,
     ]),
   ],
-  controllers: [MeetingsController, MeetingRequestsController],
+  controllers: [MeetingsController, MeetingRequestsController, CalendarRolesController, MeetingPrepController, MinutesInboxController],
   providers: [
+    CalendarRolesService,
     MeetingsService,
+    MeetingPrepService,
+    MeetingSeriesService,
     MeetingRequestReviewService,
     ParticipantImportService,
     MeetingListService,
@@ -88,6 +96,6 @@ import { FromToConstraint } from './validators/from-to.constraint.js';
   ],
   // F-R4b: expose MeetingRequestReviewService cho SchedulerModule (cron
   // meeting-request-expire gọi expireOverdueBatch()).
-  exports: [TypeOrmModule, MeetingRequestReviewService],
+  exports: [TypeOrmModule, MeetingRequestReviewService, MeetingPrepService],
 })
 export class MeetingsModule {}

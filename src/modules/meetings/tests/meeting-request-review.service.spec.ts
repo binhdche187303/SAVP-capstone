@@ -29,9 +29,11 @@ import {
   RoomBookingStatus,
 } from '../../rooms/entities/room-booking.entity.js';
 import {
+  NotificationEntity,
   NotificationType,
   NotificationChannel,
 } from '../../notifications/entities/notification.entity.js';
+import { SystemConfigEntity } from '../../administration/entities/system-config.entity.js';
 import {
   AuditLogEntity,
   AuditLogSeverity,
@@ -194,6 +196,8 @@ describe('MeetingRequestReviewService', () => {
     // để lấy suggestedAlternatives lúc reject() — chỉ cần mock getAvailableRooms.
     meetingsService = {
       getAvailableRooms: jest.fn().mockResolvedValue([]),
+      getMeetingRequestApproverIds: jest.fn().mockResolvedValue([]),
+      emitMeetingRequestUpdate: jest.fn(),
     } as unknown as jest.Mocked<MeetingsService>;
 
     const module: TestingModule = await Test.createTestingModule({
@@ -270,6 +274,47 @@ describe('MeetingRequestReviewService', () => {
           status: RoomBookingStatus.APPROVED,
         }),
       );
+    });
+
+    it('should auto-reject other pending requests for the same room/time after approve', async () => {
+      setupSuccessMocks();
+      em.query.mockImplementation(async (sql: string) =>
+        sql.includes('FROM meeting_requests mr') ? [{ id: 'other-request' }] : [],
+      );
+      const rejectSpy = jest
+        .spyOn(service, 'reject')
+        .mockResolvedValue({} as any);
+
+      await service.approve('request-uuid', approveDto, authUser, clientContext);
+
+      expect(rejectSpy).toHaveBeenCalledTimes(1);
+      expect(rejectSpy).toHaveBeenCalledWith(
+        'other-request',
+        {
+          rejectionReason: expect.stringContaining(
+            'Phòng đã được cấp cho cuộc họp khác',
+          ),
+        },
+        authUser,
+        clientContext,
+      );
+    });
+
+    it('should still approve when auto-rejecting a conflicting request fails', async () => {
+      setupSuccessMocks();
+      em.query.mockImplementation(async (sql: string) =>
+        sql.includes('FROM meeting_requests mr') ? [{ id: 'other-request' }] : [],
+      );
+      jest.spyOn(service, 'reject').mockRejectedValue(new Error('boom'));
+
+      const result = await service.approve(
+        'request-uuid',
+        approveDto,
+        authUser,
+        clientContext,
+      );
+
+      expect(result.approvalStatus).toBe(ApprovalStatus.APPROVED);
     });
 
     it('[AC-001] should create meeting event with type meeting_request_approved', async () => {
@@ -955,6 +1000,61 @@ describe('MeetingRequestReviewService', () => {
         RoomBookingEntity,
         expect.objectContaining({ status: RoomBookingStatus.CANCELLED }),
       );
+      expect(notificationsService.createNotification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          notificationType: NotificationType.MEETING_REQUEST_EXPIRED,
+          channel: NotificationChannel.IN_APP,
+          relatedEntityId: 'meeting-uuid',
+          recipientUserIds: [creatorUser.userId],
+        }),
+      );
+    });
+
+    it('báo hết hạn cho cả người đặt và chủ trì khi khác người', async () => {
+      dataSource.getRepository = jest.fn().mockReturnValue({
+        find: jest.fn().mockResolvedValue([mockRequest()]),
+      });
+      em.findOne
+        .mockResolvedValueOnce(mockRequest())
+        .mockResolvedValueOnce(
+          mockMeeting({
+            status: MeetingStatus.PENDING_APPROVAL,
+            hostId: 'host-uuid',
+          }),
+        )
+        .mockResolvedValueOnce(
+          mockBooking({ status: RoomBookingStatus.PENDING }),
+        );
+
+      await service.expireOverdueBatch();
+
+      expect(notificationsService.createNotification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          notificationType: NotificationType.MEETING_REQUEST_EXPIRED,
+          recipientUserIds: [creatorUser.userId, 'host-uuid'],
+        }),
+      );
+    });
+
+    it('gửi thông báo hết hạn lỗi KHÔNG làm fail expire', async () => {
+      dataSource.getRepository = jest.fn().mockReturnValue({
+        find: jest.fn().mockResolvedValue([mockRequest()]),
+      });
+      em.findOne
+        .mockResolvedValueOnce(mockRequest())
+        .mockResolvedValueOnce(
+          mockMeeting({ status: MeetingStatus.PENDING_APPROVAL }),
+        )
+        .mockResolvedValueOnce(
+          mockBooking({ status: RoomBookingStatus.PENDING }),
+        );
+      notificationsService.createNotification.mockRejectedValueOnce(
+        new Error('notify down'),
+      );
+
+      const result = await service.expireOverdueBatch();
+
+      expect(result).toEqual({ scanned: 1, expired: 1, failed: 0 });
     });
 
     it('UPDATE_TIME PENDING quá giờ MỚI → request EXPIRED, meeting revert SCHEDULED, KHÔNG đụng start_time/room_id/booking', async () => {
@@ -1007,6 +1107,7 @@ describe('MeetingRequestReviewService', () => {
 
       expect(result).toEqual({ scanned: 1, expired: 0, failed: 0 });
       expect(em.save).not.toHaveBeenCalled();
+      expect(notificationsService.createNotification).not.toHaveBeenCalled();
     });
 
     it('1 candidate lỗi (transaction throw) KHÔNG chặn batch → failed=1', async () => {
@@ -1020,6 +1121,137 @@ describe('MeetingRequestReviewService', () => {
       const result = await service.expireOverdueBatch();
 
       expect(result).toEqual({ scanned: 1, expired: 0, failed: 1 });
+    });
+  });
+  describe('remindPendingApprovalsBatch', () => {
+    const MINUTE = 60_000;
+
+    // Mỗi repository trả về theo entity: request candidates, notification đã
+    // nhắc, meeting (lấy title), system_configs (lead time).
+    const setupRepos = (opts: {
+      requests: MeetingRequestEntity[];
+      reminded?: string[];
+      leadMinutes?: string;
+    }) => {
+      dataSource.getRepository = jest.fn().mockImplementation((entity) => {
+        if (entity === MeetingRequestEntity) {
+          return { find: jest.fn().mockResolvedValue(opts.requests) };
+        }
+        if (entity === NotificationEntity) {
+          return {
+            find: jest
+              .fn()
+              .mockResolvedValue(
+                (opts.reminded ?? []).map((id) => ({ relatedEntityId: id })),
+              ),
+          };
+        }
+        if (entity === MeetingEntity) {
+          return {
+            find: jest
+              .fn()
+              .mockResolvedValue([{ id: 'meeting-uuid', title: 'Họp quý' }]),
+          };
+        }
+        if (entity === SystemConfigEntity) {
+          return {
+            findOne: jest
+              .fn()
+              .mockResolvedValue(
+                opts.leadMinutes ? { configValue: opts.leadMinutes } : null,
+              ),
+          };
+        }
+        return { find: jest.fn().mockResolvedValue([]) };
+      });
+    };
+
+    // Request họp sau `startInMin` phút, được gửi trước giờ họp `sentBeforeMin` phút.
+    const dueRequest = (startInMin: number, sentBeforeMin: number) => {
+      const start = new Date(Date.now() + startInMin * MINUTE);
+      return mockRequest({
+        requestedStartTime: start,
+        requestedAt: new Date(start.getTime() - sentBeforeMin * MINUTE),
+      });
+    };
+
+    beforeEach(() => {
+      meetingsService.getMeetingRequestApproverIds = jest
+        .fn()
+        .mockResolvedValue([authUser.userId, creatorUser.userId]);
+    });
+
+    it('request sắp đến giờ, chưa nhắc → nhắc người duyệt (trừ người gửi)', async () => {
+      setupRepos({ requests: [dueRequest(60, 24 * 60)] });
+
+      const result = await service.remindPendingApprovalsBatch();
+
+      expect(result).toEqual({ scanned: 1, reminded: 1, failed: 0 });
+      expect(notificationsService.createNotification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          notificationType: NotificationType.MEETING_REQUEST_APPROVAL_REMINDER,
+          channel: NotificationChannel.IN_APP,
+          relatedEntityType: 'meeting_request',
+          relatedEntityId: 'request-uuid',
+          recipientUserIds: [authUser.userId],
+        }),
+      );
+    });
+
+    it('đã nhắc rồi → KHÔNG nhắc lại', async () => {
+      setupRepos({
+        requests: [dueRequest(60, 24 * 60)],
+        reminded: ['request-uuid'],
+      });
+
+      const result = await service.remindPendingApprovalsBatch();
+
+      expect(result.reminded).toBe(0);
+      expect(notificationsService.createNotification).not.toHaveBeenCalled();
+    });
+
+    it('request gửi khi đã nằm trong cửa sổ nhắc → KHÔNG nhắc', async () => {
+      setupRepos({ requests: [dueRequest(60, 90)] });
+
+      const result = await service.remindPendingApprovalsBatch();
+
+      expect(result.reminded).toBe(0);
+      expect(notificationsService.createNotification).not.toHaveBeenCalled();
+    });
+
+    it('lead time lấy từ system_configs.meeting_request_reminder_minutes', async () => {
+      // lead = 1 ngày: họp sau 20 giờ, gửi trước 2 ngày → nhắc.
+      setupRepos({
+        requests: [dueRequest(20 * 60, 48 * 60)],
+        leadMinutes: '1440',
+      });
+
+      const result = await service.remindPendingApprovalsBatch();
+
+      expect(result.reminded).toBe(1);
+    });
+
+    it('người duyệt duy nhất là người gửi → KHÔNG gửi', async () => {
+      meetingsService.getMeetingRequestApproverIds = jest
+        .fn()
+        .mockResolvedValue([creatorUser.userId]);
+      setupRepos({ requests: [dueRequest(60, 24 * 60)] });
+
+      const result = await service.remindPendingApprovalsBatch();
+
+      expect(result.reminded).toBe(0);
+      expect(notificationsService.createNotification).not.toHaveBeenCalled();
+    });
+
+    it('gửi lỗi 1 request → failed=1, KHÔNG throw', async () => {
+      setupRepos({ requests: [dueRequest(60, 24 * 60)] });
+      notificationsService.createNotification.mockRejectedValueOnce(
+        new Error('boom'),
+      );
+
+      const result = await service.remindPendingApprovalsBatch();
+
+      expect(result).toEqual({ scanned: 1, reminded: 0, failed: 1 });
     });
   });
 });

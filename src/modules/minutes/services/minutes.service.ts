@@ -7,7 +7,7 @@ import {
   UnprocessableEntityException,
   Logger,
 } from '@nestjs/common';
-import { DataSource, IsNull, In, Brackets, Repository } from 'typeorm';
+import { DataSource, EntityManager, IsNull, In, Brackets, Repository } from 'typeorm';
 import {
   MeetingEntity,
   MeetingStatus,
@@ -197,7 +197,8 @@ export class MinutesService {
         }
 
         // Step 3: Chá»‰ Host cá»§a cuá»™c há»p má»›i Ä‘Æ°á»£c táº¡o (BR1)
-        if (meeting.hostId !== authUser.userId) {
+        // Lịch UEL mục 13: thư ký cũng được soạn biên bản (chủ trì ký duyệt/ban hành).
+        if (meeting.hostId !== authUser.userId && meeting.secretaryId !== authUser.userId) {
           throw new ForbiddenException({
             success: false,
             message:
@@ -528,7 +529,7 @@ export class MinutesService {
           new Brackets((sub) => {
             sub
               .where(
-                'minutes.status = :draftStatus AND minutes.preparedBy = :userId',
+                'minutes.status = :draftStatus AND (minutes.preparedBy = :userId OR meeting.hostId = :userId OR meeting.secretaryId = :userId)',
                 {
                   draftStatus: MeetingMinutesStatus.DRAFT,
                   userId: authUser.userId,
@@ -710,7 +711,7 @@ export class MinutesService {
         new Brackets((sub) => {
           sub
             .where(
-              'minutes.status = :draftStatus AND minutes.preparedBy = :userId',
+              'minutes.status = :draftStatus AND (minutes.preparedBy = :userId OR meeting.hostId = :userId OR meeting.secretaryId = :userId)',
               {
                 draftStatus: MeetingMinutesStatus.DRAFT,
                 userId: authUser.userId,
@@ -1230,6 +1231,8 @@ export class MinutesService {
       // giu nguyen hanh vi cu (AC-006, chong regression bao mat).
       return (
         minutes.preparedBy === userId ||
+        meeting.hostId === userId ||
+        meeting.secretaryId === userId ||
         Boolean(minutes.isLiveShared && isParticipant)
       );
     }
@@ -1478,9 +1481,29 @@ export class MinutesService {
       ? (usersById.get(noteTakerSnapshot.userId) ?? null)
       : null;
 
-    const canEditOrIssue =
-      minutes.status === MeetingMinutesStatus.DRAFT &&
-      (isAdmin || minutes.preparedBy === authUser.userId);
+    const isDraft = minutes.status === MeetingMinutesStatus.DRAFT;
+    const isMeetingHost = meeting.hostId === authUser.userId;
+    // Đang chờ ký / đã ký duyệt: khoá sửa & xoá, chỉ còn ban hành
+    const signoffRows = await this.dataSource.query(
+      `SELECT signoff_status FROM meetings WHERE id = $1 AND signoff_minutes_id = $2`,
+      [meeting.id, minutes.id],
+    );
+    const signoffLocked = ['pending', 'approved'].includes(
+      signoffRows[0]?.signoff_status,
+    );
+    const isComposer =
+      isAdmin ||
+      isMeetingHost ||
+      minutes.preparedBy === authUser.userId ||
+      meeting.secretaryId === authUser.userId;
+    const canEdit =
+      isDraft &&
+      !signoffLocked &&
+      (isAdmin ||
+        isMeetingHost ||
+        minutes.preparedBy === authUser.userId ||
+        meeting.secretaryId === authUser.userId);
+    const canIssue = isDraft && (isAdmin || isMeetingHost);
 
     // aiSummaryJson khác NULL = biên bản có nguồn gốc AI. Expose 4 khối insight
     // + meta (read-only) cho FE; đồng thời set cờ isAiGenerated để FE phân biệt
@@ -1539,7 +1562,11 @@ export class MinutesService {
       approvedAt: minutes.approvedAt,
       createdAt: minutes.createdAt,
       updatedAt: minutes.updatedAt,
-      permissions: new MinutesPermissionsDto(canEditOrIssue, canEditOrIssue),
+      permissions: new MinutesPermissionsDto(canEdit, canIssue, {
+        canDelete: isDraft && !signoffLocked && isComposer,
+        canLiveShare: isDraft && isComposer,
+        signoffLocked,
+      }),
     });
   }
 
@@ -1582,7 +1609,8 @@ export class MinutesService {
           .findOne({ where: { id: minutes.meetingId } });
         const isOwner =
           minutes.preparedBy === authUser.userId ||
-          meeting?.hostId === authUser.userId;
+          meeting?.hostId === authUser.userId ||
+          meeting?.secretaryId === authUser.userId;
         if (!isOwner) {
           throw new ForbiddenException({
             success: false,
@@ -1590,6 +1618,7 @@ export class MinutesService {
             error: { code: 'NOT_MINUTES_OWNER', details: { minutesId } },
           });
         }
+        await this.assertNotSignoffLocked(manager, minutes.meetingId, minutesId);
         if (minutes.status !== MeetingMinutesStatus.DRAFT) {
           throw new ConflictException({
             success: false,
@@ -1661,6 +1690,12 @@ export class MinutesService {
         }
         const oldVersionNo = minutes.versionNo;
         minutes.versionNo += 1;
+        // Sửa biên bản đang chờ ký / đã ký ⇒ phải trình ký lại.
+        await manager.query(
+          `UPDATE meetings SET signoff_status = NULL, signoff_at = NULL
+            WHERE signoff_minutes_id = $1 AND signoff_status IN ('pending', 'approved')`,
+          [minutesId],
+        );
         const saved = await manager
           .getRepository(MeetingMinutesEntity)
           .save(minutes);
@@ -1749,10 +1784,17 @@ export class MinutesService {
           });
         }
 
-        if (minutes.preparedBy !== authUser.userId) {
+        const liveMeeting = await manager
+          .getRepository(MeetingEntity)
+          .findOne({ where: { id: minutes.meetingId } });
+        if (
+          minutes.preparedBy !== authUser.userId &&
+          liveMeeting?.hostId !== authUser.userId &&
+          liveMeeting?.secretaryId !== authUser.userId
+        ) {
           throw new ForbiddenException({
             success: false,
-            message: 'Ban khong phai la nguoi soan thao bien ban nay',
+            message: 'Chỉ chủ trì hoặc thư ký mới được chia sẻ trực tiếp biên bản',
             error: { code: 'NOT_MINUTES_OWNER', details: { minutesId } },
           });
         }
@@ -1905,7 +1947,8 @@ export class MinutesService {
         .findOne({ where: { id: minutes.meetingId } });
       const isOwner =
         minutes.preparedBy === authUser.userId ||
-        meeting?.hostId === authUser.userId;
+        meeting?.hostId === authUser.userId ||
+        meeting?.secretaryId === authUser.userId;
       if (!isOwner) {
         throw new ForbiddenException({
           success: false,
@@ -2048,6 +2091,29 @@ export class MinutesService {
     });
   }
 
+  /** Biên bản đang chờ ký / đã ký duyệt thì không được sửa, xoá. */
+  private async assertNotSignoffLocked(
+    manager: EntityManager,
+    meetingId: string,
+    minutesId: string,
+  ): Promise<void> {
+    const rows = await manager.query(
+      `SELECT signoff_status FROM meetings WHERE id = $1 AND signoff_minutes_id = $2`,
+      [meetingId, minutesId],
+    );
+    const st = rows[0]?.signoff_status;
+    if (st === 'pending' || st === 'approved') {
+      throw new ConflictException({
+        success: false,
+        message:
+          st === 'pending'
+            ? 'Biên bản đang chờ ký duyệt, không thể sửa hoặc xoá'
+            : 'Biên bản đã được ký duyệt, chỉ còn ban hành',
+        error: { code: 'MINUTES_SIGNOFF_LOCKED', details: { minutesId } },
+      });
+    }
+  }
+
   async deleteDraft(
     minutesId: string,
     authUser: MinutesAuthUser,
@@ -2084,7 +2150,8 @@ export class MinutesService {
           .findOne({ where: { id: minutes.meetingId } });
         const isOwner =
           minutes.preparedBy === authUser.userId ||
-          meeting?.hostId === authUser.userId;
+          meeting?.hostId === authUser.userId ||
+          meeting?.secretaryId === authUser.userId;
         if (!isOwner) {
           throw new ForbiddenException({
             success: false,
@@ -2093,6 +2160,7 @@ export class MinutesService {
           });
         }
       }
+      await this.assertNotSignoffLocked(manager, minutes.meetingId, minutesId);
       if (minutes.status !== MeetingMinutesStatus.DRAFT) {
         throw new ConflictException({
           success: false,
@@ -2216,13 +2284,12 @@ export class MinutesService {
 
       // Step 3: Ownership-or-admin check
       if (!isAdmin) {
-        const isOwner =
-          minutes.preparedBy === authUser.userId ||
-          meeting?.hostId === authUser.userId;
+        // Ban hành: chỉ chủ trì (thư ký soạn xong thì trình ký cho chủ trì).
+        const isOwner = meeting?.hostId === authUser.userId;
         if (!isOwner) {
           throw new ForbiddenException({
             success: false,
-            message: 'Ban khong co quyen ban hanh bien ban nay',
+            message: 'Chỉ chủ trì cuộc họp mới được ban hành biên bản',
             error: { code: 'NOT_MINUTES_OWNER', details: { minutesId } },
           });
         }
@@ -2251,6 +2318,48 @@ export class MinutesService {
               meetingId: minutes.meetingId,
               meetingStatus: meeting?.status,
             },
+          },
+        });
+      }
+
+      // Lịch UEL mục 13: cuộc họp yêu cầu trình ký ⇒ chỉ ban hành bản đã được ký duyệt.
+      const [signoff] = await manager.query(
+        `SELECT signoff_required, signoff_status, signoff_minutes_id, signoff_user_id FROM meetings WHERE id = $1`,
+        [minutes.meetingId],
+      );
+      // Người ký duyệt tự ban hành ⇒ coi như ký duyệt luôn (không cần tự trình rồi tự duyệt).
+      if (
+        signoff?.signoff_required &&
+        signoff.signoff_user_id === authUser.userId &&
+        !(signoff.signoff_status === 'approved' && signoff.signoff_minutes_id === minutesId)
+      ) {
+        await manager.query(
+          `UPDATE meetings SET signoff_status = 'approved', signoff_minutes_id = $2, signoff_at = NOW(), signoff_note = NULL
+            WHERE id = $1`,
+          [minutes.meetingId, minutesId],
+        );
+        await manager.query(
+          `INSERT INTO meeting_signoff_logs (meeting_id, minutes_id, action, actor_id, note)
+           VALUES ($1, $2, 'approved', $3, 'Ký duyệt khi ban hành')`,
+          [minutes.meetingId, minutesId, authUser.userId],
+        );
+        await manager.query(
+          `UPDATE meeting_minutes SET approved_by = $2, approved_at = NOW() WHERE id = $1`,
+          [minutesId, authUser.userId],
+        );
+        signoff.signoff_status = 'approved';
+        signoff.signoff_minutes_id = minutesId;
+      }
+      if (
+        signoff?.signoff_required &&
+        !(signoff.signoff_status === 'approved' && signoff.signoff_minutes_id === minutesId)
+      ) {
+        throw new ConflictException({
+          success: false,
+          message: 'Biên bản cần được người ký duyệt trước khi ban hành',
+          error: {
+            code: 'MINUTES_SIGNOFF_REQUIRED',
+            details: { signoffStatus: signoff.signoff_status },
           },
         });
       }
