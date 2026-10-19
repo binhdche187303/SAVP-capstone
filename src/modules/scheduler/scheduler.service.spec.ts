@@ -25,6 +25,7 @@ import { DeviceMaintenanceAlertService } from '../device-alert/services/device-m
 import { ReportScheduleDispatchService } from '../reports/schedules/report-schedule-dispatch.service.js';
 import { VisitorSweepService } from '../visitors/services/visitor-sweep.service.js';
 import { KpiRollupJobService } from '../kpi-rollup/services/kpi-rollup-job.service.js';
+import { MeetingPrepService } from '../meetings/services/meeting-prep.service.js';
 import { MeetingReminderDispatchService } from '../notifications/services/meeting-reminder-dispatch.service.js';
 import { DataSource } from 'typeorm';
 
@@ -47,6 +48,7 @@ describe('SchedulerService (NSL-001 + EVD-001 + IPS-001 + GAP-001 cron wiring)',
   let occupancyPersistenceMock: any;
   let kpiRollupMock: any;
   let meetingReminderMock: any;
+  let meetingPrepMock: any;
   let cfg: Record<string, unknown>;
   const calls: string[] = [];
 
@@ -139,6 +141,10 @@ describe('SchedulerService (NSL-001 + EVD-001 + IPS-001 + GAP-001 cron wiring)',
         expired: 0,
         failed: 0,
       })),
+      remindUpcomingMeetingsBatch: jest.fn(async () => ({
+        reminded: 0,
+        failed: 0,
+      })),
       remindPendingApprovalsBatch: jest.fn(async () => ({
         scanned: 0,
         reminded: 0,
@@ -164,11 +170,6 @@ describe('SchedulerService (NSL-001 + EVD-001 + IPS-001 + GAP-001 cron wiring)',
       }),
     };
     meetingReminderMock = {
-      sendAutoRemindersBatch: jest.fn(async () => ({
-        scanned: 0,
-        reminded: 0,
-        failed: 0,
-      })),
       dispatchDueScheduledReminders: jest.fn(async () => ({
         due: 0,
         sent: 0,
@@ -176,18 +177,8 @@ describe('SchedulerService (NSL-001 + EVD-001 + IPS-001 + GAP-001 cron wiring)',
         failed: 0,
       })),
     };
-    meetingReminderMock = {
-      sendAutoRemindersBatch: jest.fn(async () => ({
-        scanned: 0,
-        reminded: 0,
-        failed: 0,
-      })),
-      dispatchDueScheduledReminders: jest.fn(async () => ({
-        due: 0,
-        sent: 0,
-        cancelled: 0,
-        failed: 0,
-      })),
+    meetingPrepMock = {
+      remindReportsBatch: jest.fn(async () => ({ reminded: 0 })),
     };
     kpiRollupMock = {
       runIncremental: jest.fn(async () => ({ skipped: false, windows: {} })),
@@ -241,6 +232,7 @@ describe('SchedulerService (NSL-001 + EVD-001 + IPS-001 + GAP-001 cron wiring)',
           provide: MeetingReminderDispatchService,
           useValue: meetingReminderMock,
         },
+        { provide: MeetingPrepService, useValue: meetingPrepMock },
         {
           provide: ReportScheduleDispatchService,
           useValue: { dispatchDue: jest.fn() },
@@ -262,18 +254,23 @@ describe('SchedulerService (NSL-001 + EVD-001 + IPS-001 + GAP-001 cron wiring)',
     return module.get(SchedulerService);
   };
 
-  describe('sendReminders (nhắc lịch họp tự động + hẹn giờ)', () => {
-    it('gate OFF (mặc định) → không gọi gì', async () => {
-      cfg = { SCHEDULER_ENABLED: true };
+  describe('sendReminders (nhắc lịch họp)', () => {
+    it('gate OFF (SCHEDULER_NOTIFICATION_REMINDER_ENABLED=false) → không gọi gì', async () => {
+      cfg = {
+        SCHEDULER_ENABLED: true,
+        SCHEDULER_NOTIFICATION_REMINDER_ENABLED: false,
+      };
       const s = await build();
       await s.sendReminders();
-      expect(meetingReminderMock.sendAutoRemindersBatch).not.toHaveBeenCalled();
       expect(
         meetingReminderMock.dispatchDueScheduledReminders,
       ).not.toHaveBeenCalled();
+      expect(
+        meetingRequestReviewMock.remindUpcomingMeetingsBatch,
+      ).not.toHaveBeenCalled();
     });
 
-    it('gate ON → gửi nhắc hẹn giờ đã tới hạn và nhắc tự động trước giờ họp', async () => {
+    it('gate ON → gửi nhắc hẹn giờ tới hạn, nhắc trước giờ họp và nhắc nộp báo cáo', async () => {
       cfg = {
         SCHEDULER_ENABLED: true,
         SCHEDULER_NOTIFICATION_REMINDER_ENABLED: true,
@@ -283,12 +280,13 @@ describe('SchedulerService (NSL-001 + EVD-001 + IPS-001 + GAP-001 cron wiring)',
       expect(
         meetingReminderMock.dispatchDueScheduledReminders,
       ).toHaveBeenCalledTimes(1);
-      expect(meetingReminderMock.sendAutoRemindersBatch).toHaveBeenCalledTimes(
-        1,
-      );
+      expect(
+        meetingRequestReviewMock.remindUpcomingMeetingsBatch,
+      ).toHaveBeenCalledTimes(1);
+      expect(meetingPrepMock.remindReportsBatch).toHaveBeenCalledTimes(1);
     });
 
-    it('một bước lỗi KHÔNG ném ra cron và không chặn bước còn lại', async () => {
+    it('bước hẹn giờ lỗi KHÔNG ném ra cron và không chặn nhắc trước giờ họp', async () => {
       cfg = {
         SCHEDULER_ENABLED: true,
         SCHEDULER_NOTIFICATION_REMINDER_ENABLED: true,
@@ -298,9 +296,9 @@ describe('SchedulerService (NSL-001 + EVD-001 + IPS-001 + GAP-001 cron wiring)',
       );
       const s = await build();
       await expect(s.sendReminders()).resolves.toBeUndefined();
-      expect(meetingReminderMock.sendAutoRemindersBatch).toHaveBeenCalledTimes(
-        1,
-      );
+      expect(
+        meetingRequestReviewMock.remindUpcomingMeetingsBatch,
+      ).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -57,6 +57,10 @@ interface ParticipantWithUser {
   email: string | null;
   employeeCode: string | null;
   attendanceRecord: AttendanceRecordEntity | null;
+  excuseReason: string | null;
+  excuseStatus: string | null;
+  excuseSubmittedAt: Date | null;
+  excuseReviewNote: string | null;
 }
 
 interface AttendanceStatusResult {
@@ -137,6 +141,14 @@ export class AttendanceService {
 
     // Check 2: Host
     if (meeting.hostId === currentUserId) {
+      return {
+        canViewAttendanceSource: true,
+        isManagerOfParticipantIds: new Set(),
+      };
+    }
+
+    // Check 2b: Thư ký cuộc họp (điểm danh thủ công)
+    if (meeting.secretaryId && meeting.secretaryId === currentUserId) {
       return {
         canViewAttendanceSource: true,
         isManagerOfParticipantIds: new Set(),
@@ -282,6 +294,10 @@ export class AttendanceService {
         email: p.user.email,
         employeeCode: p.user.employeeCode,
         attendanceRecord: latestByUser.get(p.userId) ?? null,
+        excuseReason: p.excuseReason ?? null,
+        excuseStatus: p.excuseStatus ?? null,
+        excuseSubmittedAt: p.excuseSubmittedAt ?? null,
+        excuseReviewNote: p.excuseReviewNote ?? null,
       });
     }
 
@@ -441,6 +457,8 @@ export class AttendanceService {
         ...item,
         attendanceSource: null,
         checkInMethod: null,
+        excuseReason: null,
+        excuseReviewNote: null,
       };
     });
   }
@@ -513,6 +531,19 @@ export class AttendanceService {
       // Step 3: Get participants with attendance data
       const participants = await this.getParticipantsWithAttendance(meetingId);
 
+      // Hình thức vi phạm: tên hiển thị + điểm ABSENT cho người không có bản ghi khi họp đã kết thúc.
+      const ruleRows: Array<{ rule_code: string; rule_name: string; penalty_points: number }> =
+        await this.attendanceRecordRepo.manager.query(
+          `SELECT rule_code, rule_name, penalty_points FROM attendance_violation_rules`,
+        );
+      const ruleByCode = new Map(ruleRows.map((r) => [r.rule_code, r]));
+      const statusToRule: Record<string, string> = {
+        present: 'PRESENT',
+        late: 'LATE',
+        absent: 'ABSENT',
+        left_early: 'LEFT_EARLY',
+      };
+
       // Step 4: Derive attendance status for each participant
       let items: AttendanceItemDto[] = participants.map((p) => {
         const derived = this.deriveAttendanceStatus(
@@ -521,6 +552,8 @@ export class AttendanceService {
           meeting.startTime,
         );
 
+        // Lý do đã được duyệt ⇒ "Có lý do" 0 điểm (kể cả người vắng chưa có bản ghi).
+        const excused = p.excuseStatus === 'approved';
         return new AttendanceItemDto({
           // id bản ghi điểm danh (null nếu chưa điểm danh) — FE dùng cho route :recordId.
           id: p.attendanceRecord?.id ?? null,
@@ -530,18 +563,42 @@ export class AttendanceService {
           fullName: p.fullName,
           departmentName: p.departmentName,
           positionTitle: p.positionTitle,
-          participantRole: p.participantRole,
+          // Thư ký là participant thường trong DB — gắn vai trò hiển thị riêng.
+          participantRole:
+            p.userId === meeting.secretaryId && p.participantRole !== 'host'
+              ? 'secretary'
+              : p.participantRole,
           attendanceStatus: derived.attendanceStatus,
           checkInTime: p.attendanceRecord?.checkInTime?.toISOString() ?? null,
           attendanceSource: p.attendanceRecord?.attendanceSource ?? null,
           checkInMethod: p.attendanceRecord?.checkInMethod ?? null,
           isLate: derived.isLate,
           lateMinutes: derived.lateMinutes,
+          penaltyPoints: excused ? 0 :
+            p.attendanceRecord?.penaltyPoints ??
+            (derived.attendanceStatus === 'absent'
+              ? (ruleByCode.get('ABSENT')?.penalty_points ?? null)
+              : null),
+          violationRuleCode: excused ? 'EXCUSED' : (p.attendanceRecord?.violationRuleCode ?? null),
+          violationRuleName:
+            ruleByCode.get(
+              (excused ? 'EXCUSED' : null) ??
+              p.attendanceRecord?.violationRuleCode ??
+                statusToRule[derived.attendanceStatus] ??
+                '',
+            )?.rule_name ?? null,
+          excuseReason: p.excuseReason,
+          excuseStatus: p.excuseStatus,
+          excuseSubmittedAt: p.excuseSubmittedAt?.toISOString() ?? null,
+          excuseReviewNote: p.excuseReviewNote,
         });
       });
 
       // Step 5: Build summary
-      const summary = this.buildSummary(items, meeting.status);
+      const summary = {
+        ...this.buildSummary(items, meeting.status),
+        totalPenaltyPoints: items.reduce((s, i) => s + (i.penaltyPoints ?? 0), 0),
+      };
 
       // Step 6: Apply field-level auth
       items = this.applyFieldLevelAuth(

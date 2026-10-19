@@ -12,7 +12,7 @@
  * Công thức:
  *   isLate      = checkInTime > startTime + graceMinutes phút
  *   lateMinutes = late ? max(1, ceil(diffMs / 60000)) : 0   (diff tính từ startTime, KHÔNG trừ grace)
- *   leftEarly   = checkOutTime != null && endTime != null && checkOutTime < endTime
+ *   leftEarly   = checkOutTime != null && endTime != null && checkOutTime < endTime - earlyLeaveMinutes phút
  *               (endTime null → leftEarly = false; không liên quan graceMinutes)
  */
 export interface LateFlags {
@@ -27,6 +27,7 @@ export function computeLateFlags(
   checkOutTime: Date | null,
   endTime: Date | null,
   graceMinutes: number,
+  earlyLeaveMinutes = 0,
 ): LateFlags {
   const graceMs = graceMinutes * 60_000;
   const isLate = checkInTime.getTime() > startTime.getTime() + graceMs;
@@ -40,7 +41,7 @@ export function computeLateFlags(
   const leftEarly =
     checkOutTime !== null &&
     endTime !== null &&
-    checkOutTime.getTime() < endTime.getTime();
+    checkOutTime.getTime() < endTime.getTime() - earlyLeaveMinutes * 60_000;
 
   return { isLate, lateMinutes, leftEarly };
 }

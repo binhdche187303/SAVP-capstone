@@ -88,6 +88,26 @@ export class MeetingParticipantEntity {
   @Column({ type: 'text', nullable: true })
   notes: string | null;
 
+  /** Lý do vắng / đi trễ / về sớm do thành viên tự nhập (1 lần / cuộc họp). */
+  @Column({ name: 'excuse_reason', type: 'text', nullable: true })
+  excuseReason: string | null;
+
+  /** pending | approved | rejected — chủ trì / thư ký duyệt. */
+  @Column({ name: 'excuse_status', type: 'varchar', length: 20, nullable: true })
+  excuseStatus: 'pending' | 'approved' | 'rejected' | null;
+
+  @Column({ name: 'excuse_submitted_at', type: 'timestamptz', nullable: true })
+  excuseSubmittedAt: Date | null;
+
+  @Column({ name: 'excuse_reviewed_by', type: 'uuid', nullable: true })
+  excuseReviewedBy: string | null;
+
+  @Column({ name: 'excuse_reviewed_at', type: 'timestamptz', nullable: true })
+  excuseReviewedAt: Date | null;
+
+  @Column({ name: 'excuse_review_note', type: 'text', nullable: true })
+  excuseReviewNote: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

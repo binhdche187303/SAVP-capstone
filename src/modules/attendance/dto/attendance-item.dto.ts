@@ -68,6 +68,27 @@ export class AttendanceItemDto {
   @ApiProperty()
   lateMinutes: number;
 
+  @ApiProperty({ nullable: true, description: 'Điểm trừ đã chốt (null = chưa chốt)' })
+  penaltyPoints: number | null;
+
+  @ApiProperty({ nullable: true, description: 'Hình thức vi phạm thư ký chọn thủ công' })
+  violationRuleCode: string | null;
+
+  @ApiProperty({ nullable: true })
+  violationRuleName: string | null;
+
+  @ApiProperty({ nullable: true, description: 'Lý do vắng/trễ/về sớm thành viên tự nhập' })
+  excuseReason: string | null;
+
+  @ApiProperty({ nullable: true, enum: ['pending', 'approved', 'rejected'] })
+  excuseStatus: string | null;
+
+  @ApiProperty({ nullable: true })
+  excuseSubmittedAt: string | null;
+
+  @ApiProperty({ nullable: true, description: 'Ghi chú khi chủ trì/thư ký từ chối' })
+  excuseReviewNote: string | null;
+
   constructor(partial: Partial<AttendanceItemDto>) {
     Object.assign(this, partial);
   }

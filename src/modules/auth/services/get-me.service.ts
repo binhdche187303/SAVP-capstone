@@ -11,6 +11,8 @@ export interface GetMeResponseDto {
   mustChangePassword: boolean;
   departmentId: string | null;
   departmentName: string | null;
+  isUnitClerk: boolean;
+  leadershipTitle: string | null;
   roles: Array<{ id: string; roleCode: string; roleName: string }>;
   permissions: string[];
 }
@@ -27,7 +29,7 @@ export class GetMeService {
       `
       SELECT
         u.id, u.email, u.full_name, u.avatar_url, u.account_status,
-        u.must_change_password, u.department_id,
+        u.must_change_password, u.department_id, u.is_unit_clerk, u.leadership_title,
         d.department_name,
         r.id AS role_id, r.role_code, r.role_name
       FROM users u
@@ -68,6 +70,8 @@ export class GetMeService {
       mustChangePassword: !!first.must_change_password,
       departmentId: (first.department_id as string) ?? null,
       departmentName: (first.department_name as string) ?? null,
+      isUnitClerk: !!first.is_unit_clerk,
+      leadershipTitle: (first.leadership_title as string) ?? null,
       roles,
       permissions,
     };

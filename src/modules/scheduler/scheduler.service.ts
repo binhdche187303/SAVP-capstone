@@ -15,6 +15,7 @@ import { CrowdAlertService } from '../crowd-alert/services/crowd-alert.service.j
 import { SecurityAlertAutoResolveService } from '../alerts/services/security-alert-auto-resolve.service.js';
 import { GateLogPairingService } from '../zones/services/gate-log-pairing.service.js';
 import { LiveMeetingService } from '../live-meeting/services/live-meeting.service.js';
+import { MeetingPrepService } from '../meetings/services/meeting-prep.service.js';
 import { MeetingRequestReviewService } from '../meetings/services/meeting-request-review.service.js';
 import { RecordingSessionService } from '../recording/services/recording-session.service.js';
 import { RecordingSystemConfigService } from '../recording/services/recording-system-config.service.js';
@@ -82,6 +83,7 @@ export class SchedulerService {
     private readonly gateLogPairingService: GateLogPairingService,
     private readonly liveMeetingService: LiveMeetingService,
     private readonly meetingRequestReviewService: MeetingRequestReviewService,
+    private readonly meetingPrepService: MeetingPrepService,
     private readonly securityAlertAutoResolveService: SecurityAlertAutoResolveService,
     private readonly recordingSessionService: RecordingSessionService,
     private readonly recordingSystemConfigService: RecordingSystemConfigService,
@@ -106,7 +108,7 @@ export class SchedulerService {
     );
     this.reminderEnabled = this.configService.get<boolean>(
       'SCHEDULER_NOTIFICATION_REMINDER_ENABLED',
-      false,
+      true,
     );
     this.deviceOfflineDetectEnabled = this.configService.get<boolean>(
       'DEVICE_OFFLINE_DETECT_ENABLED',
@@ -682,11 +684,11 @@ export class SchedulerService {
   }
 
   /**
-   * Nhắc lịch họp (MeetingReminderDispatchService), mỗi phút:
-   * 1. gửi nhắc lịch người dùng đã hẹn giờ, khi tới hạn;
-   * 2. tự nhắc trước giờ họp `meeting_reminder_minutes` phút (system_configs, mặc định 10).
-   * Gate SCHEDULER_ENABLED && SCHEDULER_NOTIFICATION_REMINDER_ENABLED. Lỗi bước này không
-   * chặn bước kia và KHÔNG ném ra cron.
+   * Nhắc lịch họp, mỗi phút (gate SCHEDULER_ENABLED && SCHEDULER_NOTIFICATION_REMINDER_ENABLED):
+   * 1. gửi nhắc lịch người dùng đã hẹn giờ khi tới hạn (MeetingReminderDispatchService);
+   * 2. nhắc thành viên trước giờ họp theo meetings.reminder_channels_json (mặc định 10 phút) — in-app / email;
+   * 3. nhắc nộp báo cáo họp.
+   * Mỗi bước lỗi độc lập, KHÔNG ném ra cron.
    */
   @Cron(CronExpression.EVERY_MINUTE, { name: 'notification-reminder' })
   async sendReminders(): Promise<void> {
@@ -710,15 +712,21 @@ export class SchedulerService {
 
     try {
       const r =
-        await this.meetingReminderDispatchService.sendAutoRemindersBatch();
+        await this.meetingRequestReviewService.remindUpcomingMeetingsBatch();
+      const rep = await this.meetingPrepService.remindReportsBatch();
+      if (rep.reminded > 0) {
+        this.logger.log(
+          `[Scheduler] notification-reminder: report reminders=${rep.reminded}`,
+        );
+      }
       if (r.reminded > 0 || r.failed > 0) {
         this.logger.log(
-          `[Scheduler] notification-reminder auto: scanned=${r.scanned} reminded=${r.reminded} failed=${r.failed}`,
+          `[Scheduler] notification-reminder: reminded=${r.reminded} failed=${r.failed}`,
         );
       }
     } catch (e) {
       this.logger.error(
-        `[Scheduler] notification-reminder auto failed: ${
+        `[Scheduler] notification-reminder failed: ${
           e instanceof Error ? e.message : 'unknown'
         }`,
       );

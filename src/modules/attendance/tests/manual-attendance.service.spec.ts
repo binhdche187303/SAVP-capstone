@@ -599,14 +599,14 @@ describe('ManualAttendanceService (UC-B21)', () => {
       );
     });
 
-    it('leftEarly=true khi checkOutTime < end_time, audit changedFields', async () => {
+    it('leftEarly=true khi checkOutTime < end_time quá mốc về sớm (15p), audit changedFields', async () => {
       asHost();
       meetingRepo.findOne.mockResolvedValue(makeMeeting());
       attendanceRepo.findOne.mockResolvedValue(makeRecord());
       const res = await service.updateProfile(
         'meeting-uuid-1',
         'record-uuid-1',
-        { checkOutTime: '2020-01-01T09:45:00Z' },
+        { checkOutTime: '2020-01-01T09:40:00Z' },
         ACTOR_HOST,
       );
       expect(res.leftEarly).toBe(true);

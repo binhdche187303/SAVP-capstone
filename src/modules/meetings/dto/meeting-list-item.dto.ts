@@ -21,6 +21,7 @@ export class MeetingListItemDto {
 
   @ApiProperty()
   meetingMode: string;
+  attendanceEnabled?: boolean;
 
   @ApiProperty()
   startTime: Date;
