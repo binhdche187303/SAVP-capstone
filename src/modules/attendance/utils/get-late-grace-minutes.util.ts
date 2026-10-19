@@ -41,3 +41,25 @@ export async function getAttendanceLateGraceMinutes(
     DEFAULT_LATE_GRACE_MINUTES,
   );
 }
+
+const DEFAULT_EARLY_LEAVE_MINUTES = 15;
+
+/** system_configs['attendance.early_leave_threshold_minutes'] → default 15 (Lịch tuần UEL). */
+export async function getAttendanceEarlyLeaveMinutes(
+  manager: EntityManager,
+): Promise<number> {
+  try {
+    const rows: Array<{ config_value: string | null }> = await manager.query(
+      `SELECT config_value FROM system_configs WHERE config_key = 'attendance.early_leave_threshold_minutes' LIMIT 1`,
+    );
+    const n = parseInt(rows?.[0]?.config_value ?? '', 10);
+    if (!Number.isNaN(n) && n >= 0) return n;
+  } catch (e) {
+    logger.warn(
+      `read attendance.early_leave_threshold_minutes failed: ${
+        e instanceof Error ? e.message : 'unknown'
+      }`,
+    );
+  }
+  return DEFAULT_EARLY_LEAVE_MINUTES;
+}

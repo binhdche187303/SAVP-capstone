@@ -10,6 +10,8 @@ export class DetailMeetingDto {
   status: string;
   recurrenceRuleId: string | null;
   parentMeetingId: string | null;
+  attendanceEnabled?: boolean;
+  reminders?: Array<{ channel: string; minutes: number }>;
 
   constructor(data: DetailMeetingDto) {
     this.meetingId = data.meetingId;
@@ -22,6 +24,8 @@ export class DetailMeetingDto {
     this.status = data.status;
     this.recurrenceRuleId = data.recurrenceRuleId;
     this.parentMeetingId = data.parentMeetingId;
+    this.attendanceEnabled = data.attendanceEnabled ?? true;
+    this.reminders = data.reminders ?? [];
   }
 }
 
@@ -146,6 +150,7 @@ export class MyScheduleDetailDto {
   room: DetailRoomDto | null;
   organizer: DetailUserDto;
   host: DetailUserDto | null;
+  secretary?: DetailUserDto | null;
   participants: DetailParticipantDto[];
   externalParticipants: DetailExternalParticipantDto[];
   agendas: DetailAgendaDto[];
@@ -158,6 +163,7 @@ export class MyScheduleDetailDto {
     this.room = data.room;
     this.organizer = data.organizer;
     this.host = data.host;
+    this.secretary = data.secretary ?? null;
     this.participants = data.participants;
     this.externalParticipants = data.externalParticipants;
     this.agendas = data.agendas;

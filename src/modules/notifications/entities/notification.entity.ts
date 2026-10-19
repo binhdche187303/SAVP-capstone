@@ -10,6 +10,10 @@ import { UserEntity } from '../../../modules/accounts/entities/user.entity.js';
 
 export enum NotificationType {
   MEETING_INVITE = 'meeting_invite',
+  // Lịch UEL: yêu cầu nộp báo cáo trước họp / trình ký biên bản.
+  MEETING_REPORT_REQUESTED = 'meeting_report_requested',
+  MINUTES_SIGNOFF_REQUESTED = 'minutes_signoff_requested',
+  MINUTES_SIGNOFF_RESULT = 'minutes_signoff_result',
   REMINDER = 'reminder',
   CANCELLATION = 'cancellation',
   NO_SHOW_ALERT = 'no_show_alert',
@@ -68,6 +72,9 @@ export enum NotificationType {
   VISITOR_REGISTERED = 'visitor_registered',
   VISITOR_ARRIVED = 'visitor_arrived',
   VISITOR_LEFT = 'visitor_left',
+  // Lý do vắng / trễ / về sớm — gửi tới chủ trì/thư ký; kết quả duyệt gửi lại thành viên
+  ATTENDANCE_EXCUSE_SUBMITTED = 'attendance_excuse_submitted',
+  ATTENDANCE_EXCUSE_REVIEWED = 'attendance_excuse_reviewed',
   VISITOR_OVERSTAY = 'visitor_overstay',
   VISITOR_MUST_LEAVE = 'visitor_must_leave',
   VISITOR_EMAIL = 'visitor_email',

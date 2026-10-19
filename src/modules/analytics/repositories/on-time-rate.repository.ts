@@ -125,7 +125,7 @@ export class OnTimeRateRepository {
         INNER JOIN meetings m ON m.id = mp.meeting_id
         INNER JOIN users u ON u.id = mp.user_id
         LEFT JOIN attendance_records ar ON ar.meeting_id = m.id AND ar.user_id = mp.user_id
-        WHERE m.status = 'completed'
+        WHERE m.status = 'completed' AND m.attendance_enabled = true
           AND m.deleted_at IS NULL
           AND mp.invitation_status <> 'declined'
           AND (ar.id IS NULL OR ar.attendance_status NOT IN ('invalidated', 'pending_review'))
@@ -187,7 +187,7 @@ export class OnTimeRateRepository {
         INNER JOIN meetings m ON m.id = mp.meeting_id
         INNER JOIN users u ON u.id = mp.user_id
         LEFT JOIN attendance_records ar ON ar.meeting_id = m.id AND ar.user_id = mp.user_id
-        WHERE m.status = 'completed'
+        WHERE m.status = 'completed' AND m.attendance_enabled = true
           AND m.deleted_at IS NULL
           AND mp.invitation_status <> 'declined'
           AND (ar.id IS NULL OR ar.attendance_status NOT IN ('invalidated', 'pending_review'))
@@ -258,7 +258,7 @@ export class OnTimeRateRepository {
         INNER JOIN meetings m ON m.id = mp.meeting_id
         INNER JOIN users u ON u.id = mp.user_id
         LEFT JOIN attendance_records ar ON ar.meeting_id = m.id AND ar.user_id = mp.user_id
-        WHERE m.status = 'completed'
+        WHERE m.status = 'completed' AND m.attendance_enabled = true
           AND m.deleted_at IS NULL
           AND mp.invitation_status <> 'declined'
           AND (ar.id IS NULL OR ar.attendance_status NOT IN ('invalidated', 'pending_review'))
@@ -324,7 +324,7 @@ export class OnTimeRateRepository {
         INNER JOIN meetings m ON m.id = mp.meeting_id
         INNER JOIN users u ON u.id = mp.user_id
         LEFT JOIN attendance_records ar ON ar.meeting_id = m.id AND ar.user_id = mp.user_id
-        WHERE m.status = 'completed'
+        WHERE m.status = 'completed' AND m.attendance_enabled = true
           AND m.deleted_at IS NULL
           AND mp.invitation_status <> 'declined'
           AND (ar.id IS NULL OR ar.attendance_status NOT IN ('invalidated', 'pending_review'))
@@ -420,7 +420,7 @@ export class OnTimeRateRepository {
         FROM meeting_participants mp
         INNER JOIN meetings m ON m.id = mp.meeting_id
         LEFT JOIN attendance_records ar ON ar.meeting_id = m.id AND ar.user_id = mp.user_id
-        WHERE m.status = 'completed'
+        WHERE m.status = 'completed' AND m.attendance_enabled = true
           AND m.deleted_at IS NULL
           AND mp.invitation_status <> 'declined'
           AND (ar.id IS NULL OR ar.attendance_status NOT IN ('invalidated', 'pending_review'))
@@ -485,7 +485,7 @@ export class OnTimeRateRepository {
         FROM meeting_participants mp
         INNER JOIN meetings m ON m.id = mp.meeting_id
         LEFT JOIN attendance_records ar ON ar.meeting_id = m.id AND ar.user_id = mp.user_id
-        WHERE m.status = 'completed'
+        WHERE m.status = 'completed' AND m.attendance_enabled = true
           AND m.deleted_at IS NULL
           AND mp.invitation_status <> 'declined'
           AND (ar.id IS NULL OR ar.attendance_status NOT IN ('invalidated', 'pending_review'))
@@ -642,7 +642,7 @@ export class OnTimeRateRepository {
         INNER JOIN users u ON u.id = mp.user_id
         LEFT JOIN departments d ON d.id = u.department_id
         LEFT JOIN attendance_records ar ON ar.meeting_id = m.id AND ar.user_id = mp.user_id
-        WHERE m.status = 'completed'
+        WHERE m.status = 'completed' AND m.attendance_enabled = true
           AND m.deleted_at IS NULL
           AND mp.invitation_status <> 'declined'
           AND (ar.id IS NULL OR ar.attendance_status NOT IN ('invalidated', 'pending_review'))

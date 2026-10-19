@@ -184,6 +184,7 @@ export class CheckInAlertService {
        LEFT JOIN rooms r ON r.id = m.room_id
        WHERE m.status = $1
          AND COALESCE(m.actual_start_time, m.start_time) <= $2
+         AND m.attendance_enabled = true
          AND m.deleted_at IS NULL`,
       [MeetingStatus.IN_PROGRESS, checkTime],
     );

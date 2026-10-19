@@ -139,6 +139,13 @@ export interface PartnerProvisionData {
   uploadedBy: string;
 }
 
+/**
+ * Role được thao tác tài khoản toàn trường (bỏ qua phạm vi phòng ban).
+ * KHÔNG dùng roles.is_system_role: cờ đó nghĩa là "role có sẵn, không xoá được"
+ * và đang bật cho mọi role seed ⇒ trước đây mọi tài khoản đều vượt phạm vi.
+ */
+const FULL_SCOPE_ROLE_CODES = ['SYSTEM_ADMIN', 'BUSINESS_ADMIN'];
+
 @Injectable()
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
@@ -1228,7 +1235,7 @@ export class UsersService {
       relations: { role: true },
     });
     const isSystemAdmin = actorRoles.some(
-      (ur) => ur.role?.isSystemRole === true,
+      (ur) => FULL_SCOPE_ROLE_CODES.includes(ur.role?.roleCode ?? ''),
     );
     if (!isSystemAdmin) {
       const scope = await this.resolveDepartmentScope(actorId);
@@ -1368,7 +1375,7 @@ export class UsersService {
       relations: { role: true },
     });
     const isSystemAdmin = actorRoles.some(
-      (ur) => ur.role?.isSystemRole === true,
+      (ur) => FULL_SCOPE_ROLE_CODES.includes(ur.role?.roleCode ?? ''),
     );
     if (!isSystemAdmin) {
       const scope = await this.resolveDepartmentScope(actorId);
@@ -1466,7 +1473,7 @@ export class UsersService {
       relations: { role: true },
     });
     const isSystemAdmin = actorRoles.some(
-      (ur) => ur.role?.isSystemRole === true,
+      (ur) => FULL_SCOPE_ROLE_CODES.includes(ur.role?.roleCode ?? ''),
     );
     if (!isSystemAdmin) {
       const scope = await this.resolveDepartmentScope(actorId);
@@ -1618,7 +1625,9 @@ export class UsersService {
       dto.phoneNumber !== undefined ||
       dto.positionTitle !== undefined ||
       dto.departmentId !== undefined ||
-      dto.accountExpiresAt !== undefined;
+      dto.accountExpiresAt !== undefined ||
+      dto.isUnitClerk !== undefined ||
+      dto.leadershipTitle !== undefined;
     if (!hasAnyField) {
       throw new BadRequestException({
         success: false,
@@ -1645,14 +1654,16 @@ export class UsersService {
       relations: { role: true },
     });
     const isSystemAdmin = actorRoles.some(
-      (ur) => ur.role?.isSystemRole === true,
+      (ur) => FULL_SCOPE_ROLE_CODES.includes(ur.role?.roleCode ?? ''),
     );
     const isSelfUpdate = actorId === targetUserId;
     const hasAdminOnlyField =
       dto.employeeCode !== undefined ||
       dto.positionTitle !== undefined ||
       dto.departmentId !== undefined ||
-      dto.accountExpiresAt !== undefined;
+      dto.accountExpiresAt !== undefined ||
+      dto.isUnitClerk !== undefined ||
+      dto.leadershipTitle !== undefined;
 
     let effectivePermissions: string[] | null = null;
     const getEffectivePermissions = async (): Promise<string[]> => {
@@ -1708,6 +1719,18 @@ export class UsersService {
       }
     }
 
+    // Lịch tuần UEL: văn thư đơn vị / chức danh BGH chỉ người có meeting.calendar_role.manage được gán.
+    if (dto.isUnitClerk !== undefined || dto.leadershipTitle !== undefined) {
+      const permissions = await getEffectivePermissions();
+      if (!permissions.includes('meeting.calendar_role.manage')) {
+        throw new ForbiddenException({
+          success: false,
+          message: 'Bạn không có quyền gán vai trò lịch họp.',
+          error: { code: 'FORBIDDEN', details: {} },
+        });
+      }
+    }
+
     let scope: Set<string> | null = null;
     if (!isSystemAdmin) {
       scope = await this.resolveDepartmentScope(actorId);
@@ -1730,6 +1753,8 @@ export class UsersService {
         | 'positionTitle'
         | 'departmentId'
         | 'accountExpiresAt'
+        | 'isUnitClerk'
+        | 'leadershipTitle'
       >
     > = {};
     const oldValues: Record<string, unknown> = {};
@@ -1773,6 +1798,27 @@ export class UsersService {
         changed.departmentId = dto.departmentId;
         oldValues.departmentId = targetUser.departmentId;
         newValues.departmentId = dto.departmentId;
+      }
+    }
+
+    if (dto.isUnitClerk !== undefined && dto.isUnitClerk !== targetUser.isUnitClerk) {
+      if (dto.isUnitClerk && !(changed.departmentId ?? targetUser.departmentId)) {
+        throw new BadRequestException({
+          success: false,
+          message: 'Tài khoản chưa thuộc đơn vị nào, không thể làm văn thư.',
+          error: { code: 'CLERK_WITHOUT_DEPARTMENT', details: {} },
+        });
+      }
+      changed.isUnitClerk = dto.isUnitClerk;
+      oldValues.isUnitClerk = targetUser.isUnitClerk;
+      newValues.isUnitClerk = dto.isUnitClerk;
+    }
+    if (dto.leadershipTitle !== undefined) {
+      const next = dto.leadershipTitle || null;
+      if (next !== targetUser.leadershipTitle) {
+        changed.leadershipTitle = next;
+        oldValues.leadershipTitle = targetUser.leadershipTitle;
+        newValues.leadershipTitle = next;
       }
     }
 
@@ -1951,6 +1997,8 @@ export class UsersService {
       phoneNumber: fresh.phoneNumber,
       avatarUrl: fresh.avatarUrl,
       positionTitle: fresh.positionTitle,
+      isUnitClerk: fresh.isUnitClerk,
+      leadershipTitle: fresh.leadershipTitle,
       department: departmentDto,
       directManager: directManagerDto,
       studentProfile: await this.getStudentProfileInfo(fresh.id),
@@ -1996,7 +2044,7 @@ export class UsersService {
     });
 
     const isSystemAdmin = authUserRoles.some(
-      (ur) => ur.role?.isSystemRole === true,
+      (ur) => FULL_SCOPE_ROLE_CODES.includes(ur.role?.roleCode ?? ''),
     );
 
     // 3. Department scope check (only for Business Admin, skip self-view)
@@ -2073,6 +2121,8 @@ export class UsersService {
       phoneNumber: targetUser.phoneNumber,
       avatarUrl: targetUser.avatarUrl,
       positionTitle: targetUser.positionTitle,
+      isUnitClerk: targetUser.isUnitClerk,
+      leadershipTitle: targetUser.leadershipTitle,
       department: departmentDto,
       directManager: directManagerDto,
       studentProfile,
@@ -2343,7 +2393,7 @@ export class UsersService {
       relations: { role: true },
     });
     const isSystemAdmin = actorRoles.some(
-      (ur) => ur.role?.isSystemRole === true,
+      (ur) => FULL_SCOPE_ROLE_CODES.includes(ur.role?.roleCode ?? ''),
     );
 
     let scopeIds: string[] | null = null;
@@ -2555,7 +2605,7 @@ export class UsersService {
       relations: { role: true },
     });
     const isSystemAdmin = actorRoles.some(
-      (ur) => ur.role?.isSystemRole === true,
+      (ur) => FULL_SCOPE_ROLE_CODES.includes(ur.role?.roleCode ?? ''),
     );
     const scopeIds = isSystemAdmin
       ? null

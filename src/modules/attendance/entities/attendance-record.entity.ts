@@ -122,6 +122,14 @@ export class AttendanceRecordEntity {
   @Column({ type: 'text', nullable: true })
   note: string | null;
 
+  /** Hình thức vi phạm thư ký chọn tay (attendance_violation_rules.rule_code); null = suy từ attendance_status. */
+  @Column({ name: 'violation_rule_code', type: 'varchar', length: 50, nullable: true })
+  violationRuleCode: string | null;
+
+  /** Điểm trừ — DB trigger fn_attendance_penalty chốt lúc ghi nhận; app chỉ đọc. */
+  @Column({ name: 'penalty_points', type: 'integer', nullable: true, insert: false, update: false })
+  penaltyPoints: number | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

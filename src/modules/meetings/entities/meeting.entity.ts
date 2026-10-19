@@ -47,6 +47,13 @@ export enum MeetingVisibilityLevel {
   PUBLIC = 'public',
 }
 
+export type MeetingReminderChannelType = 'in_app' | 'email' | 'message' | 'sms';
+export interface MeetingReminderChannel {
+  channel: MeetingReminderChannelType;
+  minutes: number;
+}
+export const DEFAULT_MEETING_REMINDERS: MeetingReminderChannel[] = [{ channel: 'in_app', minutes: 10 }];
+
 @Entity('meetings')
 export class MeetingEntity {
   @PrimaryGeneratedColumn('uuid')
@@ -115,6 +122,34 @@ export class MeetingEntity {
   @Column({ type: 'varchar', length: 60, default: 'Asia/Ho_Chi_Minh' })
   timezone: string;
 
+  /** Cuộc họp có ghi nhận điểm danh (camera / thủ công / cảnh báo). */
+  @Column({ name: 'attendance_enabled', type: 'boolean', default: true })
+  attendanceEnabled: boolean;
+
+  /** Lịch tuần UEL: UNIT | SCHOOL_LEADERSHIP | SCHOOL_OTHER. */
+  @Column({ name: 'calendar_type', type: 'varchar', length: 30, default: 'UNIT' })
+  calendarType: string;
+
+  /** Đơn vị sở hữu lịch đơn vị (= đơn vị người đặt lúc tạo). */
+  @Column({ name: 'calendar_department_id', type: 'uuid', nullable: true })
+  calendarDepartmentId: string | null;
+
+  /** "Thành phần tham gia" dạng chữ hiển thị trên lịch tuần. */
+  @Column({ name: 'attendee_composition', type: 'text', nullable: true })
+  attendeeComposition: string | null;
+
+  /** Thư ký cuộc họp — điểm danh thủ công cùng Chủ trì. */
+  @Column({ name: 'secretary_id', type: 'uuid', nullable: true })
+  secretaryId: string | null;
+
+  /** Nhắc trước giờ họp theo kênh: [{ channel: in_app|email|message|sms, minutes }]; [] = không nhắc. */
+  @Column({ name: 'reminder_channels_json', type: 'jsonb', default: () => `'[{"channel":"in_app","minutes":10}]'::jsonb` })
+  reminderChannelsJson: MeetingReminderChannel[];
+
+  /** Kênh đã gửi nhắc { channel: ISO time }; reset về {} khi đổi giờ họp. */
+  @Column({ name: 'reminder_sent_json', type: 'jsonb', default: () => `'{}'::jsonb` })
+  reminderSentJson: Record<string, string>;
+
   @Column({ name: 'expected_attendee_count', type: 'integer', nullable: true })
   expectedAttendeeCount: number | null;
 
@@ -150,6 +185,10 @@ export class MeetingEntity {
   @ManyToOne(() => UserEntity, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'host_id' })
   host: UserEntity | null;
+
+  @ManyToOne(() => UserEntity, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'secretary_id' })
+  secretary: UserEntity | null;
 
   @ManyToOne(() => MeetingRecurrenceRuleEntity, {
     nullable: true,

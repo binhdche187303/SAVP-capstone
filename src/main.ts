@@ -3,6 +3,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
 import { SwaggerModule } from '@nestjs/swagger';
 import { json, urlencoded } from 'express';
+import { join } from 'path';
 import { AppModule } from './app.module';
 import { useContainer } from 'class-validator';
 import { buildSwaggerConfig, SWAGGER_DOCS_PATH } from './config/swagger.config';
@@ -38,6 +39,12 @@ async function bootstrap() {
 
   useContainer(app.select(AppModule), { fallbackOnErrors: true });
 
+  // Avatar lưu local (STORAGE_DRIVER=local) có URL `<STORAGE_PUBLIC_BASE_URL>/avatars/...` nhưng
+  // trước đây không route nào serve ⇒ ảnh luôn 404. CHỈ mở thư mục avatars — ảnh sinh trắc vẫn kín.
+  if (app.get(ConfigService).get<string>('STORAGE_DRIVER', 'local') === 'local') {
+    const root = app.get(ConfigService).get<string>('STORAGE_LOCAL_PATH', './uploads');
+    app.useStaticAssets(join(process.cwd(), root, 'avatars'), { prefix: '/uploads/avatars' });
+  }
   app.setGlobalPrefix('api/v1');
 
   const configService = app.get(ConfigService);

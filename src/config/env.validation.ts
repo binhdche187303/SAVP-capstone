@@ -219,7 +219,7 @@ export const envValidationSchema = Joi.object({
   // Cron nhắc người duyệt yêu cầu PENDING sắp đến giờ họp
   // (lead time: system_configs.meeting_request_reminder_minutes, mặc định 120).
   SCHEDULER_MEETING_REQUEST_REMINDER_ENABLED: Joi.boolean().default(true),
-  SCHEDULER_NOTIFICATION_REMINDER_ENABLED: Joi.boolean().default(false),
+  SCHEDULER_NOTIFICATION_REMINDER_ENABLED: Joi.boolean().default(true),
   SCHEDULER_NOTIFICATION_REMINDER_CRON: Joi.string().default('0 * * * *'),
 
   // ─── K2. Device Probe (IOT-014) ──────────────────────────────────────────────
