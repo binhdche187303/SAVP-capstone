@@ -53,7 +53,7 @@ export class MeetingListService {
     if (permissions.includes('meeting.read.all')) return null;
     if (roles.includes('MANAGER')) {
       const rows: Array<{ id: string }> = await this.dataSource.query(
-        `SELECT id FROM departments WHERE manager_user_id = $1 AND is_active = true`,
+        `SELECT id FROM departments WHERE (manager_user_id = $1 OR EXISTS (SELECT 1 FROM users bgh WHERE bgh.id = $1 AND bgh.leadership_title IS NOT NULL)) AND is_active = true`,
         [userId],
       );
       return rows.map((r) => r.id);

@@ -37,7 +37,7 @@ export class ReportScopeService {
     if (!roles.includes('MANAGER')) throw forbid('Bạn không có quyền xem báo cáo này.', 'PERMISSION_DENIED');
     if (!definition.hasDepartmentScope) throw forbid('Báo cáo này không có phạm vi theo đơn vị của bạn.', 'REPORT_OUT_OF_SCOPE');
 
-    const managed: string[] = (await this.dataSource.query(`SELECT id FROM departments WHERE manager_user_id = $1`, [userId])).map((r: { id: string }) => r.id);
+    const managed: string[] = (await this.dataSource.query(`SELECT id FROM departments WHERE (manager_user_id = $1 OR EXISTS (SELECT 1 FROM users bgh WHERE bgh.id = $1 AND bgh.leadership_title IS NOT NULL))`, [userId])).map((r: { id: string }) => r.id);
     const requested = filters['departmentId'];
     if (requested && !managed.includes(requested)) throw forbid('Phòng ban nằm ngoài phạm vi quản lý của bạn.', 'DEPARTMENT_OUT_OF_SCOPE');
 

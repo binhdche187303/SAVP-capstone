@@ -18,7 +18,7 @@ export class RoomUtilizationRateRepository {
       INNER JOIN meetings m ON m.id = rb.meeting_id
       INNER JOIN users u ON u.id = m.organizer_id
       WHERE u.department_id IN (
-        SELECT id FROM departments WHERE manager_user_id = $1 AND is_active = true
+        SELECT id FROM departments WHERE (manager_user_id = $1 OR EXISTS (SELECT 1 FROM users bgh WHERE bgh.id = $1 AND bgh.leadership_title IS NOT NULL)) AND is_active = true
       )
       AND rb.reserved_start_time >= ($2 || ' 00:00:00+07')::timestamptz
       AND rb.reserved_start_time <= ($3 || ' 23:59:59.999+07')::timestamptz
