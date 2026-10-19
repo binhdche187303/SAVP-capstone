@@ -2,6 +2,11 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { NotificationsService } from './notifications.service.js';
 import { NotificationReadStateService } from './services/notification-read-state.service.js';
+import {
+  NotificationChannel,
+  NotificationDeliveryStatus,
+  NotificationType,
+} from './entities/notification.entity.js';
 
 describe('NotificationsService — inbox + BE-07 mark-read', () => {
   let service: NotificationsService;
@@ -283,6 +288,169 @@ describe('NotificationsService — inbox + BE-07 mark-read', () => {
     it('gọi readStateService.markAllRead với userId', async () => {
       await service.markAllNotificationsRead('u1');
       expect(readStateService.markAllRead).toHaveBeenCalledWith('u1');
+    });
+  });
+
+  describe('listMyNotifications — ẩn thông báo hẹn giờ chưa tới hạn', () => {
+    it('lọc scheduled_send_at: chỉ lấy thông báo không hẹn giờ hoặc đã tới giờ', async () => {
+      queryBuilder.getManyAndCount.mockResolvedValue([[], 0]);
+      readStateService.getReadState.mockResolvedValue({} as any);
+
+      await service.listMyNotifications('u1', 1, 20);
+
+      const clauses = queryBuilder.andWhere.mock.calls.map((c: any[]) =>
+        String(c[0]),
+      );
+      expect(
+        clauses.some(
+          (c: string) =>
+            c.includes('scheduled_send_at IS NULL') &&
+            c.includes('scheduled_send_at <= now()'),
+        ),
+      ).toBe(true);
+    });
+  });
+});
+
+describe('NotificationsService — nhắc lịch hẹn giờ', () => {
+  let service: NotificationsService;
+  let repo: any;
+  let queueService: any;
+  let backgroundJobsService: any;
+  let websocketService: any;
+
+  beforeEach(() => {
+    repo = {
+      create: jest.fn((v) => v),
+      save: jest.fn((v) =>
+        Promise.resolve({ id: 'n-1', createdAt: new Date(), ...v }),
+      ),
+      update: jest.fn().mockResolvedValue({ affected: 1 }),
+      findOne: jest.fn(),
+    };
+    queueService = { addJob: jest.fn().mockResolvedValue('bull-1') };
+    backgroundJobsService = {
+      createQueuedJob: jest.fn().mockResolvedValue({ id: 'bg-1' }),
+      markFailed: jest.fn(),
+    };
+    websocketService = { emitToUser: jest.fn() };
+    service = new NotificationsService(
+      repo,
+      queueService,
+      backgroundJobsService,
+      { get: jest.fn((_k: string, d?: unknown) => d) } as any,
+      {} as any,
+      {} as any,
+      websocketService,
+    );
+  });
+
+  it('createNotification hẹn giờ trong tương lai → KHÔNG đẩy realtime ngay', async () => {
+    await service.createNotification({
+      notificationType: NotificationType.REMINDER,
+      channel: NotificationChannel.IN_APP,
+      content: 'c',
+      recipientUserIds: ['u1'],
+      scheduledSendAt: new Date(Date.now() + 60_000),
+    });
+    expect(websocketService.emitToUser).not.toHaveBeenCalled();
+  });
+
+  it('createNotification không hẹn giờ → đẩy realtime như cũ', async () => {
+    await service.createNotification({
+      notificationType: NotificationType.REMINDER,
+      channel: NotificationChannel.IN_APP,
+      content: 'c',
+      recipientUserIds: ['u1'],
+    });
+    expect(websocketService.emitToUser).toHaveBeenCalledWith(
+      'u1',
+      'notification.created',
+      expect.anything(),
+    );
+  });
+
+  it('deliverScheduledInApp: giữ chỗ draft → sent (làm mới created_at) rồi đẩy realtime', async () => {
+    repo.findOne.mockResolvedValue({
+      id: 'n-1',
+      channel: NotificationChannel.IN_APP,
+      recipientUserIdsJson: ['u1'],
+      createdAt: new Date(),
+    });
+
+    const ok = await service.deliverScheduledInApp('n-1');
+
+    expect(ok).toBe(true);
+    const [where, patch] = repo.update.mock.calls[0];
+    expect(where).toEqual({
+      id: 'n-1',
+      deliveryStatus: NotificationDeliveryStatus.DRAFT,
+    });
+    expect(patch.deliveryStatus).toBe(NotificationDeliveryStatus.SENT);
+    expect(patch.sentAt).toBeInstanceOf(Date);
+    expect(patch.createdAt).toBeInstanceOf(Date);
+    expect(websocketService.emitToUser).toHaveBeenCalledWith(
+      'u1',
+      'notification.created',
+      expect.anything(),
+    );
+  });
+
+  it('deliverScheduledInApp: đã bị tick khác xử lý (affected=0) → false, không đẩy', async () => {
+    repo.update.mockResolvedValue({ affected: 0 });
+
+    const ok = await service.deliverScheduledInApp('n-1');
+
+    expect(ok).toBe(false);
+    expect(websocketService.emitToUser).not.toHaveBeenCalled();
+  });
+
+  it('claimDraft: chỉ chuyển draft → queued một lần', async () => {
+    repo.update
+      .mockResolvedValueOnce({ affected: 1 })
+      .mockResolvedValueOnce({ affected: 0 });
+
+    expect(await service.claimDraft('n-1')).toBe(true);
+    expect(await service.claimDraft('n-1')).toBe(false);
+    expect(repo.update.mock.calls[0]).toEqual([
+      { id: 'n-1', deliveryStatus: NotificationDeliveryStatus.DRAFT },
+      { deliveryStatus: NotificationDeliveryStatus.QUEUED },
+    ]);
+  });
+
+  it('enqueueEmailForExistingNotification: dùng lại bản ghi có sẵn, không tạo thông báo mới', async () => {
+    const row: any = {
+      id: 'n-mail',
+      subject: 'Nhắc lịch họp: X',
+      content: 'c',
+      payloadJson: { reminderType: 'scheduled' },
+      createdBy: null,
+    };
+
+    await service.enqueueEmailForExistingNotification(
+      row,
+      ['a@example.com'],
+      '<p>html</p>',
+    );
+
+    expect(repo.save).not.toHaveBeenCalled();
+    expect(repo.update).toHaveBeenCalledWith('n-mail', {
+      recipientEmailsJson: ['a@example.com'],
+    });
+    const job = queueService.addJob.mock.calls[0][2];
+    expect(job).toMatchObject({
+      notificationId: 'n-mail',
+      backgroundJobId: 'bg-1',
+      toEmails: ['a@example.com'],
+      emailHtml: '<p>html</p>',
+    });
+  });
+
+  it('markCancelled: chuyển trạng thái cancelled kèm lý do', async () => {
+    await service.markCancelled('n-1', 'Cuộc họp đã huỷ');
+    expect(repo.update).toHaveBeenCalledWith('n-1', {
+      deliveryStatus: NotificationDeliveryStatus.CANCELLED,
+      failureReason: 'Cuộc họp đã huỷ',
     });
   });
 });

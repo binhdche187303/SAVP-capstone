@@ -119,8 +119,42 @@ export class NotificationsService {
         ' — type: ' +
         saved.notificationType,
     );
-    this.pushRealtime(saved);
+    // Thông báo hẹn giờ trong tương lai: chưa hiện cho người nhận — MeetingReminderDispatchService
+    // gọi deliverScheduledInApp() khi tới giờ.
+    if (!saved.scheduledSendAt || saved.scheduledSendAt <= new Date()) {
+      this.pushRealtime(saved);
+    }
     return saved;
+  }
+
+  /**
+   * Phát thông báo in-app đã hẹn giờ khi tới hạn: giữ chỗ draft → sent trong 1 câu UPDATE
+   * (tick chồng nhau chỉ 1 tick thắng) rồi đẩy realtime. Làm mới created_at để thông báo nằm
+   * đầu hộp thư và không bị tính là "đã đọc" bởi lần "đọc tất cả" trước giờ hẹn.
+   */
+  async deliverScheduledInApp(id: string): Promise<boolean> {
+    const now = new Date();
+    const result = await this.repo.update(
+      { id, deliveryStatus: NotificationDeliveryStatus.DRAFT },
+      {
+        deliveryStatus: NotificationDeliveryStatus.SENT,
+        sentAt: now,
+        createdAt: now,
+      },
+    );
+    if (result.affected !== 1) return false;
+    const delivered = await this.repo.findOne({ where: { id } });
+    if (delivered) this.pushRealtime(delivered);
+    return true;
+  }
+
+  /** Giữ chỗ bản ghi draft (draft → queued) trước khi gửi; false nếu tick khác đã lấy. */
+  async claimDraft(id: string): Promise<boolean> {
+    const result = await this.repo.update(
+      { id, deliveryStatus: NotificationDeliveryStatus.DRAFT },
+      { deliveryStatus: NotificationDeliveryStatus.QUEUED },
+    );
+    return result.affected === 1;
   }
 
   /**
@@ -154,11 +188,17 @@ export class NotificationsService {
     };
     try {
       for (const userId of recipientUserIds) {
-        this.websocketService.emitToUser(userId, 'notification.created', payload);
+        this.websocketService.emitToUser(
+          userId,
+          'notification.created',
+          payload,
+        );
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.warn(`[Notifications] pushRealtime ${n.id} failed: ${message}`);
+      this.logger.warn(
+        `[Notifications] pushRealtime ${n.id} failed: ${message}`,
+      );
     }
   }
 
@@ -171,7 +211,44 @@ export class NotificationsService {
       channel: NotificationChannel.EMAIL,
       recipientEmails: dto.toEmails,
     });
+    const jobId = await this.queueEmailJob(notification, dto);
+    return { notification, jobId };
+  }
 
+  /**
+   * Gửi email cho 1 bản ghi thông báo ĐÃ CÓ (vd nhắc lịch hẹn giờ tới hạn) — không tạo bản ghi
+   * mới, chỉ ghi danh sách email thực tế rồi đẩy vào hàng đợi như enqueueEmailNotification().
+   */
+  async enqueueEmailForExistingNotification(
+    notification: NotificationEntity,
+    toEmails: string[],
+    emailHtml?: string,
+  ): Promise<void> {
+    await this.repo.update(notification.id, { recipientEmailsJson: toEmails });
+    await this.queueEmailJob(notification, {
+      toEmails,
+      subject: notification.subject ?? undefined,
+      content: notification.content,
+      emailHtml,
+      payloadJson: notification.payloadJson ?? undefined,
+      createdBy: notification.createdBy ?? undefined,
+    });
+  }
+
+  private async queueEmailJob(
+    notification: NotificationEntity,
+    dto: Pick<
+      EnqueueEmailNotificationDto,
+      | 'toEmails'
+      | 'subject'
+      | 'content'
+      | 'emailHtml'
+      | 'payloadJson'
+      | 'attachment'
+      | 'attachments'
+      | 'createdBy'
+    >,
+  ): Promise<string | undefined> {
     const bgJob = await this.backgroundJobsService.createQueuedJob({
       jobType: BackgroundJobType.SEND_EMAIL,
       queueName: this.notificationQueueName,
@@ -212,7 +289,7 @@ export class NotificationsService {
       this.logger.error(
         '[Notifications] Failed to enqueue email notification: ' + message,
       );
-      return { notification };
+      return undefined;
     }
 
     await this.markQueued(notification.id);
@@ -223,7 +300,7 @@ export class NotificationsService {
         ' → BullMQ job ' +
         bullJobId,
     );
-    return { notification, jobId: bullJobId };
+    return bullJobId;
   }
 
   async markQueued(id: string): Promise<void> {
@@ -242,6 +319,13 @@ export class NotificationsService {
   async markFailed(id: string, reason: string): Promise<void> {
     await this.repo.update(id, {
       deliveryStatus: NotificationDeliveryStatus.FAILED,
+      failureReason: reason,
+    });
+  }
+
+  async markCancelled(id: string, reason: string): Promise<void> {
+    await this.repo.update(id, {
+      deliveryStatus: NotificationDeliveryStatus.CANCELLED,
       failureReason: reason,
     });
   }
@@ -273,6 +357,8 @@ export class NotificationsService {
         userIdJsonb: JSON.stringify([userId]),
       })
       .andWhere("n.channel IN ('in_app', 'websocket')")
+      // Thông báo hẹn giờ chưa tới hạn chưa được hiện (xem deliverScheduledInApp).
+      .andWhere('(n.scheduled_send_at IS NULL OR n.scheduled_send_at <= now())')
       .orderBy('n.created_at', 'DESC')
       .skip(skip)
       .take(limit)

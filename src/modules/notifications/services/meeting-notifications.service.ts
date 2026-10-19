@@ -16,6 +16,7 @@ import {
   NotificationType,
 } from '../entities/notification.entity.js';
 import { NotificationsService } from '../notifications.service.js';
+import { buildMeetingReminderContent } from './meeting-reminder-dispatch.service.js';
 import {
   buildMeetingInviteEmail,
   buildMeetingReminderEmail,
@@ -265,8 +266,8 @@ export class MeetingNotificationsService {
       }
 
       // Tạo 1 row draft/scheduled cho MỖI channel được yêu cầu (không hardcode IN_APP) —
-      // dispatcher tương lai (SchedulerService.sendReminders(), hiện là TODO) sẽ đọc đúng
-      // channel của từng row khi tới hạn sendAt.
+      // MeetingReminderDispatchService (cron notification-reminder) đọc đúng channel của
+      // từng row khi tới hạn sendAt.
       let notificationId: string | undefined;
       let deliveryStatus: string = NotificationDeliveryStatus.DRAFT;
       const recipientUserIds = internalParticipants.map((p) => p.userId);
@@ -923,13 +924,7 @@ export class MeetingNotificationsService {
   }
 
   private buildReminderContent(meeting: MeetingEntity): string {
-    return (
-      'Nhắc nhở: Cuộc họp <b>' +
-      meeting.title +
-      '</b> sẽ diễn ra vào lúc ' +
-      formatDateTimeVN(meeting.startTime) +
-      '. Vui lòng tham dự đúng giờ.'
-    );
+    return buildMeetingReminderContent(meeting);
   }
 
   private buildCancellationContent(

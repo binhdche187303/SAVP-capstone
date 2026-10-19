@@ -14,7 +14,13 @@ import {
   ForbiddenException,
   Param,
   ParseUUIDPipe,
+  Delete,
+  Res,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import { CreateIotDeviceDto } from '../dto/create-iot-device.dto.js';
 import { UpdateIotDeviceDto } from '../dto/update-iot-device.dto.js';
 import { ListIotDevicesQueryDto } from '../dto/list-iot-devices-query.dto.js';
@@ -27,6 +33,10 @@ import { ConnectionHistoryQueryDto } from '../dto/connection-history-query.dto.j
 import { IotDevicesService } from '../services/iot-devices.service.js';
 import { DeviceConnectionHistoryService } from '../services/device-connection-history.service.js';
 import { CameraSettingsService } from '../services/camera-settings.service.js';
+import {
+  FloorPlanService,
+  type UploadedImage,
+} from '../services/floor-plan.service.js';
 import {
   AnprStatsQueryDto,
   ConfigureRecordingDto,
@@ -45,6 +55,7 @@ export class IotDevicesController {
     private readonly iotDevicesService: IotDevicesService,
     private readonly connectionHistoryService: DeviceConnectionHistoryService,
     private readonly cameraSettingsService: CameraSettingsService,
+    private readonly floorPlanService: FloorPlanService,
   ) {}
 
   // IOT-013: liệt kê thiết bị (filter + phân trang). Read-only, query whitelist-only.
@@ -126,6 +137,75 @@ export class IotDevicesController {
       message: 'Camera layout saved successfully',
       data,
     };
+  }
+
+  // 2.2.4: ảnh mặt bằng (bản vẽ) theo tầng làm nền cho sơ đồ. Route STATIC — trước các route ':id'.
+  @Get('layout/floor-plans')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('iot.device.read')
+  async listFloorPlans() {
+    return {
+      success: true,
+      message: 'Floor plans retrieved successfully',
+      data: await this.floorPlanService.list(),
+    };
+  }
+
+  // floor_key qua query (tên tầng có dấu cách / tiếng Việt). FE tải bằng fetch có Bearer → blob URL.
+  @Get('layout/floor-plans/image')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('iot.device.read')
+  async getFloorPlanImage(
+    @Query('floor_key') floorKey: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const { stream, mimeType } = await this.floorPlanService.getImage(
+      floorKey ?? '',
+    );
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Cache-Control', 'private, no-cache');
+    stream.on('error', () => {
+      if (!res.headersSent) res.status(404);
+      res.end();
+    });
+    stream.pipe(res);
+  }
+
+  @Put('layout/floor-plan')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('iot.device.update')
+  // KHÔNG set limits.fileSize ở Multer: để service trả đúng FLOOR_PLAN_FILE_TOO_LARGE.
+  @UseInterceptors(FileInterceptor('file'))
+  async saveFloorPlan(
+    @CurrentUser() user: { userId: string },
+    @UploadedFile() file: UploadedImage | undefined,
+    @Body('floor_key') floorKey: string,
+    @Body('width') width: string,
+    @Body('height') height: string,
+  ) {
+    const data = await this.floorPlanService.save(
+      user?.userId ?? null,
+      floorKey,
+      file,
+      Number(width),
+      Number(height),
+    );
+    return {
+      success: true,
+      message: 'Floor plan saved successfully',
+      data,
+    };
+  }
+
+  @Delete('layout/floor-plan')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('iot.device.update')
+  async removeFloorPlan(
+    @CurrentUser() user: { userId: string },
+    @Query('floor_key') floorKey: string,
+  ) {
+    await this.floorPlanService.remove(user?.userId ?? null, floorKey ?? '');
+    return { success: true, message: 'Floor plan removed successfully' };
   }
 
   // 2.2.7: lịch ghi hình & thời gian lưu trữ của 1 camera (metadata_json.recording).

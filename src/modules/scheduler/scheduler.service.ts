@@ -22,6 +22,7 @@ import { OccupancyPersistenceService } from '../presence/services/occupancy-pers
 import { ReportScheduleDispatchService } from '../reports/schedules/report-schedule-dispatch.service.js';
 import { DeviceMaintenanceAlertService } from '../device-alert/services/device-maintenance-alert.service.js';
 import { VisitorSweepService } from '../visitors/services/visitor-sweep.service.js';
+import { MeetingReminderDispatchService } from '../notifications/services/meeting-reminder-dispatch.service.js';
 import {
   KpiRollupJobService,
   type RollupRunResult,
@@ -35,7 +36,7 @@ import {
  *
  * Luồng thực tế (TODO):
  * - checkNoShow() → UtilizationService.detectNoShow()
- * - sendReminders() → NotificationsService.sendScheduledReminders()
+ * - sendReminders() → MeetingReminderDispatchService (đã implement: hẹn giờ + tự nhắc trước giờ họp)
  * - checkCheckinAlerts() → CheckInAlertService.processMeetings()
  */
 @Injectable()
@@ -89,6 +90,7 @@ export class SchedulerService {
     private readonly visitorSweepService: VisitorSweepService,
     private readonly reportScheduleDispatchService: ReportScheduleDispatchService,
     private readonly deviceMaintenanceAlertService: DeviceMaintenanceAlertService,
+    private readonly meetingReminderDispatchService: MeetingReminderDispatchService,
   ) {
     this.schedulerEnabled = this.configService.get<boolean>(
       'SCHEDULER_ENABLED',
@@ -680,23 +682,47 @@ export class SchedulerService {
   }
 
   /**
-   * Meeting reminder notification job.
-   * Cron: SCHEDULER_NOTIFICATION_REMINDER_CRON (default: every hour)
-   *
-   * TODO: Gọi NotificationsService.sendScheduledReminders() khi implement.
+   * Nhắc lịch họp (MeetingReminderDispatchService), mỗi phút:
+   * 1. gửi nhắc lịch người dùng đã hẹn giờ, khi tới hạn;
+   * 2. tự nhắc trước giờ họp `meeting_reminder_minutes` phút (system_configs, mặc định 10).
+   * Gate SCHEDULER_ENABLED && SCHEDULER_NOTIFICATION_REMINDER_ENABLED. Lỗi bước này không
+   * chặn bước kia và KHÔNG ném ra cron.
    */
-  @Cron(CronExpression.EVERY_HOUR, { name: 'notification-reminder' })
-  sendReminders(): Promise<void> {
-    // KHÔNG `async`: thân hàm chưa có await nào (stub, xem TODO dưới) — eslint
-    // require-await. Vẫn trả Promise để chữ ký gọi được bằng `await` không đổi.
-    if (!this.schedulerEnabled || !this.reminderEnabled)
-      return Promise.resolve();
+  @Cron(CronExpression.EVERY_MINUTE, { name: 'notification-reminder' })
+  async sendReminders(): Promise<void> {
+    if (!this.schedulerEnabled || !this.reminderEnabled) return;
 
-    this.logger.log(
-      '[Scheduler] sendReminders() triggered — TODO: implement reminder notification logic.',
-    );
-    // TODO: inject NotificationsService và gọi sendScheduledReminders()
-    return Promise.resolve();
+    try {
+      const r =
+        await this.meetingReminderDispatchService.dispatchDueScheduledReminders();
+      if (r.due > 0) {
+        this.logger.log(
+          `[Scheduler] notification-reminder scheduled: due=${r.due} sent=${r.sent} cancelled=${r.cancelled} failed=${r.failed}`,
+        );
+      }
+    } catch (e) {
+      this.logger.error(
+        `[Scheduler] notification-reminder scheduled failed: ${
+          e instanceof Error ? e.message : 'unknown'
+        }`,
+      );
+    }
+
+    try {
+      const r =
+        await this.meetingReminderDispatchService.sendAutoRemindersBatch();
+      if (r.reminded > 0 || r.failed > 0) {
+        this.logger.log(
+          `[Scheduler] notification-reminder auto: scanned=${r.scanned} reminded=${r.reminded} failed=${r.failed}`,
+        );
+      }
+    } catch (e) {
+      this.logger.error(
+        `[Scheduler] notification-reminder auto failed: ${
+          e instanceof Error ? e.message : 'unknown'
+        }`,
+      );
+    }
   }
 
   /**
@@ -780,7 +806,9 @@ export class SchedulerService {
         );
       }
     } catch (e) {
-      this.logger.error(`[Scheduler] visitor-sweep failed: ${e instanceof Error ? e.message : 'unknown'}`);
+      this.logger.error(
+        `[Scheduler] visitor-sweep failed: ${e instanceof Error ? e.message : 'unknown'}`,
+      );
     }
   }
 
@@ -794,7 +822,9 @@ export class SchedulerService {
         `[Scheduler] device-maintenance-scan: threshold=${r.thresholdHours}h stale=${r.stale} alerts=${r.alertsRecorded} resolved=${r.alertsResolved}`,
       );
     } catch (e) {
-      this.logger.error(`[Scheduler] device-maintenance-scan failed: ${e instanceof Error ? e.message : 'unknown'}`);
+      this.logger.error(
+        `[Scheduler] device-maintenance-scan failed: ${e instanceof Error ? e.message : 'unknown'}`,
+      );
     }
   }
 
@@ -804,9 +834,14 @@ export class SchedulerService {
     if (!this.schedulerEnabled || !this.visitorEnabled) return;
     try {
       const r = await this.visitorSweepService.runFaceReconcile();
-      if (!r.skipped) this.logger.log(`[Scheduler] visitor-face-reconcile: synced=${r.synced}`);
+      if (!r.skipped)
+        this.logger.log(
+          `[Scheduler] visitor-face-reconcile: synced=${r.synced}`,
+        );
     } catch (e) {
-      this.logger.error(`[Scheduler] visitor-face-reconcile failed: ${e instanceof Error ? e.message : 'unknown'}`);
+      this.logger.error(
+        `[Scheduler] visitor-face-reconcile failed: ${e instanceof Error ? e.message : 'unknown'}`,
+      );
     }
   }
 
@@ -816,9 +851,14 @@ export class SchedulerService {
     if (!this.schedulerEnabled || !this.visitorEnabled) return;
     try {
       const r = await this.visitorSweepService.runPhotoRetention(new Date());
-      if (!r.skipped) this.logger.log(`[Scheduler] visitor-photo-retention: purged=${r.purged}`);
+      if (!r.skipped)
+        this.logger.log(
+          `[Scheduler] visitor-photo-retention: purged=${r.purged}`,
+        );
     } catch (e) {
-      this.logger.error(`[Scheduler] visitor-photo-retention failed: ${e instanceof Error ? e.message : 'unknown'}`);
+      this.logger.error(
+        `[Scheduler] visitor-photo-retention failed: ${e instanceof Error ? e.message : 'unknown'}`,
+      );
     }
   }
 
@@ -830,10 +870,17 @@ export class SchedulerService {
   async reportScheduleDispatch(): Promise<void> {
     if (!this.schedulerEnabled || !this.reportScheduleEnabled) return;
     try {
-      const r = await this.reportScheduleDispatchService.dispatchDue(new Date());
-      if (r.dispatched > 0) this.logger.log(`[Scheduler] report-schedule-dispatch: dispatched=${r.dispatched}`);
+      const r = await this.reportScheduleDispatchService.dispatchDue(
+        new Date(),
+      );
+      if (r.dispatched > 0)
+        this.logger.log(
+          `[Scheduler] report-schedule-dispatch: dispatched=${r.dispatched}`,
+        );
     } catch (e) {
-      this.logger.error(`[Scheduler] report-schedule-dispatch failed: ${e instanceof Error ? e.message : 'unknown'}`);
+      this.logger.error(
+        `[Scheduler] report-schedule-dispatch failed: ${e instanceof Error ? e.message : 'unknown'}`,
+      );
     }
   }
 }

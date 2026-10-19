@@ -18,6 +18,7 @@ import { PresenceModule } from '../presence/presence.module.js';
 import { ReportsModule } from '../reports/reports.module.js';
 import { VisitorsModule } from '../visitors/visitors.module.js';
 import { KpiRollupModule } from '../kpi-rollup/kpi-rollup.module.js';
+import { NotificationsModule } from '../notifications/notifications.module.js';
 
 /**
  * SchedulerModule — Skeleton cho các cron job.
@@ -73,6 +74,9 @@ import { KpiRollupModule } from '../kpi-rollup/kpi-rollup.module.js';
     VisitorsModule,
     // RPT-CENTER-BE-001: cron report-schedule-dispatch inject ReportScheduleDispatchService. Scheduler → reports MỘT CHIỀU.
     ReportsModule,
+    // Cron notification-reminder inject MeetingReminderDispatchService. Scheduler → notifications
+    // MỘT CHIỀU (notifications không import scheduler) ⇒ không circular.
+    NotificationsModule,
   ],
   providers: [SchedulerService],
   exports: [SchedulerService],

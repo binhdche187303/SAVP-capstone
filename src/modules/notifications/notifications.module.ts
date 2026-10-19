@@ -5,6 +5,7 @@ import { NotificationEntity } from './entities/notification.entity.js';
 import { NotificationsService } from './notifications.service.js';
 import { NotificationWorkerService } from './notification-worker.service.js';
 import { MeetingNotificationsService } from './services/meeting-notifications.service.js';
+import { MeetingReminderDispatchService } from './services/meeting-reminder-dispatch.service.js';
 import { NotificationReadStateService } from './services/notification-read-state.service.js';
 import { NotificationsController } from './notifications.controller.js';
 import { BackgroundJobEntity } from '../administration/entities/background-job.entity.js';
@@ -75,8 +76,14 @@ import { WebsocketModule } from '../websocket/websocket.module.js';
     NotificationsService,
     NotificationWorkerService,
     MeetingNotificationsService,
+    MeetingReminderDispatchService,
     NotificationReadStateService,
   ],
-  exports: [TypeOrmModule, NotificationsService],
+  // MeetingReminderDispatchService: cron notification-reminder (SchedulerModule) gọi.
+  exports: [
+    TypeOrmModule,
+    NotificationsService,
+    MeetingReminderDispatchService,
+  ],
 })
 export class NotificationsModule {}
