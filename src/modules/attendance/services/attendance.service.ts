@@ -223,7 +223,7 @@ export class AttendanceService {
     // nhân viên thuộc phòng ban mình — khớp phạm vi màn "Chuyên cần phòng ban" (GET /meetings).
     const managedDeptRows: Array<{ id: string }> =
       await this.participantRepo.manager.query(
-        `SELECT id FROM departments WHERE manager_user_id = $1 AND is_active = true`,
+        `SELECT id FROM departments WHERE (manager_user_id = $1 OR EXISTS (SELECT 1 FROM users bgh WHERE bgh.id = $1 AND bgh.leadership_title IS NOT NULL)) AND is_active = true`,
         [managerUserId],
       );
     const managedDeptIds = new Set(managedDeptRows.map((r) => r.id));

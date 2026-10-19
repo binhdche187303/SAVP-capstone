@@ -140,6 +140,19 @@ export class CalendarRolesService {
           `UPDATE users SET leadership_title = $2, updated_at = NOW() WHERE id = $1`,
           [l.userId, l.leadershipTitle],
         );
+        // BGH dùng role MANAGER (giao diện quản lý, vẫn dự họp); FE hiện nhãn "Ban Giám hiệu".
+        await m.query(
+          `INSERT INTO user_roles (user_id, role_id, assigned_at, is_active)
+           SELECT $1, r.id, NOW(), true FROM roles r WHERE r.role_code = 'MANAGER'
+              AND NOT EXISTS (SELECT 1 FROM user_roles x WHERE x.user_id = $1 AND x.role_id = r.id)`,
+          [l.userId],
+        );
+        await m.query(
+          `UPDATE user_roles ur SET is_active = (r.role_code = 'MANAGER')
+             FROM roles r
+            WHERE ur.role_id = r.id AND ur.user_id = $1 AND r.role_code IN ('MANAGER', 'EMPLOYEE')`,
+          [l.userId],
+        );
       }
     });
     return this.getConfig();

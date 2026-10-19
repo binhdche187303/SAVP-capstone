@@ -60,6 +60,8 @@ export class ReportCenterService {
         description: d.description,
         available,
         unavailableReason: available ? null : scopeReason ?? d.unavailableReason ?? null,
+        // true = khả dụng nhưng ngoài phạm vi người xem → FE ẩn hẳn thẻ (khác "chờ phân hệ").
+        outOfScope: scopeReason !== null,
         activeSchedules: Number(schedules.find((s) => s.report_type === type)?.n ?? 0),
         lastExportAt: exportsOf.find((e) => e.report_type === type)?.last?.toISOString?.() ?? null,
       };

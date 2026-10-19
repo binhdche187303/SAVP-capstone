@@ -58,4 +58,7 @@ export class ManageUserItemDto {
     nullable: true,
   })
   accountExpiresAt?: string | null;
+
+  @ApiProperty({ description: 'Chức danh Ban Giám hiệu (nếu có)', required: false, nullable: true })
+  leadershipTitle?: string | null;
 }
