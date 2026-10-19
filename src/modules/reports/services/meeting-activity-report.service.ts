@@ -235,7 +235,7 @@ export class MeetingActivityReportService {
     if (roles.includes('MANAGER')) {
       // Query phòng ban do user quản lý
       const rows: { id: string }[] = await this.dataSource.query(
-        `SELECT id FROM departments WHERE manager_user_id = $1`,
+        `SELECT id FROM departments WHERE (manager_user_id = $1 OR EXISTS (SELECT 1 FROM users bgh WHERE bgh.id = $1 AND bgh.leadership_title IS NOT NULL))`,
         [userId],
       );
       const managedIds = rows.map((r) => r.id);

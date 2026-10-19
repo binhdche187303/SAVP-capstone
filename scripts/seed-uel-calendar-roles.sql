@@ -17,7 +17,7 @@ SELECT v.code, v.username, v.email, (SELECT password_hash FROM users WHERE email
 
 INSERT INTO user_roles (user_id, role_id, assigned_at, is_active)
 SELECT u.id, r.id, NOW(), true
-  FROM users u JOIN roles r ON r.role_code = CASE WHEN u.email = 'manager.hc@meetingsys.vn' THEN 'MANAGER' ELSE 'EMPLOYEE' END
+  FROM users u JOIN roles r ON r.role_code = 'MANAGER'
  WHERE u.email IN ('hieutruong@meetingsys.vn', 'phohieutruong.dt@meetingsys.vn', 'phohieutruong.cs@meetingsys.vn', 'manager.hc@meetingsys.vn')
    AND NOT EXISTS (SELECT 1 FROM user_roles x WHERE x.user_id = u.id AND x.role_id = r.id);
 
@@ -25,6 +25,10 @@ UPDATE users SET is_unit_clerk = true, position_title = 'Văn thư Phòng Hành 
 UPDATE users SET is_unit_clerk = true, position_title = 'Văn thư Phòng Nhân sự' WHERE email = 'emp.hr1@meetingsys.vn';
 UPDATE users SET is_unit_clerk = true, position_title = 'Văn thư Phòng Công nghệ thông tin' WHERE email = 'emp.it2@meetingsys.vn';
 UPDATE users SET is_unit_clerk = true, position_title = 'Văn thư Phòng Tuyển sinh & CTSV' WHERE email = 'emp.sales1@meetingsys.vn';
+
+-- Trưởng P.HC phải là manager_user_id của phòng, nếu không báo cáo chuyên cần trả 403
+UPDATE departments d SET manager_user_id = u.id
+  FROM users u WHERE u.email = 'manager.hc@meetingsys.vn' AND d.id = u.department_id AND d.manager_user_id IS NULL;
 
 COMMIT;
 

@@ -5,6 +5,7 @@ import { IotDevicesController } from './iot-devices.controller.js';
 import { IotDevicesService } from '../services/iot-devices.service.js';
 import { DeviceConnectionHistoryService } from '../services/device-connection-history.service.js';
 import { CameraSettingsService } from '../services/camera-settings.service.js';
+import { FloorPlanService } from '../services/floor-plan.service.js';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard.js';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard.js';
 import { PERMISSIONS_KEY } from '../../auth/decorators/require-permissions.decorator.js';
@@ -59,6 +60,7 @@ describe('IotDevicesController — check-availability (A5)', () => {
         { provide: IotDevicesService, useValue: service },
         { provide: DeviceConnectionHistoryService, useValue: {} },
         { provide: CameraSettingsService, useValue: {} },
+        { provide: FloorPlanService, useValue: {} },
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -215,6 +217,30 @@ describe('IotDevicesController — check-availability (A5)', () => {
         controller.configureFaceServer,
       );
       expect(perms).toEqual(['iot_devices:configure_face_server']);
+    });
+  });
+
+  describe('ảnh mặt bằng (2.2.4)', () => {
+    it('xem danh sách / ảnh mặt bằng cần iot.device.read', () => {
+      for (const handler of [
+        controller.listFloorPlans,
+        controller.getFloorPlanImage,
+      ]) {
+        expect(reflector.get<string[]>(PERMISSIONS_KEY, handler)).toEqual([
+          'iot.device.read',
+        ]);
+      }
+    });
+
+    it('tải lên / xoá ảnh mặt bằng cần iot.device.update', () => {
+      for (const handler of [
+        controller.saveFloorPlan,
+        controller.removeFloorPlan,
+      ]) {
+        expect(reflector.get<string[]>(PERMISSIONS_KEY, handler)).toEqual([
+          'iot.device.update',
+        ]);
+      }
     });
   });
 });

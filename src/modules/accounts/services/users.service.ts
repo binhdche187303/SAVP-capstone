@@ -2546,6 +2546,7 @@ export class UsersService {
       'u.avatarUrl',
       'u.phoneNumber',
       'u.accountExpiresAt',
+      'u.leadershipTitle',
     ])
       .orderBy(sortColumn, sortDirection)
       .skip((page - 1) * limit)
@@ -2592,6 +2593,7 @@ export class UsersService {
       accountExpiresAt: u.accountExpiresAt
         ? u.accountExpiresAt.toISOString()
         : null,
+      leadershipTitle: u.leadershipTitle ?? null,
     }));
 
     return { data, total };

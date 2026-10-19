@@ -23,6 +23,7 @@ import { OccupancyPersistenceService } from '../presence/services/occupancy-pers
 import { ReportScheduleDispatchService } from '../reports/schedules/report-schedule-dispatch.service.js';
 import { DeviceMaintenanceAlertService } from '../device-alert/services/device-maintenance-alert.service.js';
 import { VisitorSweepService } from '../visitors/services/visitor-sweep.service.js';
+import { MeetingReminderDispatchService } from '../notifications/services/meeting-reminder-dispatch.service.js';
 import {
   KpiRollupJobService,
   type RollupRunResult,
@@ -36,7 +37,7 @@ import {
  *
  * Luồng thực tế (TODO):
  * - checkNoShow() → UtilizationService.detectNoShow()
- * - sendReminders() → NotificationsService.sendScheduledReminders()
+ * - sendReminders() → MeetingReminderDispatchService (đã implement: hẹn giờ + tự nhắc trước giờ họp)
  * - checkCheckinAlerts() → CheckInAlertService.processMeetings()
  */
 @Injectable()
@@ -91,6 +92,7 @@ export class SchedulerService {
     private readonly visitorSweepService: VisitorSweepService,
     private readonly reportScheduleDispatchService: ReportScheduleDispatchService,
     private readonly deviceMaintenanceAlertService: DeviceMaintenanceAlertService,
+    private readonly meetingReminderDispatchService: MeetingReminderDispatchService,
   ) {
     this.schedulerEnabled = this.configService.get<boolean>(
       'SCHEDULER_ENABLED',
@@ -682,17 +684,40 @@ export class SchedulerService {
   }
 
   /**
-   * Nhắc thành viên trước giờ họp (meetings.reminder_channels_json, mặc định thông báo 10 phút) — in-app / email.
-   * Gate SCHEDULER_ENABLED && SCHEDULER_NOTIFICATION_REMINDER_ENABLED (default ON).
+   * Nhắc lịch họp, mỗi phút (gate SCHEDULER_ENABLED && SCHEDULER_NOTIFICATION_REMINDER_ENABLED):
+   * 1. gửi nhắc lịch người dùng đã hẹn giờ khi tới hạn (MeetingReminderDispatchService);
+   * 2. nhắc thành viên trước giờ họp theo meetings.reminder_channels_json (mặc định 10 phút) — in-app / email;
+   * 3. nhắc nộp báo cáo họp.
+   * Mỗi bước lỗi độc lập, KHÔNG ném ra cron.
    */
   @Cron(CronExpression.EVERY_MINUTE, { name: 'notification-reminder' })
   async sendReminders(): Promise<void> {
     if (!this.schedulerEnabled || !this.reminderEnabled) return;
+
     try {
-      const r = await this.meetingRequestReviewService.remindUpcomingMeetingsBatch();
+      const r =
+        await this.meetingReminderDispatchService.dispatchDueScheduledReminders();
+      if (r.due > 0) {
+        this.logger.log(
+          `[Scheduler] notification-reminder scheduled: due=${r.due} sent=${r.sent} cancelled=${r.cancelled} failed=${r.failed}`,
+        );
+      }
+    } catch (e) {
+      this.logger.error(
+        `[Scheduler] notification-reminder scheduled failed: ${
+          e instanceof Error ? e.message : 'unknown'
+        }`,
+      );
+    }
+
+    try {
+      const r =
+        await this.meetingRequestReviewService.remindUpcomingMeetingsBatch();
       const rep = await this.meetingPrepService.remindReportsBatch();
       if (rep.reminded > 0) {
-        this.logger.log(`[Scheduler] notification-reminder: report reminders=${rep.reminded}`);
+        this.logger.log(
+          `[Scheduler] notification-reminder: report reminders=${rep.reminded}`,
+        );
       }
       if (r.reminded > 0 || r.failed > 0) {
         this.logger.log(
@@ -789,7 +814,9 @@ export class SchedulerService {
         );
       }
     } catch (e) {
-      this.logger.error(`[Scheduler] visitor-sweep failed: ${e instanceof Error ? e.message : 'unknown'}`);
+      this.logger.error(
+        `[Scheduler] visitor-sweep failed: ${e instanceof Error ? e.message : 'unknown'}`,
+      );
     }
   }
 
@@ -803,7 +830,9 @@ export class SchedulerService {
         `[Scheduler] device-maintenance-scan: threshold=${r.thresholdHours}h stale=${r.stale} alerts=${r.alertsRecorded} resolved=${r.alertsResolved}`,
       );
     } catch (e) {
-      this.logger.error(`[Scheduler] device-maintenance-scan failed: ${e instanceof Error ? e.message : 'unknown'}`);
+      this.logger.error(
+        `[Scheduler] device-maintenance-scan failed: ${e instanceof Error ? e.message : 'unknown'}`,
+      );
     }
   }
 
@@ -813,9 +842,14 @@ export class SchedulerService {
     if (!this.schedulerEnabled || !this.visitorEnabled) return;
     try {
       const r = await this.visitorSweepService.runFaceReconcile();
-      if (!r.skipped) this.logger.log(`[Scheduler] visitor-face-reconcile: synced=${r.synced}`);
+      if (!r.skipped)
+        this.logger.log(
+          `[Scheduler] visitor-face-reconcile: synced=${r.synced}`,
+        );
     } catch (e) {
-      this.logger.error(`[Scheduler] visitor-face-reconcile failed: ${e instanceof Error ? e.message : 'unknown'}`);
+      this.logger.error(
+        `[Scheduler] visitor-face-reconcile failed: ${e instanceof Error ? e.message : 'unknown'}`,
+      );
     }
   }
 
@@ -825,9 +859,14 @@ export class SchedulerService {
     if (!this.schedulerEnabled || !this.visitorEnabled) return;
     try {
       const r = await this.visitorSweepService.runPhotoRetention(new Date());
-      if (!r.skipped) this.logger.log(`[Scheduler] visitor-photo-retention: purged=${r.purged}`);
+      if (!r.skipped)
+        this.logger.log(
+          `[Scheduler] visitor-photo-retention: purged=${r.purged}`,
+        );
     } catch (e) {
-      this.logger.error(`[Scheduler] visitor-photo-retention failed: ${e instanceof Error ? e.message : 'unknown'}`);
+      this.logger.error(
+        `[Scheduler] visitor-photo-retention failed: ${e instanceof Error ? e.message : 'unknown'}`,
+      );
     }
   }
 
@@ -839,10 +878,17 @@ export class SchedulerService {
   async reportScheduleDispatch(): Promise<void> {
     if (!this.schedulerEnabled || !this.reportScheduleEnabled) return;
     try {
-      const r = await this.reportScheduleDispatchService.dispatchDue(new Date());
-      if (r.dispatched > 0) this.logger.log(`[Scheduler] report-schedule-dispatch: dispatched=${r.dispatched}`);
+      const r = await this.reportScheduleDispatchService.dispatchDue(
+        new Date(),
+      );
+      if (r.dispatched > 0)
+        this.logger.log(
+          `[Scheduler] report-schedule-dispatch: dispatched=${r.dispatched}`,
+        );
     } catch (e) {
-      this.logger.error(`[Scheduler] report-schedule-dispatch failed: ${e instanceof Error ? e.message : 'unknown'}`);
+      this.logger.error(
+        `[Scheduler] report-schedule-dispatch failed: ${e instanceof Error ? e.message : 'unknown'}`,
+      );
     }
   }
 }

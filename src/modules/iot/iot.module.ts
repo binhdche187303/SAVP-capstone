@@ -17,6 +17,7 @@ import { IotDevicesService } from './services/iot-devices.service.js';
 import { IotDeviceEventsService } from './services/iot-device-events.service.js';
 import { DeviceConnectionHistoryService } from './services/device-connection-history.service.js';
 import { CameraSettingsService } from './services/camera-settings.service.js';
+import { FloorPlanService } from './services/floor-plan.service.js';
 import { IotAuditRepository } from './repositories/iot-audit.repository.js';
 
 @Module({
@@ -45,6 +46,7 @@ import { IotAuditRepository } from './repositories/iot-audit.repository.js';
     IotAuditRepository,
     DeviceConnectionHistoryService,
     CameraSettingsService,
+    FloorPlanService,
   ],
   exports: [TypeOrmModule, IotDevicesService, IotDeviceEventsService],
 })
