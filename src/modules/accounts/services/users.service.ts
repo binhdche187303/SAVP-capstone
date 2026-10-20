@@ -33,7 +33,7 @@ import {
 import { DepartmentEntity } from '../entities/department.entity.js';
 import { RoleEntity } from '../entities/role.entity.js';
 import { UserRoleEntity } from '../entities/user-role.entity.js';
-import { MEETING_INELIGIBLE_ROLE_CODES } from '../../../common/utils/meeting-ineligible-roles.util.js';
+import { MEETING_ELIGIBLE_ROLE_CODES, MEETING_INELIGIBLE_ROLE_CODES } from '../../../common/utils/meeting-ineligible-roles.util.js';
 import {
   FaceProfileEntity,
   FaceProfileStatus,
@@ -2322,6 +2322,17 @@ export class UsersService {
             AND r.role_code IN (:...ineligibleRoles)
         )`,
         { ineligibleRoles: MEETING_INELIGIBLE_ROLE_CODES },
+      );
+      qb.andWhere(
+        `EXISTS (
+          SELECT 1 FROM user_roles ur
+          INNER JOIN roles r ON r.id = ur.role_id
+          WHERE ur.user_id = u.id
+            AND ur.is_active = true
+            AND (ur.expired_at IS NULL OR ur.expired_at > NOW())
+            AND r.role_code IN (:...eligibleRoles)
+        )`,
+        { eligibleRoles: MEETING_ELIGIBLE_ROLE_CODES },
       );
     }
 

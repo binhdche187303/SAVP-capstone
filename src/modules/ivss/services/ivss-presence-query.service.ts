@@ -132,12 +132,17 @@ export class IvssPresenceQueryService {
     }
     if (roles.includes('MANAGER')) {
       const scopeDepartmentIds = await this.getManagerDepartmentIds(callerId);
+      // Manager chủ trì ĐÚNG meeting này (vd Hiệu trưởng) → xem đủ participant như host Employee.
+      const isHostOfMeeting = await this.isCallerHostOfMeeting(
+        callerId,
+        meetingId,
+      );
       return {
         viewerRole: 'MANAGER',
         isUnrestricted: false,
         scopeDepartmentIds,
         selfUserId: null,
-        isHostOfMeeting: false,
+        isHostOfMeeting,
       };
     }
     // EMPLOYEE (hoặc role khác lỡ được cấp quyền ngoài dự kiến) → mặc định chỉ tự xem chính
@@ -240,7 +245,8 @@ export class IvssPresenceQueryService {
 
   private async getManagerDepartmentIds(userId: string): Promise<string[]> {
     const rows: Array<{ id: string }> = await this.dataSource.manager.query(
-      `SELECT id FROM departments WHERE manager_user_id = $1 AND is_active = true`,
+      // BGH (leadership_title) xem mọi đơn vị — cùng quy ước với analytics/report-scope.
+      `SELECT id FROM departments WHERE (manager_user_id = $1 OR EXISTS (SELECT 1 FROM users bgh WHERE bgh.id = $1 AND bgh.leadership_title IS NOT NULL)) AND is_active = true`,
       [userId],
     );
     return rows.map((r) => r.id);
