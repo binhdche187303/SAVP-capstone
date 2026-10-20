@@ -334,15 +334,8 @@ export class ManualAttendanceService {
     // (2) gate trạng thái-meeting → 409.
     this.assertMeetingOpen(meeting);
 
-    // (3) chỉ System Admin → 403.
-    const { roles } =
-      await this.authzRead.getEffectiveRolesAndPermissions(actorUserId);
-    if (!roles.includes(SYSTEM_ADMIN)) {
-      throw new ForbiddenException({
-        message: 'Only System Admin can invalidate attendance records',
-        error: 'PERMISSION_DENIED',
-      });
-    }
+    // (3) Chủ tọa / Thư ký / Admin → 403 (cùng quyền với tạo & sửa điểm danh thủ công).
+    await this.assertHostOrAdmin(meeting, actorUserId);
 
     // (4) thiếu reason → 400.
     if (!dto.reason || dto.reason.trim().length === 0) {

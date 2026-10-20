@@ -1484,13 +1484,14 @@ export class MinutesService {
     const isDraft = minutes.status === MeetingMinutesStatus.DRAFT;
     const isMeetingHost = meeting.hostId === authUser.userId;
     // Đang chờ ký / đã ký duyệt: khoá sửa & xoá, chỉ còn ban hành
-    const signoffRows = await this.dataSource.query(
-      `SELECT signoff_status FROM meetings WHERE id = $1 AND signoff_minutes_id = $2`,
-      [meeting.id, minutes.id],
+    const [signoff] = await this.dataSource.query(
+      `SELECT signoff_required, signoff_status, signoff_minutes_id, signoff_at FROM meetings WHERE id = $1`,
+      [meeting.id],
     );
-    const signoffLocked = ['pending', 'approved'].includes(
-      signoffRows[0]?.signoff_status,
-    );
+    const isSignoffMinutes = signoff?.signoff_minutes_id === minutes.id;
+    const signoffLocked =
+      isSignoffMinutes &&
+      ['pending', 'approved'].includes(signoff?.signoff_status);
     const isComposer =
       isAdmin ||
       isMeetingHost ||
@@ -1503,7 +1504,27 @@ export class MinutesService {
         isMeetingHost ||
         minutes.preparedBy === authUser.userId ||
         meeting.secretaryId === authUser.userId);
-    const canIssue = isDraft && (isAdmin || isMeetingHost);
+    // Cuộc họp yêu cầu trình ký: chỉ ban hành được bản đã ký duyệt (khớp assertCanIssue).
+    const signoffRequired = !!signoff?.signoff_required;
+    const canIssue =
+      isDraft &&
+      (isAdmin || isMeetingHost) &&
+      (!signoffRequired ||
+        (isSignoffMinutes && signoff?.signoff_status === 'approved'));
+    const meetingEnded = meeting.status === MeetingStatus.COMPLETED;
+    // Trình ký: bản nháp, họp đã kết thúc, chưa có bản nào đang chờ ký / đã ký.
+    const canSubmitSignoff =
+      isDraft &&
+      isComposer &&
+      signoffRequired &&
+      meetingEnded &&
+      !['pending', 'approved'].includes(signoff?.signoff_status) &&
+      // Bị trả lại: phải sửa theo góp ý rồi mới trình lại (khớp submitSignoff).
+      !(
+        signoff?.signoff_status === 'returned' &&
+        signoff.signoff_at &&
+        new Date(minutes.updatedAt) <= new Date(signoff.signoff_at)
+      );
 
     // aiSummaryJson khác NULL = biên bản có nguồn gốc AI. Expose 4 khối insight
     // + meta (read-only) cho FE; đồng thời set cờ isAiGenerated để FE phân biệt
@@ -1564,8 +1585,10 @@ export class MinutesService {
       updatedAt: minutes.updatedAt,
       permissions: new MinutesPermissionsDto(canEdit, canIssue, {
         canDelete: isDraft && !signoffLocked && isComposer,
-        canLiveShare: isDraft && isComposer,
+        // Chia sẻ trực tiếp chỉ dùng khi đang họp; họp xong thì soạn → trình ký.
+        canLiveShare: isDraft && isComposer && !meetingEnded,
         signoffLocked,
+        canSubmitSignoff,
       }),
     });
   }

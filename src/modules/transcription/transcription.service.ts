@@ -956,9 +956,14 @@ export class TranscriptionService {
       });
     }
 
-    const participant = await this.participantRepo.findOne({
-      where: { meetingId, userId },
-    });
+    // Chủ trì / thư ký luôn xem được (thư ký có thể không nằm trong meeting_participants).
+    const isHostOrSecretary =
+      meeting.hostId === userId || meeting.secretaryId === userId;
+    const participant = isHostOrSecretary
+      ? true
+      : await this.participantRepo.findOne({
+          where: { meetingId, userId },
+        });
     if (!participant) {
       const { roleCodes } = await this.getEffectiveRolesAndPermissions(userId);
       if (!this.isAdminRole(roleCodes)) {

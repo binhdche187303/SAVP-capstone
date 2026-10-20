@@ -351,7 +351,11 @@ export class MinutesAiDraftService {
       });
     }
 
-    if (meeting.hostId !== authUser.userId) {
+    // Thư ký soạn & sửa biên bản nên cũng được xem trạng thái AI draft.
+    if (
+      meeting.hostId !== authUser.userId &&
+      meeting.secretaryId !== authUser.userId
+    ) {
       const isAdmin = await this.userHasAdminRole(authUser.userId);
       if (!isAdmin) {
         throw new ForbiddenException({
@@ -418,7 +422,10 @@ export class MinutesAiDraftService {
       });
     }
 
-    if (meeting.hostId !== authUser.userId) {
+    if (
+      meeting.hostId !== authUser.userId &&
+      meeting.secretaryId !== authUser.userId
+    ) {
       const isAdmin = await this.userHasAdminRole(authUser.userId);
       if (!isAdmin) {
         throw new ForbiddenException({

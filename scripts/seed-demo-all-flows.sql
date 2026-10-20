@@ -63,6 +63,7 @@ SELECT in_id, in_zone, in_dev, user_id, 'enter', t_in, NULL, NULL, '{"demo_seed"
 FROM d_in WHERE t_out >= now();
 
 -- Ngày làm việc: một số lần nhận diện thành công / người lạ bị từ chối (event cổng, không ảnh)
+-- DB chưa có bridge IVSS-BRIDGE-PORTRAIT ⇒ dùng thiết bị của cổng.
 INSERT INTO iot_device_events (device_id, zone_id, event_type, event_time, source_protocol, severity, payload_json, processed_status, created_at)
 SELECT g.device_id, g.zone_id, 'face_verify', l.access_time, 'http', 'info',
        jsonb_build_object('demo_seed','all-flows','extracted_fields',
@@ -74,6 +75,7 @@ JOIN d_gates g ON g.zone_id = l.zone_id AND g.device_id IS NOT NULL
 WHERE l.metadata_json->>'demo_seed' = 'all-flows' AND l.direction = 'enter' AND random() < 0.4;
 
 -- ============ B. NGƯỜI LẠ (không ảnh) ============
+-- DB chưa có bridge IVSS-BRIDGE-PORTRAIT ⇒ dùng thiết bị của cổng.
 INSERT INTO iot_device_events (device_id, zone_id, event_type, event_time, source_protocol, severity, payload_json, processed_status, created_at)
 SELECT g.device_id, g.zone_id, 'face_stranger', t, 'http', 'warning',
        jsonb_build_object('demo_seed','all-flows','extracted_fields',
@@ -118,8 +120,9 @@ CROSS JOIN generate_series((current_date - 29)::timestamp, current_date::timesta
 JOIN d_gates gn ON gn.gn = 1
 WHERE random() < CASE pl.state WHEN 'matched' THEN 0.8 WHEN 'control' THEN 0.12 ELSE 0.18 END;
 
+-- DB chưa có bridge IVSS-BRIDGE-PORTRAIT ⇒ dùng thiết bị của cổng.
 INSERT INTO iot_device_events (device_id, zone_id, event_type, event_time, source_protocol, severity, payload_json, processed_status, created_at)
-SELECT (SELECT id FROM iot_devices WHERE device_code = 'IVSS-BRIDGE-PORTRAIT'), v.zone_id, 'ivss_vehicle_event', ev.t, 'ivss',
+SELECT COALESCE((SELECT id FROM iot_devices WHERE device_code = 'IVSS-BRIDGE-PORTRAIT'), v.device_id), v.zone_id, 'ivss_vehicle_event', ev.t, 'ivss',
        CASE v.state WHEN 'matched' THEN 'info' ELSE 'warning' END,
        jsonb_build_object('demo_seed','all-flows','plateNumber', v.plate_number, 'plateRaw', v.plate_raw,
          'vehicleType', upper(v.vehicle_type), 'plateColor', 'white', 'vehicleColor', 'unknown',
@@ -247,11 +250,22 @@ JOIN class_enrollments e ON e.class_section_id = d.section_id
 CROSS JOIN LATERAL (
   SELECT r.v, CASE WHEN r.v < 0.72 THEN 'on_time' WHEN r.v < 0.88 THEN 'late' WHEN r.v < 0.93 THEN 'left' ELSE 'absent' END AS st,
          CASE WHEN r.v >= 0.72 AND r.v < 0.88 THEN interval '17 minutes' ELSE interval '-3 minutes' END AS late
-  FROM (SELECT random() AS v) r) x
+  FROM (SELECT random() + 0 * length(e.student_id::text || d.sid::text) AS v) r) x  -- tham chiếu dòng để random() tính lại cho từng bản ghi
 WHERE d.d < current_date
 ON CONFLICT (class_section_id, student_id, attendance_date) DO NOTHING;
 
 -- ============ H. KHÁCH: nhiều lượt, đủ trạng thái (dùng 2 khách sẵn có) ============
+-- DB trống khách ⇒ tạo 2 khách mẫu (email @visitor.invalid, không tính vào ra vào cổng nhân sự).
+INSERT INTO users (username, email, password_hash, full_name, phone_number, account_status)
+SELECT v.u, v.e, '!disabled-visitor', v.n, v.p, 'active'
+FROM (VALUES ('khach.nguyenvanhung','nguyen.van.hung@visitor.invalid','Nguyễn Văn Hùng','0912345678'),
+             ('khach.tranthimai','tran.thi.mai@visitor.invalid','Trần Thị Mai','0987654321')) v(u,e,n,p)
+WHERE NOT EXISTS (SELECT 1 FROM users x WHERE lower(x.email)=v.e AND x.deleted_at IS NULL);
+INSERT INTO visitors (user_id, full_name, id_number, phone_number, email, organization)
+SELECT u.id, u.full_name, CASE u.phone_number WHEN '0912345678' THEN '079088001234' ELSE '001190005678' END,
+       u.phone_number, u.email, CASE u.phone_number WHEN '0912345678' THEN 'Công ty CP FPT Software' ELSE 'Ngân hàng Vietcombank CN Thủ Đức' END
+FROM users u WHERE u.email IN ('nguyen.van.hung@visitor.invalid','tran.thi.mai@visitor.invalid')
+  AND NOT EXISTS (SELECT 1 FROM visitors x WHERE x.user_id=u.id);
 INSERT INTO visitor_visits (visit_code, visitor_id, channel, status, host_user_id, department_id, purpose, companions, plate_number,
                             scheduled_from, scheduled_to, valid_from, valid_to, check_in_at, check_out_at, face_score,
                             reject_reason, revoked_at, manual_exit, not_found, overstay_notified_at, last_seen_at, last_seen_zone_id,
@@ -264,26 +278,26 @@ SELECT 'VD-' || to_char(now() - (v.d * interval '1 day'), 'YYMMDD') || '-' || lp
        '[demo] ' || (ARRAY['Làm việc với đơn vị','Phỏng vấn ứng viên','Giao nhận thiết bị','Họp đối tác','Tham quan khuôn viên','Bảo trì thiết bị'])[1 + v.n % 6],
        v.n % 3, CASE WHEN v.n % 4 = 0 THEN '51K' || (10000 + v.n)::text END,
        b.t0, b.t0 + interval '2 hours', b.t0 - interval '30 minutes', b.t0 + interval '3 hours',
-       CASE WHEN v.st IN ('checked_in','checked_out','overstay') THEN b.t0 + interval '3 minutes' END,
+       CASE WHEN v.st IN ('checked_in','checked_out','must_leave') THEN b.t0 + interval '3 minutes' END,
        CASE WHEN v.st = 'checked_out' THEN b.t0 + interval '110 minutes' END,
-       CASE WHEN v.st IN ('checked_in','checked_out','overstay') THEN 0.84 + (v.n % 10) / 100.0 END,
+       CASE WHEN v.st IN ('checked_in','checked_out','must_leave') THEN 0.84 + (v.n % 10) / 100.0 END,
        CASE WHEN v.st = 'rejected' THEN 'Không có lịch làm việc với đơn vị' END,
        CASE WHEN v.st = 'revoked' THEN b.t0 + interval '20 minutes' END,
        v.st = 'checked_out' AND v.n % 5 = 0, false,
-       CASE WHEN v.st = 'overstay' THEN b.t0 + interval '150 minutes' END,
-       CASE WHEN v.st IN ('checked_in','overstay') THEN now() - interval '10 minutes' END,
-       CASE WHEN v.st IN ('checked_in','overstay') THEN (SELECT id FROM zones WHERE zone_code = 'KTL-A1-G') END,
+       CASE WHEN v.st = 'must_leave' THEN b.t0 + interval '150 minutes' END,
+       CASE WHEN v.st IN ('checked_in','must_leave') THEN now() - interval '10 minutes' END,
+       CASE WHEN v.st IN ('checked_in','must_leave') THEN (SELECT id FROM zones WHERE zone_code = 'KTL-A1-G') END,
        b.t0 - interval '1 day',
        CASE WHEN v.st NOT IN ('pending_approval','rejected') THEN (SELECT id FROM users WHERE email='manager.it@meetingsys.vn') END,
        CASE WHEN v.st NOT IN ('pending_approval','rejected') THEN b.t0 - interval '12 hours' END,
        (SELECT id FROM users WHERE email='guard@meetingsys.vn')
 FROM (SELECT g AS n,
-        (ARRAY['checked_out','checked_out','checked_out','approved','pending_approval','rejected','revoked','expired','checked_in','overstay'])[1 + g % 10] AS st,
+        (ARRAY['checked_out','checked_out','checked_out','approved','pending_approval','rejected','revoked','expired','checked_in','must_leave'])[1 + g % 10] AS st,
         CASE WHEN g % 10 IN (4,8,9,0) THEN 0 ELSE g % 20 END AS d  -- trạng thái đang diễn ra thì rơi vào hôm nay
       FROM generate_series(1, 40) g) v
 CROSS JOIN LATERAL (SELECT CASE WHEN v.d = 0 THEN date_trunc('hour', now()) - interval '1 hour'
                                 ELSE (date_trunc('day', now() AT TIME ZONE 'Asia/Ho_Chi_Minh') - (v.d * interval '1 day') + interval '9 hours') AT TIME ZONE 'Asia/Ho_Chi_Minh' END AS t0) b
-WHERE v.st <> 'overstay' OR true
+WHERE v.st <> 'must_leave' OR true
 ON CONFLICT DO NOTHING;
 
 INSERT INTO visitor_visit_zones (visit_id, zone_id)

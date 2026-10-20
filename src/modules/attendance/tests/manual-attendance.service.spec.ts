@@ -644,9 +644,11 @@ describe('ManualAttendanceService (UC-B21)', () => {
       meetingRepo.findOne.mockResolvedValue(
         makeMeeting({
           startTime: new Date(Date.now() + 60 * 60 * 1000),
+          endTime: new Date(Date.now() + 2 * 60 * 60 * 1000),
           status: MeetingStatus.SCHEDULED,
         }),
       );
+      participantRepo.findOne.mockResolvedValue(null);
       await expectErr(
         service.invalidate(
           'meeting-uuid-1',
@@ -659,16 +661,19 @@ describe('ManualAttendanceService (UC-B21)', () => {
       );
     });
 
-    it('Bậc 3 — 403: record OK + actor KHÔNG SYSTEM_ADMIN (kể cả BUSINESS_ADMIN) → PERMISSION_DENIED', async () => {
+    it('Bậc 3 — 403: record OK + actor không phải Admin / Chủ tọa / Thư ký → PERMISSION_DENIED', async () => {
       attendanceRepo.findOne.mockResolvedValue(makeRecord());
-      meetingRepo.findOne.mockResolvedValue(makeMeeting());
-      asRoles(['BUSINESS_ADMIN']); // BUSINESS_ADMIN KHÔNG được invalidate
+      meetingRepo.findOne.mockResolvedValue(
+        makeMeeting({ endTime: new Date(Date.now() - 60 * 60 * 1000) }),
+      );
+      asRoles(['INTERNAL_USER']);
+      participantRepo.findOne.mockResolvedValue(null);
       await expectErr(
         service.invalidate(
           'meeting-uuid-1',
           'record-uuid-1',
           { reason: 'x' },
-          'biz-admin',
+          'outsider',
         ),
         ForbiddenException,
         'PERMISSION_DENIED',
