@@ -33,6 +33,7 @@ export class ZoneTrafficHeatmapController {
       new Date(query.to),
       query.building,
       query.floor,
+      { groupId: query.groupId, bucket: query.bucket },
     );
 
     return {

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -7,6 +7,7 @@ import {
 } from '../../../common/ports/stranger-alert-hook.js';
 import { WebsocketService } from '../../websocket/websocket.service.js';
 import { ListStrangerAlertsQueryDto } from '../dto/list-stranger-alerts.query.dto.js';
+import { ReviewStrangerDto } from '../dto/review-stranger.dto.js';
 import { AlertRulesService } from '../../alerts/services/alert-rules.service.js';
 import { AlertsService } from '../../alerts/services/alerts.service.js';
 
@@ -179,7 +180,8 @@ export class StrangerAlertService implements StrangerAlertHook {
 
     // Có from/to ⇒ lọc theo khoảng ngày giờ VN; không có ⇒ giữ hành vi cũ (cửa sổ N phút).
     const params: unknown[] = [];
-    const conds = [`e.event_type = 'face_stranger'`];
+    // Sự kiện đã được hậu kiểm (xác nhận là ai) rời khỏi hàng chờ.
+    const conds = [`e.event_type = 'face_stranger'`, `NOT (e.payload_json ? 'reviewedAt')`];
     if (query.from || query.to) {
       if (query.from) {
         params.push(query.from);
@@ -291,6 +293,7 @@ export class StrangerAlertService implements StrangerAlertHook {
               (e.snapshot_file_id IS NOT NULL)                  AS has_snapshot
          FROM iot_device_events e
         WHERE e.event_type = 'face_stranger'
+          AND NOT (e.payload_json ? 'reviewedAt')
           AND e.device_id = $1
           AND (e.payload_json->'extracted_fields'->>'stranger_id') IS NOT DISTINCT FROM $2
         ORDER BY e.created_at DESC
@@ -303,5 +306,119 @@ export class StrangerAlertService implements StrangerAlertHook {
       similarity: r.similarity,
       hasSnapshot: r.has_snapshot,
     }));
+  }
+
+  /** Role thấy mọi người; role khác (vd. MANAGER) chỉ được xác nhận người cùng phòng ban/cấp dưới trực tiếp. */
+  private static readonly FULL_SCOPE_ROLES = ['SYSTEM_ADMIN', 'ADMIN', 'BUSINESS_ADMIN'];
+
+  /**
+   * Các cuộc họp có thể gán cho một sự kiện người lạ: cùng phòng (nếu event biết phòng),
+   * đang diễn ra hoặc sát thời điểm event (±60 phút quanh [start, end]).
+   */
+  async listCandidateMeetings(eventId: string): Promise<
+    Array<{ id: string; title: string; startTime: Date | string; endTime: Date | string; roomName: string | null }>
+  > {
+    const events: { room_id: string | null; created_at: Date | string }[] =
+      await this.dataSource.manager.query(
+        `SELECT COALESCE(e.room_id, d.room_id) AS room_id, e.created_at
+           FROM iot_device_events e LEFT JOIN iot_devices d ON d.id = e.device_id
+          WHERE e.id = $1 AND e.event_type = 'face_stranger' LIMIT 1`,
+        [eventId],
+      );
+    if (events.length === 0) throw new NotFoundException('Không tìm thấy sự kiện người lạ.');
+    const rows: {
+      id: string;
+      title: string;
+      start_time: Date | string;
+      end_time: Date | string;
+      room_name: string | null;
+    }[] = await this.dataSource.manager.query(
+      `SELECT m.id, m.title, m.start_time, m.end_time, r.room_name
+         FROM meetings m LEFT JOIN rooms r ON r.id = m.room_id
+        WHERE ($1::uuid IS NULL OR m.room_id = $1::uuid)
+          AND m.deleted_at IS NULL
+          AND m.status NOT IN ('cancelled', 'rejected', 'draft')
+          AND $2::timestamptz BETWEEN m.start_time - interval '60 minutes'
+                                  AND COALESCE(m.actual_end_time, m.end_time) + interval '60 minutes'
+        ORDER BY m.start_time DESC LIMIT 20`,
+      [events[0].room_id, events[0].created_at],
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      startTime: r.start_time,
+      endTime: r.end_time,
+      roomName: r.room_name,
+    }));
+  }
+
+  /**
+   * Hậu kiểm: xác nhận các sự kiện người lạ thực ra là `userId`. Đánh dấu reviewedAt/By/UserId trong
+   * payload (event rời hàng chờ người lạ) và ghi audit. Việc gán điểm danh vào buổi họp do FE gọi
+   * API điểm danh thủ công hiện có (đã kiểm tra quyền chủ trì/participant) TRƯỚC khi gọi hàm này.
+   */
+  async review(
+    dto: ReviewStrangerDto,
+    actorId: string,
+  ): Promise<{ reviewed: number; userId: string; fullName: string | null }> {
+    const users: { id: string; full_name: string | null }[] =
+      await this.dataSource.manager.query(
+        `SELECT id, full_name FROM users WHERE id = $1 AND deleted_at IS NULL LIMIT 1`,
+        [dto.userId],
+      );
+    if (users.length === 0) throw new NotFoundException('Không tìm thấy người dùng được xác nhận.');
+    await this.assertCanReviewUser(actorId, dto.userId);
+
+    const updated: { id: string }[] = await this.dataSource.manager.query(
+      `UPDATE iot_device_events
+          SET payload_json = COALESCE(payload_json, '{}'::jsonb) || jsonb_build_object(
+                'reviewedAt', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+                'reviewedBy', $2::text,
+                'reviewedUserId', $3::text,
+                'reviewedMeetingId', $4::text,
+                'reviewNote', $5::text)
+        WHERE id = ANY($1::uuid[])
+          AND event_type = 'face_stranger'
+          AND NOT (COALESCE(payload_json, '{}'::jsonb) ? 'reviewedAt')
+        RETURNING id`,
+      [dto.eventIds, actorId, dto.userId, dto.meetingId ?? null, dto.note ?? null],
+    );
+    if (updated.length === 0) {
+      throw new NotFoundException('Không có sự kiện người lạ nào cần xác nhận (đã được xử lý hoặc không tồn tại).');
+    }
+
+    try {
+      await this.dataSource.manager.query(
+        `INSERT INTO audit_logs (user_id, action_type, entity_type, entity_id, severity, metadata_json)
+         VALUES ($1, 'face.stranger.review', 'user', $2, 'info', $3)`,
+        [
+          actorId,
+          dto.userId,
+          JSON.stringify({ eventIds: updated.map((r) => r.id), meetingId: dto.meetingId ?? null, note: dto.note ?? null }),
+        ],
+      );
+    } catch (e) {
+      this.logger.warn(`Không ghi được audit face.stranger.review: ${e instanceof Error ? e.message : 'unknown'}`);
+    }
+    return { reviewed: updated.length, userId: dto.userId, fullName: users[0].full_name };
+  }
+
+  private async assertCanReviewUser(actorId: string, targetUserId: string): Promise<void> {
+    const roles: { role_code: string }[] = await this.dataSource.manager.query(
+      `SELECT r.role_code FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+        WHERE ur.user_id = $1 AND ur.is_active = true AND r.is_active = true`,
+      [actorId],
+    );
+    if (roles.some((r) => StrangerAlertService.FULL_SCOPE_ROLES.includes(r.role_code))) return;
+    const scoped: unknown[] = await this.dataSource.manager.query(
+      `SELECT 1 FROM users t JOIN users c ON c.id = $1
+        WHERE t.id = $2 AND t.deleted_at IS NULL
+          AND (t.direct_manager_id = c.id
+               OR (c.department_id IS NOT NULL AND t.department_id = c.department_id))`,
+      [actorId, targetUserId],
+    );
+    if (scoped.length === 0) {
+      throw new ForbiddenException('Bạn chỉ được xác nhận người thuộc phòng ban của mình.');
+    }
   }
 }

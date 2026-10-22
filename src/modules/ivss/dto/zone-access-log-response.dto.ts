@@ -29,6 +29,11 @@ export interface ZoneAccessLogEventDto {
   /** matched | unmatched_identity | unmatched_location | unmatched_both (ingestion:44-48). */
   matchState: string | null;
   similarity: number | null;
+  /** Nguồn camera (họp 20/10: mọi log camera phải xác định được camera, nhóm camera). */
+  deviceId: string | null;
+  deviceCode: string | null;
+  deviceName: string | null;
+  groupNames: string[];
   /** userId NULL — KHÔNG nhận diện được danh tính (mirror isStranger RAL-001/ALS-002). */
   isStranger: boolean;
   /** matchState bắt đầu bằng 'unmatched' — ngữ nghĩa cũ, giữ song song isStranger. */

@@ -103,6 +103,11 @@ describe('IvssZoneAccessLogService (Zone Access Log — đường B, FIX 2026-08
       direction: 'enter',
       matchState: 'matched',
       similarity: 0.98, // string từ jsonb → number
+      // Họp 20/10: log camera luôn mang thông tin camera/nhóm (null/[] khi thiết bị không xác định).
+      deviceId: null,
+      deviceCode: null,
+      deviceName: null,
+      groupNames: [],
       isStranger: false,
       isUnmatched: false,
     });

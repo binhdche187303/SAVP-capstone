@@ -39,6 +39,12 @@ export interface UserJourneyEventDto {
    */
   sourceEventId?: string | null;
 
+  // ── Họp 20/10: nguồn camera của sự kiện (meeting = camera của event đầu phiên) ──
+  deviceId?: string | null;
+  deviceCode?: string | null;
+  deviceName?: string | null;
+  groupNames?: string[];
+
   // ── V2, CHỈ có ở type='meeting' (phiên gộp); gate/zone không set field nào dưới đây ──
   /** UTC ISO của event cuối phiên (kết thúc có mặt). */
   endTime?: string;

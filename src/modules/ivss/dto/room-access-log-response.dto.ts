@@ -33,6 +33,12 @@ export interface RoomAccessLogEventDto {
   matchState: string | null;
   similarity: number | null;
   meetingId: string | null;
+  /** Nguồn camera (họp 20/10: mọi log camera phải xác định được camera, khu vực, nhóm). */
+  deviceId: string | null;
+  deviceCode: string | null;
+  deviceName: string | null;
+  zoneName: string | null;
+  groupNames: string[];
   /**
    * [ALS-002] KHÔNG nhận diện được danh tính (`payload_json.userId` NULL).
    *
