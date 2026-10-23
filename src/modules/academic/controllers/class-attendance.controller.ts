@@ -89,6 +89,16 @@ export class ClassAttendanceController {
     };
   }
 
+  @Get('classes/:classId/events')
+  async getEvents(
+    @CurrentUser() user: { userId: string },
+    @Param('classId') classId: string,
+    @Query('date') date?: string,
+  ) {
+    const data = await this.service.getEvents(user.userId, classId, date);
+    return { success: true, message: 'Class attendance events retrieved successfully', data };
+  }
+
   @Post('scan')
   async scan(
     @CurrentUser() user: { userId: string },
@@ -98,6 +108,9 @@ export class ClassAttendanceController {
       administrativeClass?: string;
       direction?: 'in' | 'out' | 'enter' | 'leave';
       snapshotImageBase64?: string;
+      zoneId?: string;
+      cameraGroupId?: string;
+      cameraId?: string;
     },
   ): Promise<any> {
     const result = await this.service.scan(user.userId, body);
@@ -106,6 +119,27 @@ export class ClassAttendanceController {
       message: result.data?.message ?? 'Class attendance scan processed',
       data: result.data ?? result,
     };
+  }
+
+  @Post('manual')
+  async updateManual(
+    @CurrentUser() user: { userId: string },
+    @Body() body: {
+      classId?: string;
+      studentId?: string;
+      date?: string;
+      status?: 'on_time' | 'late' | 'absent' | 'left';
+      checkInAt?: string | null;
+      checkOutAt?: string | null;
+      reason?: string;
+      zoneId?: string;
+      cameraGroupId?: string;
+      cameraId?: string;
+      evidenceImage?: string;
+    },
+  ): Promise<any> {
+    const data = await this.service.updateManual(user.userId, body);
+    return { success: true, message: data.message, data };
   }
 
   @Get('student/me')

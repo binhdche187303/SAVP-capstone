@@ -17,7 +17,7 @@ export interface SweepResult {
 }
 
 interface OnSiteRow { id: string; status: 'checked_in' | 'must_leave'; valid_to: Date; revoked_at: Date | null }
-interface NotifyRow { id: string; visit_code: string; host_user_id: string; full_name: string }
+interface NotifyRow { id: string; visit_code: string; host_user_id: string; full_name: string; scheduled_to: Date }
 
 const LOCK_SECONDS = 55;
 
@@ -172,7 +172,7 @@ export class VisitorSweepService {
 
   /** BR-V13: mức 1 (vừa quá giờ) báo người được gặp; mức 2 (quá `escalateMinutes`) báo bảo vệ. Mỗi mức đúng một lần. */
   private async overstay(now: Date, escalateMinutes: number): Promise<{ notified: number; escalated: number }> {
-    const cols = `v.id, v.visit_code, v.host_user_id, vis.full_name`;
+    const cols = `v.id, v.visit_code, v.host_user_id, vis.full_name, v.scheduled_to`;
     const claim = async (id: string, column: 'overstay_notified_at' | 'overstay_escalated_at'): Promise<boolean> =>
       returnedRows(await this.dataSource.query(
         `UPDATE visitor_visits SET ${column} = $2, updated_at = now() WHERE id = $1 AND status = 'checked_in' AND ${column} IS NULL RETURNING id`,
@@ -184,7 +184,7 @@ export class VisitorSweepService {
     let escalated = 0;
     const level1: NotifyRow[] = await this.dataSource.query(
       `SELECT ${cols} FROM visitor_visits v JOIN visitors vis ON vis.id = v.visitor_id
-        WHERE v.status = 'checked_in' AND v.deleted_at IS NULL AND v.valid_to < $1 AND v.overstay_notified_at IS NULL LIMIT 500`,
+        WHERE v.status = 'checked_in' AND v.deleted_at IS NULL AND v.scheduled_to < $1 AND v.overstay_notified_at IS NULL LIMIT 500`,
       [now],
     );
     for (const r of level1) {
@@ -193,13 +193,19 @@ export class VisitorSweepService {
         notified++;
         await this.notifier.notifyHost(asView(r), 'visitor_overstay', `${r.full_name} đã quá giờ được phép ở lại`);
         await this.dataSource.query(`INSERT INTO visitor_visit_events (visit_id, event_type, event_time, note) VALUES ($1,'host_notified',$2,'Báo quá giờ')`, [r.id, now]);
+        // Bảo vệ cần biết ngay để xử lý tại cổng/khu vực; không chờ thêm 30 phút.
+        if (await claim(r.id, 'overstay_escalated_at')) {
+          escalated++;
+          await this.notifier.alertSecurity(asView(r), 'visitor_overstay', null, `${r.full_name} đã quá giờ, cần kiểm tra`);
+          await this.dataSource.query(`INSERT INTO visitor_visit_events (visit_id, event_type, event_time, note) VALUES ($1,'security_notified',$2,'Báo bảo vệ khách quá giờ ngay khi phát hiện')`, [r.id, now]);
+        }
       } catch (e) {
         this.logger.error(`Quá giờ mức 1 lượt ${r.id} lỗi: ${this.msg(e)}`);
       }
     }
     const level2: NotifyRow[] = await this.dataSource.query(
       `SELECT ${cols} FROM visitor_visits v JOIN visitors vis ON vis.id = v.visitor_id
-        WHERE v.status = 'checked_in' AND v.deleted_at IS NULL AND v.valid_to <= $1::timestamptz - ($2 * interval '1 minute')
+        WHERE v.status = 'checked_in' AND v.deleted_at IS NULL AND v.scheduled_to <= $1::timestamptz - ($2 * interval '1 minute')
           AND v.overstay_escalated_at IS NULL LIMIT 500`,
       [now, escalateMinutes],
     );

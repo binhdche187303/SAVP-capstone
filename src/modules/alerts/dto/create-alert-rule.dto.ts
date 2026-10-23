@@ -20,6 +20,7 @@ import { Type, Expose } from 'class-transformer';
  * UC-122 (ARL-001): 7 loại sự kiện cảnh báo đã duyệt (BAO_CAO_DE_XUAT_3_BANG_ALERT_CENTER.md)
  * + `vehicle_unauthorized` (xe có đăng ký nhưng chờ duyệt/bị từ chối — vehicle-control-alert.service
  * đã sinh và đọc rule qua findEffectiveRule, trước đây chỉ có rule seed nên không tạo/sửa/lọc được).
+ * + nhóm cảnh báo khách được tạo từ visitor-gate/visitor-sweep và dùng chung Security Alert Center.
  */
 export const ALERT_TYPES = [
   'stranger',
@@ -30,6 +31,9 @@ export const ALERT_TYPES = [
   'intrusion',
   'device_error',
   'person_watchlist_match',
+  'visitor_overstay',
+  'visitor_must_leave',
+  'visitor_zone_violation',
 ] as const;
 export type AlertType = (typeof ALERT_TYPES)[number];
 

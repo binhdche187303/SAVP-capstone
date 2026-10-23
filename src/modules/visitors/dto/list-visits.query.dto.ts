@@ -20,3 +20,7 @@ export class VisitorStatsQueryDto {
   @IsOptional() @IsString() departmentId?: string;
   @IsOptional() @IsString() groupBy?: 'day' | 'week' | 'month';
 }
+
+export class VisitorDeskQueryDto {
+  @IsOptional() @Matches(YMD) date?: string;
+}

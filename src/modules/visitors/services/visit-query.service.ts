@@ -130,14 +130,14 @@ export class VisitQueryService {
 
   // ───────────── Quầy lễ tân ─────────────
 
-  async deskToday(now: Date = new Date()) {
+  async desk(date?: string, now: Date = new Date()) {
     const cfg = await this.config.get();
     const toView = (r: VisitRow) => toVisitView(r, now, cfg.overstayEscalateMinutes);
-    const today = new Date(now.getTime() + 7 * 3_600_000).toISOString().slice(0, 10);
+    const selectedDate = date || new Date(now.getTime() + 7 * 3_600_000).toISOString().slice(0, 10);
 
     const items: VisitRow[] = await this.dataSource.query(
       `${VISIT_VIEW_SELECT} AND (${VN_DAY} = $1::date OR v.status IN ('checked_in','must_leave')) ORDER BY v.scheduled_from`,
-      [today],
+      [selectedDate],
     );
     const kpiRow = (await this.dataSource.query(
       `SELECT count(*) FILTER (WHERE ${VN_DAY} = $1::date AND v.status NOT IN ('rejected','cancelled')) AS expected,
@@ -145,7 +145,7 @@ export class VisitQueryService {
               count(*) FILTER (WHERE v.status IN ('checked_in','must_leave')) AS on_site,
               count(*) FILTER (WHERE v.status = 'checked_in' AND v.valid_to < $2) AS overstay
          FROM visitor_visits v WHERE v.deleted_at IS NULL`,
-      [today, now],
+      [selectedDate, now],
     ))[0];
     const alerts: Array<Record<string, unknown>> = await this.dataSource.query(
       `SELECT e.event_time AS at, e.event_type AS type, e.note, COALESCE(z.zone_name, '') AS "zoneName",
@@ -154,14 +154,18 @@ export class VisitQueryService {
          LEFT JOIN zones z ON z.id = e.zone_id
         WHERE e.event_type IN ('access_denied','manual_review') AND (e.event_time AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = $1::date
         ORDER BY e.event_time DESC LIMIT 100`,
-      [today],
+      [selectedDate],
     );
     return {
       kpis: { expected: Number(kpiRow.expected), arrived: Number(kpiRow.arrived), onSite: Number(kpiRow.on_site), overstay: Number(kpiRow.overstay) },
       items: items.map(toView),
       alerts,
-      attention: await this.attention(now, today, toView),
+      attention: await this.attention(now, selectedDate, toView),
     };
+  }
+
+  async deskToday(now: Date = new Date()) {
+    return this.desk(undefined, now);
   }
 
   /** Hàng "Cần xử lý": chỉ ngoại lệ. Thứ tự: phải rời → quá giờ → chưa ghi nhận giờ ra → cần xác minh → chưa có ảnh. */

@@ -9,6 +9,7 @@ export class BiometricSubmissionListItemDto {
   avatarUrl: string | null;
   status: string;
   submittedAt: Date | null;
+  consentAt: Date | null;
   primaryImageFileId: string | null;
   qualityScore: number | null;
   classSections?: Array<{

@@ -135,6 +135,18 @@ export const ACTION_TYPE_VN_MAP: Record<string, string> = {
   'biometric.import_upload': 'Nhập hàng loạt dữ liệu khuôn mặt',
   'biometric.auto_revoked_on_role_downgrade': 'Tự động thu hồi dữ liệu khuôn mặt khi hạ vai trò',
   visitor_visit_create: 'Tạo lượt khách đến',
+  'visitor visit create': 'Tạo lượt khách đến',
+  'visitor visit approve': 'Duyệt lượt khách',
+  'visitor visit check in': 'Khách vào khuôn viên',
+  'visitor visit check out': 'Khách rời khuôn viên',
+  'visitor visit reassign host': 'Đổi người tiếp khách',
+  'visitor visit revoke': 'Thu hồi quyền ra vào của khách',
+  'visitor.visit.create': 'Tạo lượt khách đến',
+  'visitor.visit.approve': 'Duyệt lượt khách',
+  'visitor.visit.check_in': 'Khách vào khuôn viên',
+  'visitor.visit.check_out': 'Khách rời khuôn viên',
+  'visitor.visit.reassign_host': 'Đổi người tiếp khách',
+  'visitor.visit.revoke': 'Thu hồi quyền ra vào của khách',
   guest_invite_issued: 'Gửi lời mời khách',
   guest_invite_resent: 'Gửi lại lời mời khách',
   guest_admitted: 'Cho khách vào',
@@ -170,6 +182,11 @@ export const ACTION_TYPE_VN_MAP: Record<string, string> = {
 
 /** §2.A fallback — từ khóa phổ biến dịch khi actionType không nằm trong bảng trên. */
 const ACTION_TYPE_KEYWORD_FALLBACK: Array<[RegExp, string]> = [
+  [/\bvisitor visit approve\b/g, 'Duyệt lượt khách'],
+  [/\bvisitor visit check in\b/g, 'Khách vào khuôn viên'],
+  [/\bvisitor visit check out\b/g, 'Khách rời khuôn viên'],
+  [/\bvisitor visit reassign host\b/g, 'Đổi người tiếp khách'],
+  [/\bvisitor visit revoke\b/g, 'Thu hồi quyền ra vào của khách'],
   [/\bview detail\b/g, 'Xem chi tiết'],
   [/\bread analytics\b/g, 'Xem thống kê'],
   [/\bexport\b/g, 'Xuất'],
@@ -185,6 +202,9 @@ export const ENTITY_TYPE_VN_MAP: Record<string, string> = {
   'iot-devices': 'Giám sát thiết bị IoT',
   rooms: 'Quản lý phòng họp',
   'system-configurations': 'Cấu hình hệ thống',
+  visitor_visits: 'Quản lý lượt khách',
+  visitor_visit: 'Quản lý lượt khách',
+  visitors: 'Quản lý khách',
 };
 
 /** §2.C — Chuẩn hóa Mức độ nghiêm trọng (Severity). */

@@ -80,6 +80,17 @@ export class VisitorGateService implements VisitorFaceEventHook {
 
   private async handle(row: VisitRow, evt: VisitorIvssFaceEvent): Promise<void> {
     await this.actions.touchLastSeen(row.id, evt.eventTime, evt.zoneId);
+    // Lưu chính event nhận diện của camera để mọi cảnh báo sau đó có đúng zone,
+    // camera và thiết bị đã ghi nhận người này, thay vì chỉ biết lần cuối ở zone nào.
+    if (evt.direction === 'seen' && (evt.sourceEventId || evt.zoneId)) {
+      await this.visits.addEvent(this.dataSource.manager, row.id, 'face_verified', {
+        zoneId: evt.zoneId,
+        deviceEventId: evt.sourceEventId,
+        score: evt.similarity === null ? null : (evt.similarity > 1 ? evt.similarity / 100 : evt.similarity),
+        at: evt.eventTime,
+        note: 'Camera nhận diện khách trong khu vực',
+      });
+    }
     const zoneType = evt.zoneId ? await this.zoneType(evt.zoneId) : null;
     const like = this.like(row);
     const cfg = await this.config.get();

@@ -44,6 +44,17 @@ export class WebsocketService {
   }
 
   /**
+   * Phát tín hiệu thay đổi lượt khách. Payload chỉ là tín hiệu refetch,
+   * không chứa dữ liệu khách nên mỗi màn hình vẫn phải đọc lại API có phân quyền.
+   */
+  emitVisitorVisitChanged(data: { visitId?: string; status?: string; kind?: string } = {}): void {
+    this.broadcast('visitor.visit.changed', {
+      ...data,
+      occurredAt: new Date().toISOString(),
+    });
+  }
+
+  /**
    * Broadcast event đến tất cả clients đang kết nối.
    * Dùng cẩn thận — chỉ cho admin broadcasts.
    */

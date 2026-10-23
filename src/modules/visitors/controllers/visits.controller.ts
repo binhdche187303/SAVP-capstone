@@ -114,7 +114,7 @@ export class VisitsController {
   @ApiOperation({ summary: 'Thu hồi quyền ra vào (đang ở trong → phải rời khuôn viên)' })
   async revoke(@Param('id') id: string, @Body() dto: ReasonDto, @CurrentUser() user: CurrentUserInfo) {
     const actor = await this.actors.resolve(user);
-    this.actors.requireAny(actor, P.VISIT_MANAGE);
+    this.actors.requireAny(actor, P.VISIT_REVOKE, P.VISIT_MANAGE);
     return ok('Đã thu hồi quyền ra vào', await this.actions.revoke(id, dto, actor));
   }
 
@@ -123,7 +123,7 @@ export class VisitsController {
   @ApiOperation({ summary: 'Gia hạn hiệu lực' })
   async extend(@Param('id') id: string, @Body() dto: ExtendVisitDto, @CurrentUser() user: CurrentUserInfo) {
     const actor = await this.actors.resolve(user);
-    this.actors.requireAny(actor, P.VISIT_MANAGE);
+    this.actors.requireAny(actor, P.VISIT_EXTEND, P.VISIT_MANAGE);
     return ok('Đã gia hạn', await this.actions.extend(id, dto, actor));
   }
 

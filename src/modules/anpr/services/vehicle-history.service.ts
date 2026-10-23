@@ -24,6 +24,8 @@ interface HistoryRow {
   owner_avatar_url?: string | null;
   owner_email?: string | null;
   owner_department?: string | null;
+  zone_name: string | null;
+  camera_name: string | null;
 }
 interface CountRow {
   total: number;
@@ -57,6 +59,8 @@ export interface VehicleHistoryItem {
   isBlacklisted: boolean;
   /** vehicle_control_list.list_type ('blocklist' ưu tiên | 'watchlist'); null nếu isBlacklisted=false. */
   listType: string | null;
+  zoneName: string | null;
+  cameraName: string | null;
   userId?: string | null; // CHỈ admin (listAll)
   /**
    * Thông tin đầy đủ chủ xe (yêu cầu FE 2026-08-08) — CHỈ admin (listAll), LEFT JOIN
@@ -237,11 +241,28 @@ export class VehicleHistoryService {
               iot_device_events.event_time,
               iot_device_events.payload_json->>'utc'                AS utc,
               ${CONTROL_LIST_FLAG_COLUMNS}${userIdCol}${ownerCols}
+              ,COALESCE(event_zone.zone_name, (SELECT z.zone_name
+                  FROM system_configs sc
+                  JOIN zones z ON z.id::text = sc.config_json->>(iot_device_events.payload_json->>'channelId')
+                 WHERE sc.config_key = 'ivss.channel_zone_map'
+                   AND sc.is_active = true
+                   AND z.deleted_at IS NULL
+                 LIMIT 1)) AS zone_name
+              ,COALESCE((SELECT camera.camera_name
+                  FROM system_configs sc
+                  CROSS JOIN LATERAL jsonb_each_text(COALESCE(sc.config_json, '{}'::jsonb)) camera(camera_name, mapped_channel)
+                 WHERE sc.config_key = 'hgvision.camera_channel_map'
+                   AND sc.is_active = true
+                   AND camera.mapped_channel = iot_device_events.payload_json->>'channelId'
+                 LIMIT 1), NULLIF(anpr_device.device_name, '')) AS camera_name
          FROM iot_device_events
          ${CONTROL_LIST_FLAG_JOIN}
          ${vehicleRegistrationJoin}
          ${ownerJoin}
          ${departmentJoin}
+         LEFT JOIN iot_devices anpr_device ON anpr_device.id = iot_device_events.device_id
+         LEFT JOIN zones event_zone ON event_zone.id = iot_device_events.zone_id
+                                   AND event_zone.deleted_at IS NULL
         WHERE ${where}
         ORDER BY iot_device_events.event_time DESC
         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
@@ -261,6 +282,8 @@ export class VehicleHistoryService {
           utc: r.utc,
           isBlacklisted: r.is_blacklisted,
           listType: r.list_type,
+          zoneName: r.zone_name,
+          cameraName: r.camera_name,
         };
         if (includeUserId) {
           item.userId = r.user_id ?? null;

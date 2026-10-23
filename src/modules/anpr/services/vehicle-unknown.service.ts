@@ -17,6 +17,8 @@ interface UnknownRow {
   vehicle_type: string | null;
   is_blacklisted: boolean;
   list_type: string | null;
+  zone_name: string | null;
+  camera_name: string | null;
 }
 interface CountRow {
   total: number;
@@ -51,6 +53,8 @@ export interface UnknownVehicleItem {
   isBlacklisted: boolean;
   /** vehicle_control_list.list_type ('blocklist' ưu tiên | 'watchlist'); null nếu isBlacklisted=false. */
   listType: string | null;
+  zoneName: string | null;
+  cameraName: string | null;
 }
 
 /**
@@ -118,8 +122,25 @@ export class VehicleUnknownService {
               iot_device_events.payload_json->>'plateColor'         AS plate_color,
               iot_device_events.payload_json->>'vehicleType'        AS vehicle_type,
               ${CONTROL_LIST_FLAG_COLUMNS}
+              ,COALESCE(event_zone.zone_name, (SELECT z.zone_name
+                  FROM system_configs sc
+                  JOIN zones z ON z.id::text = sc.config_json->>(iot_device_events.payload_json->>'channelId')
+                 WHERE sc.config_key = 'ivss.channel_zone_map'
+                   AND sc.is_active = true
+                   AND z.deleted_at IS NULL
+                 LIMIT 1)) AS zone_name
+              ,COALESCE((SELECT camera.camera_name
+                  FROM system_configs sc
+                  CROSS JOIN LATERAL jsonb_each_text(COALESCE(sc.config_json, '{}'::jsonb)) camera(camera_name, mapped_channel)
+                 WHERE sc.config_key = 'hgvision.camera_channel_map'
+                   AND sc.is_active = true
+                   AND camera.mapped_channel = iot_device_events.payload_json->>'channelId'
+                 LIMIT 1), NULLIF(anpr_device.device_name, '')) AS camera_name
          FROM iot_device_events
          ${CONTROL_LIST_FLAG_JOIN}
+         LEFT JOIN iot_devices anpr_device ON anpr_device.id = iot_device_events.device_id
+         LEFT JOIN zones event_zone ON event_zone.id = iot_device_events.zone_id
+                                   AND event_zone.deleted_at IS NULL
         WHERE ${where}
         ORDER BY iot_device_events.event_time DESC
         LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
@@ -138,6 +159,8 @@ export class VehicleUnknownService {
         vehicleType: r.vehicle_type,
         isBlacklisted: r.is_blacklisted,
         listType: r.list_type,
+        zoneName: r.zone_name,
+        cameraName: r.camera_name,
       })),
       meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
     };
