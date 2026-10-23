@@ -120,10 +120,14 @@ export class VisitQueryService {
       `SELECT id, department_name AS name FROM departments WHERE deleted_at IS NULL AND is_active = true AND NOT (id = ANY($1::uuid[])) ORDER BY department_name`,
       [nonStaff],
     );
-    const zones: Array<{ id: string; name: string; type: string; hasFaceGate: boolean }> = await this.dataSource.query(
-      `SELECT z.id, z.zone_name AS name, z.zone_type AS type,
-              EXISTS (SELECT 1 FROM iot_devices d WHERE d.zone_id = z.id AND d.device_type = 'face_server') AS "hasFaceGate"
-         FROM zones z WHERE z.deleted_at IS NULL AND z.status = 'active' ORDER BY z.zone_name`,
+    // hasCamera: có kênh IVSS gán vào khu (`ivss.channel_presence_zone_map`) — không có thì camera không thể cảnh báo khách sai khu.
+    const zones: Array<{ id: string; name: string; type: string; visitorPolicy: string; hasFaceGate: boolean; hasCamera: boolean }> = await this.dataSource.query(
+      `SELECT z.id, z.zone_name AS name, z.zone_type AS type, z.visitor_policy AS "visitorPolicy",
+              EXISTS (SELECT 1 FROM iot_devices d WHERE d.zone_id = z.id AND d.device_type = 'face_server') AS "hasFaceGate",
+              EXISTS (SELECT 1 FROM system_configs sc
+                        CROSS JOIN LATERAL jsonb_each_text(CASE WHEN jsonb_typeof(sc.config_json) = 'object' THEN sc.config_json ELSE '{}'::jsonb END) e
+                       WHERE sc.config_key = 'ivss.channel_presence_zone_map' AND sc.is_active = true AND e.value = z.id::text) AS "hasCamera"
+         FROM zones z WHERE z.deleted_at IS NULL AND z.status = 'active' ORDER BY z.zone_type <> 'gate', z.zone_name`,
     );
     return { departments, zones, purposes: (await this.config.get()).purposes };
   }

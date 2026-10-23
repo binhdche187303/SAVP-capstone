@@ -1,7 +1,7 @@
 import { BadRequestException, PayloadTooLargeException } from '@nestjs/common';
 import { VisitService } from './visit.service.js';
 
-const svc = new VisitService({} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never);
+const svc = new VisitService({} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never);
 const JPEG_HEAD = [0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01];
 const PNG_HEAD = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d];
 const url = (mime: string, bytes: Buffer) => `data:${mime};base64,${bytes.toString('base64')}`;

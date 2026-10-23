@@ -13,6 +13,10 @@ import {
 import { Expose } from 'class-transformer';
 import { ZONE_TYPES, type ZoneType } from '../constants/zone-type.constant.js';
 import {
+  ZONE_VISITOR_POLICIES,
+  type ZoneVisitorPolicy,
+} from '../constants/zone-visitor-policy.constant.js';
+import {
   ZONE_STATUSES,
   type ZoneStatus,
 } from '../constants/zone-status.constant.js';
@@ -69,6 +73,11 @@ export class UpdateZoneDto {
   @SkipWhenAbsent()
   @IsIn([...ZONE_STATUSES])
   status?: ZoneStatus;
+
+  @Expose({ name: 'visitor_policy' })
+  @SkipWhenAbsent()
+  @IsIn([...ZONE_VISITOR_POLICIES])
+  visitorPolicy?: ZoneVisitorPolicy;
 
   @IsOptional()
   @IsString()

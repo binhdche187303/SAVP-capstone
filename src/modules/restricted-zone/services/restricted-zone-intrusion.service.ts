@@ -118,7 +118,7 @@ export class RestrictedZoneIntrusionService {
     for (const rule of rules) {
       for (const log of logs) {
         if (log.zoneId !== rule.zoneId) continue;
-        if (this.isViolation(rule, log.userId, log.accessTime)) {
+        if (await this.violates(rule, log.userId, log.accessTime)) {
           violationsFound++;
           await this.recordIntrusion(rule, {
             sourceTable: 'gate_access_logs',
@@ -130,7 +130,7 @@ export class RestrictedZoneIntrusionService {
       }
       for (const evt of events) {
         if (evt.zoneId !== rule.zoneId) continue;
-        if (this.isViolation(rule, evt.userId, evt.eventTime)) {
+        if (await this.violates(rule, evt.userId, evt.eventTime)) {
           violationsFound++;
           await this.recordIntrusion(rule, {
             sourceTable: 'zone_presence_events',
@@ -191,7 +191,7 @@ export class RestrictedZoneIntrusionService {
     ).filter((r) => r.zoneId === args.zoneId);
     let violated = false;
     for (const rule of rules) {
-      if (this.isViolation(rule, args.userId, args.eventTime)) {
+      if (await this.violates(rule, args.userId, args.eventTime)) {
         violated = true;
         await this.recordIntrusion(rule, {
           sourceTable: args.sourceTable,
@@ -345,6 +345,37 @@ export class RestrictedZoneIntrusionService {
         }`,
       );
       return null;
+    }
+  }
+
+  /** isViolation + miễn cho khách đến làm việc đang có lượt hiệu lực được cấp đúng khu này. */
+  private async violates(rule: AlertRuleEntity, userId: string | null, occurredAt: Date): Promise<boolean> {
+    if (!this.isViolation(rule, userId, occurredAt)) return false;
+    if (!userId || !rule.zoneId) return true;
+    return !(await this.isGrantedVisitor(userId, rule.zoneId, occurredAt));
+  }
+
+  /**
+   * Khách (tài khoản ẩn) không bao giờ có trong `allowedPersonIdsJson` → khu hạn chế được cấp cho lượt khách sẽ báo
+   * intrusion oan. Lượt `approved`/`checked_in` có khu trong `visitor_visit_zones` và còn trong khung hiệu lực → được phép.
+   * Khách vào khu KHÔNG được cấp vẫn tính vi phạm (song song cảnh báo `visitor_zone_violation` của phân hệ Khách).
+   * SQL thẳng thay vì import VisitorsModule (giữ phụ thuộc một chiều). Lỗi truy vấn → coi như không được cấp (vẫn báo).
+   */
+  private async isGrantedVisitor(userId: string, zoneId: string, at: Date): Promise<boolean> {
+    try {
+      const rows: unknown[] = await this.dataSource.query(
+        `SELECT 1 FROM visitor_visits v
+           JOIN visitors vis ON vis.id = v.visitor_id AND vis.deleted_at IS NULL
+           JOIN visitor_visit_zones vz ON vz.visit_id = v.id
+          WHERE vis.user_id = $1 AND vz.zone_id = $2 AND v.deleted_at IS NULL
+            AND v.status IN ('approved','checked_in') AND $3::timestamptz BETWEEN v.valid_from AND v.valid_to
+          LIMIT 1`,
+        [userId, zoneId, at],
+      );
+      return rows.length > 0;
+    } catch (e) {
+      this.logger.warn(`isGrantedVisitor failed (userId=${userId}): ${e instanceof Error ? e.message : 'unknown'}`);
+      return false;
     }
   }
 

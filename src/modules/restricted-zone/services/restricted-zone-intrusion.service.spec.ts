@@ -54,6 +54,8 @@ describe('RestrictedZoneIntrusionService (ARZ-001 / UC-124)', () => {
       // findSnapshotFileIdForPresence() — mặc định KHÔNG tìm thấy snapshot (rows rỗng).
       // Test riêng override để mô phỏng có/không có ảnh.
       manager: { query: jest.fn().mockResolvedValue([]) },
+      // isGrantedVisitor() — mặc định KHÔNG phải khách được cấp khu.
+      query: jest.fn().mockResolvedValue([]),
     };
   };
 
@@ -789,6 +791,30 @@ describe('RestrictedZoneIntrusionService (ARZ-001 / UC-124)', () => {
     it('ghi thành công → lần lặp trong 30s vẫn bị chặn', async () => {
       await service.evaluateZoneEventNow(args());
       await service.evaluateZoneEventNow(args());
+      expect(alertsMock.recordAlert).toHaveBeenCalledTimes(1);
+    });
+  });
+  describe('khách đến làm việc được cấp khu', () => {
+    const args = {
+      zoneId: 'zone-1',
+      userId: 'visitor-user',
+      eventTime: new Date('2026-07-23T22:00:00'),
+      sourceTable: 'zone_presence_events',
+      sourceRowId: 'zpe-v',
+    };
+
+    it('lượt khách hiệu lực có khu này → KHÔNG báo intrusion', async () => {
+      alertRulesMock.list.mockResolvedValue({ items: [rule({ restrictedHoursJson: null })] });
+      dataSourceMock.query.mockResolvedValue([{ '?column?': 1 }]);
+      await expect(service.evaluateZoneEventNow(args)).resolves.toBe(false);
+      expect(alertsMock.recordAlert).not.toHaveBeenCalled();
+      expect(dataSourceMock.query).toHaveBeenCalledWith(expect.stringContaining('visitor_visit_zones'), ['visitor-user', 'zone-1', args.eventTime]);
+    });
+
+    it('không được cấp / tra lỗi → vẫn báo intrusion', async () => {
+      alertRulesMock.list.mockResolvedValue({ items: [rule({ restrictedHoursJson: null })] });
+      dataSourceMock.query.mockRejectedValue(new Error('db down'));
+      await expect(service.evaluateZoneEventNow(args)).resolves.toBe(true);
       expect(alertsMock.recordAlert).toHaveBeenCalledTimes(1);
     });
   });
