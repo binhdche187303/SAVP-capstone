@@ -13,6 +13,9 @@ export const MEETING_INELIGIBLE_ROLE_CODES = [
   'GUARD',
 ];
 
+/** Role được mời họp — tài khoản không có role nào trong đây (SV, khách ẩn) bị loại khỏi gợi ý. */
+export const MEETING_ELIGIBLE_ROLE_CODES = ['EMPLOYEE', 'MANAGER'];
+
 export function isMeetingIneligibleRole(roleCodes: string[]): boolean {
   return roleCodes.some((code) => MEETING_INELIGIBLE_ROLE_CODES.includes(code));
 }

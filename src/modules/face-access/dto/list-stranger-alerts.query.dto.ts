@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsInt, IsUUID, Matches, Min, Max } from 'class-validator';
+import { IsIn, IsOptional, IsInt, IsUUID, Matches, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 
 /**
@@ -60,4 +60,13 @@ export class ListStrangerAlertsQueryDto {
   @IsOptional()
   @IsUUID()
   deviceId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'pending (mặc định) = chờ xử lý · dismissed = đã đóng cảnh báo · all = cả hai (không gồm đã hậu kiểm)',
+    enum: ['pending', 'dismissed', 'all'],
+  })
+  @IsOptional()
+  @IsIn(['pending', 'dismissed', 'all'])
+  status?: 'pending' | 'dismissed' | 'all';
 }

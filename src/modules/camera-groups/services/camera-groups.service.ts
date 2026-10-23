@@ -10,6 +10,9 @@ export interface CameraGroupRow {
   group_code: string;
   group_name: string;
   description: string | null;
+  zone_id: string | null;
+  zone_name: string | null;
+  purpose: string | null;
   device_count: number;
   offline_count: number;
   created_at: Date;
@@ -18,9 +21,11 @@ export interface CameraGroupRow {
 
 const GROUP_SELECT = `
   SELECT g.id, g.group_code, g.group_name, g.description, g.created_at, g.updated_at,
+         g.zone_id, z.zone_name, g.purpose,
          COUNT(d.id)::int AS device_count,
          COUNT(d.id) FILTER (WHERE d.status = 'offline')::int AS offline_count
     FROM camera_groups g
+    LEFT JOIN zones z ON z.id = g.zone_id AND z.deleted_at IS NULL
     LEFT JOIN camera_group_members m ON m.group_id = g.id
     LEFT JOIN iot_devices d ON d.id = m.device_id`;
 
@@ -33,13 +38,13 @@ export class CameraGroupsService {
     return this.dataSource.query(
       `${GROUP_SELECT}
         WHERE ($1::text IS NULL OR g.group_name ILIKE '%' || $1 || '%' OR g.group_code ILIKE '%' || $1 || '%')
-        GROUP BY g.id ORDER BY g.group_name`,
+        GROUP BY g.id, z.zone_name ORDER BY g.group_name`,
       [search?.trim() || null],
     );
   }
 
   async get(id: string) {
-    const rows: CameraGroupRow[] = await this.dataSource.query(`${GROUP_SELECT} WHERE g.id = $1 GROUP BY g.id`, [id]);
+    const rows: CameraGroupRow[] = await this.dataSource.query(`${GROUP_SELECT} WHERE g.id = $1 GROUP BY g.id, z.zone_name`, [id]);
     if (rows.length === 0) throw this.notFound();
     const devices = await this.dataSource.query(
       `SELECT d.id, d.device_code, d.device_name, d.device_type, d.status, d.zone_id, d.last_seen_at, m.added_at
@@ -53,9 +58,9 @@ export class CameraGroupsService {
   async create(dto: CreateCameraGroupDto, userId: string) {
     try {
       const rows: Array<{ id: string }> = await this.dataSource.query(
-        `INSERT INTO camera_groups (group_code, group_name, description, created_by)
-         VALUES ($1, $2, $3, $4) RETURNING id`,
-        [dto.groupCode, dto.groupName, dto.description ?? null, userId],
+        `INSERT INTO camera_groups (group_code, group_name, description, created_by, zone_id, purpose)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+        [dto.groupCode, dto.groupName, dto.description ?? null, userId, dto.zoneId ?? null, dto.purpose?.trim() || null],
       );
       return this.get(rows[0].id);
     } catch (e) {
@@ -68,9 +73,20 @@ export class CameraGroupsService {
       `UPDATE camera_groups
           SET group_name = COALESCE($2, group_name),
               description = CASE WHEN $4 THEN $3 ELSE description END,
+              zone_id = CASE WHEN $6 THEN $5::uuid ELSE zone_id END,
+              purpose = CASE WHEN $8 THEN $7 ELSE purpose END,
               updated_at = NOW()
         WHERE id = $1 RETURNING id`,
-      [id, dto.groupName ?? null, dto.description ?? null, dto.description !== undefined],
+      [
+        id,
+        dto.groupName ?? null,
+        dto.description ?? null,
+        dto.description !== undefined,
+        dto.zoneId ?? null,
+        dto.zoneId !== undefined,
+        dto.purpose?.trim() || null,
+        dto.purpose !== undefined,
+      ],
     );
     if (!this.returnedAny(res)) throw this.notFound();
     return this.get(id);

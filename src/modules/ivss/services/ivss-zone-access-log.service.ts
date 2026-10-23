@@ -16,6 +16,10 @@ interface AccessLogRow {
   direction: string | null;
   match_state: string | null;
   similarity: string | null;
+  device_id: string | null;
+  device_code: string | null;
+  device_name: string | null;
+  group_names: string[] | null;
 }
 
 interface ZoneRow {
@@ -127,7 +131,8 @@ export class IvssZoneAccessLogService {
          FROM iot_device_events e
          LEFT JOIN users u
                 ON u.id = NULLIF(e.payload_json->>'userId', '')::uuid
-         LEFT JOIN departments d ON d.id = u.department_id`;
+         LEFT JOIN departments d ON d.id = u.department_id
+         LEFT JOIN iot_devices dv ON dv.id = e.device_id`;
     const filterParams = [FACE_EVENT_TYPE, day, zoneId, search];
 
     // Đếm trên TOÀN BỘ kết quả lọc (không chỉ trang hiện tại) — matched/unmatched phải
@@ -158,7 +163,13 @@ export class IvssZoneAccessLogService {
               d.department_name             AS department_name,
               e.payload_json->>'direction'  AS direction,
               e.payload_json->>'matchState' AS match_state,
-              e.payload_json->>'similarity' AS similarity
+              e.payload_json->>'similarity' AS similarity,
+              e.device_id                   AS device_id,
+              dv.device_code                AS device_code,
+              dv.device_name                AS device_name,
+              (SELECT array_agg(cg.group_name ORDER BY cg.group_name)
+                 FROM camera_group_members cgm JOIN camera_groups cg ON cg.id = cgm.group_id
+                WHERE cgm.device_id = e.device_id) AS group_names
          ${fromSql}
          ${whereSql}
         ORDER BY e.event_time DESC
@@ -185,6 +196,10 @@ export class IvssZoneAccessLogService {
         direction: r.direction ?? null,
         matchState: r.match_state ?? null,
         similarity: Number.isFinite(similarity) ? similarity : null,
+        deviceId: r.device_id ?? null,
+        deviceCode: r.device_code ?? null,
+        deviceName: r.device_name ?? null,
+        groupNames: r.group_names ?? [],
         isStranger: this.isStranger(r.user_id),
         isUnmatched: this.isUnmatched(r.match_state),
       };

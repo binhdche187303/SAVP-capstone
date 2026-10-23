@@ -106,6 +106,12 @@ describe('IvssRoomAccessLogService (RAL-001 / Màn 2 + ALS-002)', () => {
       matchState: 'matched',
       similarity: 0.98, // string từ jsonb → number
       meetingId: 'mt1',
+      // Họp 20/10: log camera luôn mang thông tin camera/khu vực/nhóm.
+      deviceId: null,
+      deviceCode: null,
+      deviceName: null,
+      zoneName: null,
+      groupNames: [],
       isStranger: false,
       isUnmatched: false,
     });

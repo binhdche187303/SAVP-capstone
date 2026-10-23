@@ -19,6 +19,19 @@ import type {
 } from '../dto/zone-traffic-response.dto.js';
 
 const MAX_RANGE_MS = 31 * 24 * 60 * 60 * 1000; // 31 ngày (mirror ZonePresenceTimelineService)
+const MAX_MINUTE_RANGE_MS = 24 * 60 * 60 * 1000; // gom theo phút chỉ cho khoảng ≤ 24 giờ
+
+/** Tuỳ chọn đọc: lọc theo nhóm camera và/hoặc gom theo phút — cả hai đều buộc đọc raw. */
+export interface TrafficOptions {
+  groupId?: string;
+  bucket?: 'hour' | 'minute';
+}
+
+/** Điều kiện lọc camera thuộc nhóm; `column` PHẢI là hằng trong code. */
+const groupClause = (column: string, groupId: string | undefined, p: SqlParams): string =>
+  groupId
+    ? `AND ${column} IN (SELECT device_id FROM camera_group_members WHERE group_id = ${p.add(groupId)}::uuid)`
+    : '';
 
 interface SeriesRow {
   zone_id: string;
@@ -56,8 +69,9 @@ export class ZoneTrafficHeatmapService {
     to: Date,
     building?: string,
     floor?: string,
+    options: TrafficOptions = {},
   ): Promise<TrafficResponseDto> {
-    this.validateRange(from, to);
+    this.validateRange(from, to, options);
 
     const zones = await this.repo.loadZoneHierarchy({ building, floor });
     const zoneIds = zones.map((z) => z.id);
@@ -65,10 +79,14 @@ export class ZoneTrafficHeatmapService {
       return { series: [], heatmap: [] };
     }
 
-    const window = await this.kpiReadWindow.resolve('zone_hourly', from, to);
+    // Rollup theo giờ không có chiều camera/phút ⇒ lọc nhóm hoặc gom phút phải đọc thẳng raw.
+    const rawOnly = !!options.groupId || options.bucket === 'minute';
+    const window: ReadWindow = rawOnly
+      ? { agg: null, raw: [{ from, to, toInclusive: true }] }
+      : await this.kpiReadWindow.resolve('zone_hourly', from, to);
     const [seriesRows, heatmapRows] = await Promise.all([
-      this.querySeries(zoneIds, window),
-      this.queryHeatmapParts(zoneIds, window),
+      this.querySeries(zoneIds, window, options),
+      this.queryHeatmapParts(zoneIds, window, options),
     ]);
 
     const zoneById = new Map(zones.map((z) => [z.id, z]));
@@ -122,7 +140,9 @@ export class ZoneTrafficHeatmapService {
   private async querySeries(
     zoneIds: string[],
     window: ReadWindow,
+    options: TrafficOptions = {},
   ): Promise<SeriesRow[]> {
+    const unit = options.bucket === 'minute' ? 'minute' : 'hour';
     const p = new SqlParams();
     const zones = p.add(zoneIds);
     const parts: string[] = [];
@@ -135,7 +155,7 @@ export class ZoneTrafficHeatmapService {
           AND bucket_hour >= ${p.add(window.agg.from)} AND bucket_hour < ${p.add(window.agg.to)}`);
     }
     parts.push(`
-        SELECT zone_id, date_trunc('hour', event_time, 'UTC') AS hour_bucket,
+        SELECT zone_id, date_trunc('${unit}', event_time, 'UTC') AS hour_bucket,
                COALESCE(SUM(occupancy_count), 0) AS occupancy_sum,
                COUNT(occupancy_count) AS sample_count,
                MAX(occupancy_count) AS peak_occupancy
@@ -143,6 +163,7 @@ export class ZoneTrafficHeatmapService {
         WHERE zone_id = ANY(${zones}::uuid[])
           AND event_type = 'count'
           AND ${rangeClause('event_time', window.raw, p)}
+          ${groupClause('device_id', options.groupId, p)}
         GROUP BY zone_id, hour_bucket`);
     const sql = `
       SELECT zone_id, hour_bucket, occupancy_sum, sample_count, peak_occupancy
@@ -155,6 +176,7 @@ export class ZoneTrafficHeatmapService {
   private async queryHeatmapParts(
     zoneIds: string[],
     window: ReadWindow,
+    options: TrafficOptions = {},
   ): Promise<HeatmapPartRow[]> {
     const queries: Array<Promise<HeatmapPartRow[]>> = [];
     if (window.agg) {
@@ -188,6 +210,7 @@ export class ZoneTrafficHeatmapService {
          WHERE zone_id = ANY(${zones}::uuid[])
            AND event_type = 'count'
            AND ${rangeClause('event_time', window.raw, p)}
+           ${groupClause('device_id', options.groupId, p)}
          WINDOW w AS (PARTITION BY zone_id)
          ORDER BY zone_id, occupancy_count DESC NULLS LAST, event_time DESC`,
         p.values,
@@ -196,7 +219,13 @@ export class ZoneTrafficHeatmapService {
     return (await Promise.all(queries)).flat();
   }
 
-  private validateRange(from: Date, to: Date): void {
+  private validateRange(from: Date, to: Date, options: TrafficOptions = {}): void {
+    if (options.bucket === 'minute' && to.getTime() - from.getTime() > MAX_MINUTE_RANGE_MS) {
+      throw new BadRequestException({
+        code: 'INVALID_TRAFFIC_RANGE',
+        message: 'Gom theo phút chỉ hỗ trợ khoảng tối đa 24 giờ',
+      });
+    }
     if (to.getTime() - from.getTime() > MAX_RANGE_MS) {
       throw new BadRequestException({
         code: 'INVALID_TRAFFIC_RANGE',

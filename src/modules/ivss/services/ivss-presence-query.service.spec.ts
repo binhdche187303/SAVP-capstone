@@ -459,7 +459,7 @@ describe('IvssPresenceQueryService (IPD-001 #41+#42)', () => {
               actual_end_time: null,
             },
           ]);
-        if (sql.includes('FROM departments WHERE manager_user_id'))
+        if (sql.includes('FROM departments WHERE (manager_user_id'))
           return Promise.resolve([{ id: 'dept-1' }]);
         if (sql.includes('SELECT department_id FROM users'))
           return Promise.resolve([{ department_id: 'dept-1' }]);
@@ -476,7 +476,7 @@ describe('IvssPresenceQueryService (IPD-001 #41+#42)', () => {
     it('MANAGER gọi cho participant NGOÀI phòng ban mình quản lý → 403 DEPARTMENT_OUT_OF_SCOPE', async () => {
       roleOf('MANAGER');
       dsMock.manager.query.mockImplementation((sql: string) => {
-        if (sql.includes('FROM departments WHERE manager_user_id'))
+        if (sql.includes('FROM departments WHERE (manager_user_id'))
           return Promise.resolve([{ id: 'dept-1' }]); // Manager quản lý dept-1
         if (sql.includes('SELECT department_id FROM users'))
           return Promise.resolve([{ department_id: 'dept-2' }]); // target thuộc dept-2
@@ -507,7 +507,7 @@ describe('IvssPresenceQueryService (IPD-001 #41+#42)', () => {
               actual_end_time: null,
             },
           ]);
-        if (sql.includes('FROM departments WHERE manager_user_id'))
+        if (sql.includes('FROM departments WHERE (manager_user_id'))
           return Promise.resolve([{ id: 'dept-1' }]);
         if (sql.includes('meeting_participants'))
           return Promise.resolve([

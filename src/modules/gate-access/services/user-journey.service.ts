@@ -16,10 +16,12 @@ interface GateRow {
   zone_name: string | null;
   /** FK trực tiếp → iot_device_events.id (có thể NULL nếu caller ghi log không truyền). */
   source_event_id: string | null;
+  device_id?: string | null;
 }
 
 interface MeetingRow {
   id: string;
+  device_id?: string | null;
   event_time: Date | string;
   direction: string | null;
   /** roomId đã resolve (e.room_id ⊕ payload.roomId) — khoá gộp phiên. Query đã lọc NOT NULL. */
@@ -45,6 +47,7 @@ interface ZoneRow {
    * hiếm khi thiếu — xử lý null-safe y hệt gate/meeting).
    */
   source_event_id: string | null;
+  device_id?: string | null;
 }
 
 interface UserRow {
@@ -245,6 +248,7 @@ export class UserJourneyService {
       meetingId: string | null;
       /** id của event ĐẦU TIÊN trong phiên — đại diện ảnh (mirror cách occurrences chọn entry, KHÔNG đổi khi gộp thêm event). */
       sourceEventId: string;
+      deviceId: string | null;
       startMs: number;
       endMs: number;
       count: number;
@@ -271,6 +275,7 @@ export class UserJourneyService {
         roomName: r.room_name ?? null,
         meetingId: r.meeting_id ?? null,
         sourceEventId: r.id,
+        deviceId: r.device_id ?? null,
         startMs: ms,
         endMs: ms,
         count: 1,
@@ -292,6 +297,7 @@ export class UserJourneyService {
         roomName: s.roomName,
         meetingId: s.meetingId,
         sourceEventId: s.sourceEventId,
+        deviceId: s.deviceId,
         durationMs,
         eventCount: s.count,
       };
@@ -316,7 +322,7 @@ export class UserJourneyService {
     // xem recon 2026-08-09) — FE dùng để hiện ảnh, mirror ThumbnailImage/EventSnapshotModal.
     const gateRows: GateRow[] = await this.dataSource.manager.query(
       `SELECT g.access_time, g.direction, g.plate_number, z.zone_name,
-              g.event_id AS source_event_id
+              g.event_id AS source_event_id, g.device_id
          FROM gate_access_logs g
          LEFT JOIN zones z ON z.id = g.zone_id AND z.deleted_at IS NULL
         WHERE g.user_id = $1${vnDayBounds('g.access_time')}
@@ -334,6 +340,7 @@ export class UserJourneyService {
     const meetingRows: MeetingRow[] = await this.dataSource.manager.query(
       `SELECT e.id,
               e.event_time,
+              e.device_id,
               e.payload_json->>'direction' AS direction,
               COALESCE(e.room_id, NULLIF(e.payload_json->>'roomId','')::uuid)::text AS room_key,
               r.room_name,
@@ -356,7 +363,7 @@ export class UserJourneyService {
     // đây — KHÔNG đụng writeAppearEvent()/bridge/DeviceEventSnapshotService.
     const zoneRows: ZoneRow[] = await this.dataSource.manager.query(
       `SELECT p.event_time, p.event_type, z.zone_name,
-              p.metadata_json->>'sourceEventId' AS source_event_id
+              p.metadata_json->>'sourceEventId' AS source_event_id, p.device_id
          FROM zone_presence_events p
          LEFT JOIN zones z ON z.id = p.zone_id AND z.deleted_at IS NULL
         WHERE p.user_id = $1${vnDayBounds('p.event_time')}
@@ -378,6 +385,7 @@ export class UserJourneyService {
         roomName: null,
         meetingId: null,
         sourceEventId: r.source_event_id ?? null,
+        deviceId: r.device_id ?? null,
       };
     });
 
@@ -404,6 +412,7 @@ export class UserJourneyService {
         // cũ/edge case) → giữ null, KHÔNG throw, FE tự ẩn thumbnail (ThumbnailImage đã xử
         // lý null từ trước, không cần đổi FE).
         sourceEventId: r.source_event_id ?? null,
+        deviceId: r.device_id ?? null,
       };
     });
 
@@ -411,6 +420,8 @@ export class UserJourneyService {
     const events = [...gateEvents, ...meetingEvents, ...zoneEvents].sort(
       (a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0),
     );
+
+    await this.attachCameraInfo(events);
 
     return {
       userId,
@@ -422,6 +433,35 @@ export class UserJourneyService {
       meetingCount: meetingEvents.length,
       zoneCount: zoneEvents.length,
     };
+  }
+
+  /**
+   * Họp 20/10 — mọi log camera phải cho biết camera nào, thuộc nhóm nào. Gắn deviceCode/deviceName/
+   * groupNames bằng MỘT query gộp cho cả ngày. Best-effort: lỗi tra cứu không làm hỏng hành trình.
+   */
+  private async attachCameraInfo(events: UserJourneyEventDto[]): Promise<void> {
+    const ids = [...new Set(events.map((e) => e.deviceId).filter((id): id is string => !!id))];
+    if (ids.length === 0) return;
+    try {
+      const rows = (await this.dataSource.manager.query(
+        `SELECT d.id, d.device_code, d.device_name,
+                (SELECT array_agg(cg.group_name ORDER BY cg.group_name)
+                   FROM camera_group_members m JOIN camera_groups cg ON cg.id = m.group_id
+                  WHERE m.device_id = d.id) AS group_names
+           FROM iot_devices d WHERE d.id = ANY($1::uuid[])`,
+        [ids],
+      )) as Array<{ id: string; device_code: string | null; device_name: string | null; group_names: string[] | null }>;
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      for (const e of events) {
+        const d = e.deviceId ? byId.get(e.deviceId) : undefined;
+        if (!d) continue;
+        e.deviceCode = d.device_code;
+        e.deviceName = d.device_name;
+        e.groupNames = d.group_names ?? [];
+      }
+    } catch (err) {
+      this.logger.warn(`Không tra được thông tin camera cho hành trình: ${(err as Error).message}`);
+    }
   }
 
   /**
