@@ -305,7 +305,7 @@ export const envValidationSchema = Joi.object({
   ZALO_ZBS_ACCESS_TOKEN: Joi.string().allow('').default(''),
   ZALO_ZBS_TEMPLATE_ID: Joi.string().allow('').default(''),
   ZALO_ZBS_ENDPOINT: Joi.string().uri().default('https://business.openapi.zalo.me/message/template'),
-  REPORT_CENTER_ENABLED: Joi.boolean().default(false),
+  REPORT_CENTER_ENABLED: Joi.boolean().default(true),
   SCHEDULER_REPORT_SCHEDULE_ENABLED: Joi.boolean().default(false),
   SCHEDULER_DEVICE_MAINTENANCE_ENABLED: Joi.boolean().default(false),
   KPI_ROLLUP_READ_ENABLED: Joi.boolean().default(true),

@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator.js';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard.js';
 import { VISITOR_PERMISSIONS as P } from '../constants/visitor-permission.constant.js';
-import { VisitorStatsQueryDto } from '../dto/list-visits.query.dto.js';
+import { VisitorDeskQueryDto, VisitorStatsQueryDto } from '../dto/list-visits.query.dto.js';
 import { VisitorsEnabledGuard } from '../guards/visitors-enabled.guard.js';
 import { VisitQueryService } from '../services/visit-query.service.js';
 import { VisitorActorService } from '../services/visitor-actor.service.js';
@@ -23,6 +23,13 @@ export class VisitorDeskController {
   async desk(@CurrentUser() user: { userId?: string } | undefined) {
     this.actors.requireAny(await this.actors.resolve(user), P.DESK_USE);
     return ok('OK', await this.query.deskToday());
+  }
+
+  @Get('desk')
+  @ApiOperation({ summary: 'Chốt bảo vệ theo ngày: KPI, khách, cảnh báo cổng, hàng cần xử lý' })
+  async deskByDate(@Query() q: VisitorDeskQueryDto, @CurrentUser() user: { userId?: string } | undefined) {
+    this.actors.requireAny(await this.actors.resolve(user), P.DESK_USE);
+    return ok('OK', await this.query.desk(q.date));
   }
 
   @Get('stats')
