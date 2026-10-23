@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -8,6 +8,7 @@ import {
 import { WebsocketService } from '../../websocket/websocket.service.js';
 import { ListStrangerAlertsQueryDto } from '../dto/list-stranger-alerts.query.dto.js';
 import { ReviewStrangerDto } from '../dto/review-stranger.dto.js';
+import { DismissStrangerDto, ReopenStrangerDto } from '../dto/dismiss-stranger.dto.js';
 import { AlertRulesService } from '../../alerts/services/alert-rules.service.js';
 import { AlertsService } from '../../alerts/services/alerts.service.js';
 
@@ -25,6 +26,10 @@ interface StrangerRow {
   latest_event_id: string;
   snapshot_event_id: string | null;
   snapshot_file_id: string | null;
+  dismissed_at: string | null;
+  dismissed_by_name: string | null;
+  dismiss_reason: string | null;
+  dismiss_note: string | null;
 }
 
 /**
@@ -171,6 +176,10 @@ export class StrangerAlertService implements StrangerAlertHook {
       latestEventId: string;
       snapshotEventId: string | null;
       snapshotFileId: string | null;
+      dismissedAt: string | null;
+      dismissedBy: string | null;
+      dismissReason: string | null;
+      dismissNote: string | null;
     }>;
     meta: { page: number; limit: number; total: number };
   }> {
@@ -182,6 +191,10 @@ export class StrangerAlertService implements StrangerAlertHook {
     const params: unknown[] = [];
     // Sự kiện đã được hậu kiểm (xác nhận là ai) rời khỏi hàng chờ.
     const conds = [`e.event_type = 'face_stranger'`, `NOT (e.payload_json ? 'reviewedAt')`];
+    // Mặc định chỉ hàng chờ; 'dismissed' = đã đóng cảnh báo (có lý do + người đóng); 'all' = cả hai.
+    const status = query.status ?? 'pending';
+    if (status === 'pending') conds.push(`NOT (e.payload_json ? 'dismissedAt')`);
+    else if (status === 'dismissed') conds.push(`(e.payload_json ? 'dismissedAt')`);
     if (query.from || query.to) {
       if (query.from) {
         params.push(query.from);
@@ -216,7 +229,7 @@ export class StrangerAlertService implements StrangerAlertHook {
     // SEC-02: KHÔNG select payload_json/raw_payload_sample → không lộ base64/snapshot
     // (chỉ trả id event/media để FE gọi route snapshot có phân quyền).
     const rows: StrangerRow[] = await this.dataSource.manager.query(
-      `SELECT g.*, d.device_code, r.room_name, z.zone_name
+      `SELECT g.*, d.device_code, r.room_name, z.zone_name, du.full_name AS dismissed_by_name
          FROM (
            SELECT e.device_id,
                   e.payload_json->'extracted_fields'->>'stranger_id'  AS stranger_id,
@@ -230,7 +243,15 @@ export class StrangerAlertService implements StrangerAlertHook {
                   (array_agg(e.id ORDER BY e.created_at DESC)
                      FILTER (WHERE e.snapshot_file_id IS NOT NULL))[1] AS snapshot_event_id,
                   (array_agg(e.snapshot_file_id ORDER BY e.created_at DESC)
-                     FILTER (WHERE e.snapshot_file_id IS NOT NULL))[1] AS snapshot_file_id
+                     FILTER (WHERE e.snapshot_file_id IS NOT NULL))[1] AS snapshot_file_id,
+                  (array_agg(e.payload_json->>'dismissedAt' ORDER BY e.created_at DESC)
+                     FILTER (WHERE e.payload_json ? 'dismissedAt'))[1] AS dismissed_at,
+                  (array_agg(e.payload_json->>'dismissedBy' ORDER BY e.created_at DESC)
+                     FILTER (WHERE e.payload_json ? 'dismissedAt'))[1] AS dismissed_by,
+                  (array_agg(e.payload_json->>'dismissReason' ORDER BY e.created_at DESC)
+                     FILTER (WHERE e.payload_json ? 'dismissedAt'))[1] AS dismiss_reason,
+                  (array_agg(e.payload_json->>'dismissNote' ORDER BY e.created_at DESC)
+                     FILTER (WHERE e.payload_json ? 'dismissedAt'))[1] AS dismiss_note
              FROM iot_device_events e
             WHERE ${where}
             GROUP BY e.device_id, stranger_id
@@ -238,6 +259,7 @@ export class StrangerAlertService implements StrangerAlertHook {
          LEFT JOIN iot_devices d ON d.id = g.device_id
          LEFT JOIN rooms r ON r.id = g.room_id
          LEFT JOIN zones z ON z.id = d.zone_id
+         LEFT JOIN users du ON du.id::text = g.dismissed_by
         ORDER BY g.last_seen DESC
         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
       [...params, limit, offset],
@@ -265,6 +287,10 @@ export class StrangerAlertService implements StrangerAlertHook {
         latestEventId: r.latest_event_id,
         snapshotEventId: r.snapshot_event_id ?? null,
         snapshotFileId: r.snapshot_file_id ?? null,
+        dismissedAt: r.dismissed_at ?? null,
+        dismissedBy: r.dismissed_by_name ?? null,
+        dismissReason: r.dismiss_reason ?? null,
+        dismissNote: r.dismiss_note ?? null,
       })),
       meta: { page, limit, total: Number(totalRows[0]?.total ?? 0) },
     };
@@ -274,6 +300,7 @@ export class StrangerAlertService implements StrangerAlertHook {
   async listSightings(
     deviceId: string,
     strangerId: string | null,
+    status: 'pending' | 'dismissed' = 'pending',
   ): Promise<
     Array<{
       eventId: string;
@@ -294,6 +321,7 @@ export class StrangerAlertService implements StrangerAlertHook {
          FROM iot_device_events e
         WHERE e.event_type = 'face_stranger'
           AND NOT (e.payload_json ? 'reviewedAt')
+          AND ${status === 'dismissed' ? '' : 'NOT '}(e.payload_json ? 'dismissedAt')
           AND e.device_id = $1
           AND (e.payload_json->'extracted_fields'->>'stranger_id') IS NOT DISTINCT FROM $2
         ORDER BY e.created_at DESC
@@ -401,6 +429,75 @@ export class StrangerAlertService implements StrangerAlertHook {
       this.logger.warn(`Không ghi được audit face.stranger.review: ${e instanceof Error ? e.message : 'unknown'}`);
     }
     return { reviewed: updated.length, userId: dto.userId, fullName: users[0].full_name };
+  }
+
+  /**
+   * Đóng cảnh báo người lạ (thay cho "Bỏ qua" cục bộ): bắt buộc lý do, lưu người đóng + audit.
+   * Chỉ đóng event còn chờ (chưa hậu kiểm, chưa đóng). Có thể mở lại.
+   */
+  async dismiss(dto: DismissStrangerDto, actorId: string): Promise<{ dismissed: number }> {
+    const note = dto.note?.trim() || null;
+    if (dto.reason === 'other' && (!note || note.length < 5)) {
+      throw new BadRequestException({
+        code: 'DISMISS_NOTE_REQUIRED',
+        message: 'Lý do "Khác" cần ghi chú rõ (ít nhất 5 ký tự).',
+      });
+    }
+    const updated: { id: string }[] = await this.dataSource.manager.query(
+      `UPDATE iot_device_events
+          SET payload_json = COALESCE(payload_json, '{}'::jsonb) || jsonb_build_object(
+                'dismissedAt', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+                'dismissedBy', $2::text,
+                'dismissReason', $3::text,
+                'dismissNote', $4::text)
+        WHERE id = ANY($1::uuid[])
+          AND event_type = 'face_stranger'
+          AND NOT (COALESCE(payload_json, '{}'::jsonb) ? 'reviewedAt')
+          AND NOT (COALESCE(payload_json, '{}'::jsonb) ? 'dismissedAt')
+        RETURNING id`,
+      [dto.eventIds, actorId, dto.reason, note],
+    );
+    if (updated.length === 0) {
+      throw new NotFoundException('Không có sự kiện người lạ nào cần đóng (đã được xử lý hoặc không tồn tại).');
+    }
+    await this.auditStranger(actorId, 'face.stranger.dismiss', updated.map((r) => r.id), { reason: dto.reason, note });
+    return { dismissed: updated.length };
+  }
+
+  /** Mở lại các sự kiện đã đóng → quay về hàng chờ. */
+  async reopen(dto: ReopenStrangerDto, actorId: string): Promise<{ reopened: number }> {
+    const updated: { id: string }[] = await this.dataSource.manager.query(
+      `UPDATE iot_device_events
+          SET payload_json = payload_json - 'dismissedAt' - 'dismissedBy' - 'dismissReason' - 'dismissNote'
+        WHERE id = ANY($1::uuid[])
+          AND event_type = 'face_stranger'
+          AND payload_json ? 'dismissedAt'
+          AND NOT (payload_json ? 'reviewedAt')
+        RETURNING id`,
+      [dto.eventIds],
+    );
+    if (updated.length === 0) {
+      throw new NotFoundException('Không có sự kiện nào đang ở trạng thái đã đóng.');
+    }
+    await this.auditStranger(actorId, 'face.stranger.reopen', updated.map((r) => r.id), {});
+    return { reopened: updated.length };
+  }
+
+  private async auditStranger(
+    actorId: string,
+    action: string,
+    eventIds: string[],
+    extra: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      await this.dataSource.manager.query(
+        `INSERT INTO audit_logs (user_id, action_type, entity_type, entity_id, severity, metadata_json)
+         VALUES ($1, $2, 'iot_device_event', $3, 'info', $4)`,
+        [actorId, action, eventIds[0], JSON.stringify({ eventIds, ...extra })],
+      );
+    } catch (e) {
+      this.logger.warn(`Không ghi được audit ${action}: ${e instanceof Error ? e.message : 'unknown'}`);
+    }
   }
 
   private async assertCanReviewUser(actorId: string, targetUserId: string): Promise<void> {

@@ -214,6 +214,10 @@ describe('StrangerAlertService (SAL-001)', () => {
         latestEventId: 'ev2',
         snapshotEventId: 'ev1',
         snapshotFileId: 'mf1',
+        dismissedAt: null,
+        dismissedBy: null,
+        dismissReason: null,
+        dismissNote: null,
       },
     ]);
     expect(r.meta).toEqual({ page: 1, limit: 20, total: 1 });

@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsDateString, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
+import { IsDateString, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
 
 /**
  * CameraTraceQueryDto — query cho GET /campus/camera-trace.
@@ -26,6 +26,27 @@ export class CameraTraceQueryDto {
   /** Mốc kết thúc (ISO 8601, có giờ). */
   @IsDateString()
   to!: string;
+
+  /** Lọc loại sự kiện trên TOÀN BỘ kết quả (không chỉ trang hiện tại). */
+  @IsOptional()
+  @IsIn(['gate', 'meeting', 'zone'])
+  kind?: 'gate' | 'meeting' | 'zone';
+
+  /** Tìm theo tên / mã nhân sự / biển số trên toàn bộ kết quả. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  q?: string;
+
+  /** Cột sắp xếp (mặc định time). */
+  @IsOptional()
+  @IsIn(['time', 'person', 'event', 'camera', 'zone'])
+  sortBy?: 'time' | 'person' | 'event' | 'camera' | 'zone';
+
+  /** Chiều sắp xếp (mặc định desc = mới nhất trước). */
+  @IsOptional()
+  @IsIn(['asc', 'desc'])
+  sortDir?: 'asc' | 'desc';
 
   @IsOptional()
   @Type(() => Number)

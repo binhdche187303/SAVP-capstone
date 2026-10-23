@@ -40,6 +40,8 @@ export interface CameraTraceResponseDto {
   page: number;
   limit: number;
   hasMore: boolean;
+  /** Tổng số dòng khớp bộ lọc (sau gộp sự kiện), trên mọi trang. */
+  total: number;
 }
 
 interface TraceRow {
@@ -59,7 +61,17 @@ interface TraceRow {
   zone_name: string | null;
   group_names: string[] | null;
   snapshot_event_id: string | null;
+  total_count: number | string;
 }
+
+/** Cột sắp xếp được phép → biểu thức SQL (whitelist, không nối chuỗi từ người dùng). */
+const SORT_EXPR: Record<NonNullable<CameraTraceQueryDto['sortBy']>, string> = {
+  time: 'x.ev_time',
+  person: 'lower(COALESCE(u.full_name, x.plate_number))',
+  event: "x.kind || ':' || COALESCE(x.direction, '')",
+  camera: 'lower(d.device_name)',
+  zone: 'lower(z.zone_name)',
+};
 
 /**
  * CameraTraceService — truy vết theo camera / nhóm camera / khu vực (họp 20/10: tra mất đồ).
@@ -106,9 +118,26 @@ export class CameraTraceService {
       page,
       limit,
     };
-    if (devices.length === 0) return { ...base, events: [], hasMore: false };
+    if (devices.length === 0) return { ...base, events: [], hasMore: false, total: 0 };
 
-    const scopeSql = await this.scopeClause(callerId);
+    // Tham số dựng dần để chỉ số $n luôn khớp dù thêm/bớt điều kiện.
+    const params: unknown[] = [devices.map((d) => d.id), from, to, FACE_EVENT_TYPE];
+    const bind = (v: unknown): string => {
+      params.push(v);
+      return `$${params.length}`;
+    };
+    const scopeSql = await this.scopeClause(callerId, bind);
+    const filters: string[] = [];
+    if (q.kind) filters.push(`x.kind = ${bind(q.kind)}`);
+    const needle = q.q?.trim();
+    if (needle) {
+      const like = bind(`%${needle.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
+      filters.push(`(u.full_name ILIKE ${like} OR u.employee_code ILIKE ${like} OR x.plate_number ILIKE ${like})`);
+    }
+    const dir = q.sortDir === 'asc' ? 'ASC' : 'DESC';
+    const sortExpr = SORT_EXPR[q.sortBy ?? 'time'];
+    const limitRef = bind(limit + 1);
+    const offsetRef = bind((page - 1) * limit);
     const rows: TraceRow[] = await this.dataSource.query(
       `WITH ev AS (
          SELECT g.id::text AS id, g.access_time AS ev_time, 'gate'::text AS kind, g.device_id, g.zone_id, g.user_id,
@@ -137,6 +166,7 @@ export class CameraTraceService {
                    CASE WHEN kind = 'gate' THEN id ELSE date_trunc('minute', ev_time)::text END, ev_time ASC
        )
        SELECT x.id, x.ev_time AS time, x.kind, x.direction, x.user_id, u.full_name AS user_name, u.employee_code,
+              COUNT(*) OVER() AS total_count,
               x.plate_number, x.room_name, x.device_id, d.device_code, d.device_name,
               COALESCE(x.zone_id, d.zone_id) AS zone_id, z.zone_name, x.snapshot_event_id,
               (SELECT array_agg(cg.group_name ORDER BY cg.group_name)
@@ -146,10 +176,10 @@ export class CameraTraceService {
          LEFT JOIN users u ON u.id = x.user_id
          LEFT JOIN iot_devices d ON d.id = x.device_id
          LEFT JOIN zones z ON z.id = COALESCE(x.zone_id, d.zone_id) AND z.deleted_at IS NULL
-        WHERE 1 = 1 ${scopeSql.sql}
-        ORDER BY x.ev_time DESC
-        LIMIT $5 OFFSET $6`,
-      [devices.map((d) => d.id), from, to, FACE_EVENT_TYPE, limit + 1, (page - 1) * limit, ...scopeSql.params],
+        WHERE 1 = 1 ${scopeSql} ${filters.map((f) => `AND ${f}`).join(' ')}
+        ORDER BY ${sortExpr} ${dir} NULLS LAST, x.ev_time DESC, x.id
+        LIMIT ${limitRef} OFFSET ${offsetRef}`,
+      params,
     );
 
     const hasMore = rows.length > limit;
@@ -173,25 +203,22 @@ export class CameraTraceService {
     }));
 
     await this.audit(callerId, q);
-    return { ...base, events, hasMore };
+    return { ...base, events, hasMore, total: rows.length ? Number(rows[0].total_count) : 0 };
   }
 
   /** SYSTEM/BUSINESS_ADMIN thấy tất cả; role khác (MANAGER) chỉ thấy người cùng phòng ban/cấp dưới trực tiếp. */
-  private async scopeClause(callerId: string): Promise<{ sql: string; params: unknown[] }> {
+  private async scopeClause(callerId: string, bind: (v: unknown) => string): Promise<string> {
     const roles = (await this.dataSource.query(
       `SELECT r.role_code FROM user_roles ur JOIN roles r ON r.id = ur.role_id
         WHERE ur.user_id = $1 AND ur.is_active = true AND r.is_active = true`,
       [callerId],
     )) as Array<{ role_code: string }>;
-    if (roles.some((r) => FULL_SCOPE_ROLES.includes(r.role_code))) return { sql: '', params: [] };
-    return {
-      sql: `AND x.user_id IN (
-              SELECT t.id FROM users t JOIN users c ON c.id = $7
+    if (roles.some((r) => FULL_SCOPE_ROLES.includes(r.role_code))) return '';
+    return `AND x.user_id IN (
+              SELECT t.id FROM users t JOIN users c ON c.id = ${bind(callerId)}
                WHERE t.deleted_at IS NULL
                  AND (t.direct_manager_id = c.id
-                      OR (c.department_id IS NOT NULL AND t.department_id = c.department_id)))`,
-      params: [callerId],
-    };
+                      OR (c.department_id IS NOT NULL AND t.department_id = c.department_id)))`;
   }
 
   private async audit(callerId: string, q: CameraTraceQueryDto): Promise<void> {

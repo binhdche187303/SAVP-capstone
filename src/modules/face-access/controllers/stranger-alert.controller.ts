@@ -17,6 +17,7 @@ import { RequirePermissions } from '../../auth/decorators/require-permissions.de
 import { StrangerAlertService } from '../services/stranger-alert.service.js';
 import { ListStrangerAlertsQueryDto } from '../dto/list-stranger-alerts.query.dto.js';
 import { ReviewStrangerDto } from '../dto/review-stranger.dto.js';
+import { DismissStrangerDto, ReopenStrangerDto } from '../dto/dismiss-stranger.dto.js';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator.js';
 
 /**
@@ -56,10 +57,12 @@ export class StrangerAlertController {
   async sightings(
     @Param('deviceId', ParseUUIDPipe) deviceId: string,
     @Query('strangerId') strangerId?: string,
+    @Query('status') status?: string,
   ) {
     const data = await this.strangerAlertService.listSightings(
       deviceId,
       strangerId || null,
+      status === 'dismissed' ? 'dismissed' : 'pending',
     );
     return { success: true, message: 'Stranger sightings retrieved', data };
   }
@@ -81,5 +84,25 @@ export class StrangerAlertController {
   async review(@Body() dto: ReviewStrangerDto, @CurrentUser() user: { userId: string }) {
     const data = await this.strangerAlertService.review(dto, user.userId);
     return { success: true, message: 'Stranger events reviewed', data };
+  }
+
+  @Post('dismiss')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('face.stranger.review')
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  @ApiOperation({ summary: 'Đóng cảnh báo người lạ (bắt buộc lý do, có audit, mở lại được)' })
+  async dismiss(@Body() dto: DismissStrangerDto, @CurrentUser() user: { userId: string }) {
+    const data = await this.strangerAlertService.dismiss(dto, user.userId);
+    return { success: true, message: 'Stranger events dismissed', data };
+  }
+
+  @Post('reopen')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('face.stranger.review')
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  @ApiOperation({ summary: 'Mở lại cảnh báo người lạ đã đóng' })
+  async reopen(@Body() dto: ReopenStrangerDto, @CurrentUser() user: { userId: string }) {
+    const data = await this.strangerAlertService.reopen(dto, user.userId);
+    return { success: true, message: 'Stranger events reopened', data };
   }
 }

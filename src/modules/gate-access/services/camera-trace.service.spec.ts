@@ -70,7 +70,7 @@ describe('CameraTraceService (họp 20/10 — truy vết theo camera/nhóm/khu v
   it('nhóm không có camera → trả rỗng, KHÔNG quét bảng sự kiện', async () => {
     devices = [];
     const r = await service.trace(CALLER, { groupId: GROUP_ID, ...range });
-    expect(r).toEqual({ devices: [], events: [], page: 1, limit: 100, hasMore: false });
+    expect(r).toEqual({ devices: [], events: [], page: 1, limit: 100, hasMore: false, total: 0 });
     expect(captured.some((c) => c.sql.includes('WITH ev AS'))).toBe(false);
   });
 
@@ -128,7 +128,48 @@ describe('CameraTraceService (họp 20/10 — truy vết theo camera/nhóm/khu v
     await service.trace(CALLER, { groupId: GROUP_ID, ...range });
     const evq = captured.find((c) => c.sql.includes('WITH ev AS'))!;
     expect(evq.sql).toContain('direct_manager_id');
-    expect(evq.params[6]).toBe(CALLER);
+    expect(evq.params).toContain(CALLER);
+  });
+
+  describe('lọc + sắp xếp phía máy chủ (áp dụng trên toàn bộ kết quả, không chỉ 1 trang)', () => {
+    const evSql = () => captured.find((c) => c.sql.includes('WITH ev AS'))!;
+
+    it('mặc định: mới nhất trước (time DESC), id làm tiêu chí phụ để phân trang ổn định', async () => {
+      await service.trace(CALLER, { deviceId: DEVICE_ID, ...range });
+      expect(evSql().sql).toContain('ORDER BY x.ev_time DESC NULLS LAST, x.ev_time DESC, x.id');
+    });
+
+    it('sortBy/sortDir chỉ nhận cột trong whitelist và đưa vào ORDER BY', async () => {
+      await service.trace(CALLER, { deviceId: DEVICE_ID, ...range, sortBy: 'person', sortDir: 'asc' });
+      expect(evSql().sql).toContain('ORDER BY lower(COALESCE(u.full_name, x.plate_number)) ASC NULLS LAST');
+    });
+
+    it('kind + q là tham số ràng buộc (không nối chuỗi) và ký tự LIKE được escape', async () => {
+      await service.trace(CALLER, { deviceId: DEVICE_ID, ...range, kind: 'gate', q: '50%_a' });
+      const { sql, params } = evSql();
+      expect(sql).toMatch(/x\.kind = \$\d+/);
+      expect(sql).toContain('u.full_name ILIKE');
+      expect(sql).not.toContain('50%_a');
+      expect(params).toContain('gate');
+      expect(params).toContain('%50\\%\\_a%');
+    });
+
+    it('trả total (tổng trên mọi trang) và hasMore theo limit', async () => {
+      events = [row({ id: 'a', total_count: '7' }), row({ id: 'b', total_count: '7' }), row({ id: 'c', total_count: '7' })];
+      const r = await service.trace(CALLER, { deviceId: DEVICE_ID, ...range, limit: 2 });
+      expect(r.total).toBe(7);
+      expect(r.hasMore).toBe(true);
+      expect(r.events).toHaveLength(2);
+    });
+
+    it('MANAGER + lọc: chỉ số tham số không bị lệch (scope + kind dùng $n khác nhau)', async () => {
+      roles = ['MANAGER'];
+      await service.trace(CALLER, { deviceId: DEVICE_ID, ...range, kind: 'zone', q: 'long' });
+      const { sql, params } = evSql();
+      const refs = [...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1]));
+      expect(Math.max(...refs)).toBe(params.length);
+      expect(params).toContain(CALLER);
+    });
   });
 
   it('ghi audit camera_trace.view; lỗi ghi audit không làm hỏng kết quả', async () => {
