@@ -91,6 +91,7 @@ type ZoneUpdatableFields = Pick<
   | 'zoneName'
   | 'zoneType'
   | 'status'
+  | 'visitorPolicy'
   | 'building'
   | 'floor'
   | 'description'
@@ -146,6 +147,7 @@ export class ZonesService {
       zoneCode,
       zoneName: dto.zoneName,
       zoneType: dto.zoneType,
+      visitorPolicy: dto.visitorPolicy ?? (dto.zoneType === 'gate' ? 'open' : 'grantable'),
       building: dto.building ?? null,
       floor: dto.floor ?? null,
       description: dto.description ?? null,
@@ -231,6 +233,7 @@ export class ZonesService {
     if (dto.zoneName !== undefined) updates.zoneName = dto.zoneName;
     if (dto.zoneType !== undefined) updates.zoneType = dto.zoneType;
     if (dto.status !== undefined) updates.status = dto.status;
+    if (dto.visitorPolicy !== undefined) updates.visitorPolicy = dto.visitorPolicy;
     if (dto.building !== undefined) updates.building = dto.building;
     if (dto.floor !== undefined) updates.floor = dto.floor;
     if (dto.description !== undefined) updates.description = dto.description;

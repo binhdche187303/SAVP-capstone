@@ -20,6 +20,8 @@ export interface VisitPayload {
   scheduledFrom?: string;
   scheduledTo?: string;
   consent?: boolean;
+  /** Chỉ kênh walk_in / host_invite; kiểm ở VisitorZonePolicyService. */
+  zoneIds?: string[];
 }
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

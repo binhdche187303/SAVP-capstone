@@ -13,6 +13,7 @@ import { toVisitView, VISIT_VIEW_SELECT, VisitRow, VisitView } from '../presente
 import { VisitCodeService } from './visit-code.service.js';
 import { VisitorIdentityService } from './visitor-identity.service.js';
 import { VisitorNotifier } from './visitor-notifier.service.js';
+import { VisitorZonePolicyService } from './visitor-zone-policy.service.js';
 
 const MAX_PHOTO_BYTES = 2 * 1024 * 1024;
 const ALLOWED_PHOTO_MIME = ['image/jpeg', 'image/png'];
@@ -45,6 +46,7 @@ export class VisitService {
     private readonly faceProfiles: FaceProfileService,
     private readonly notifier: VisitorNotifier,
     private readonly audit: AuditLogsService,
+    private readonly zonePolicy: VisitorZonePolicyService,
   ) {}
 
   // ───────────── Đọc ─────────────
@@ -85,6 +87,11 @@ export class VisitService {
       throw e;
     }
 
+    // Lễ tân / người mời được chọn khu (theo chính sách khu); khách tự đăng ký online không được tự chọn.
+    const zoneIds = channel !== 'online' && payload.zoneIds?.length
+      ? await this.zonePolicy.resolve(payload.zoneIds, actor)
+      : await this.zonePolicy.defaultZoneIds(cfg.defaultZoneCodes);
+
     const photo = this.decodePhoto(payload.visitor?.photo);
     const v = payload.visitor ?? {};
     const identity = await this.identity.resolve({
@@ -123,11 +130,7 @@ export class VisitService {
         ],
       );
       const id = rows[0].id;
-      await m.query(
-        `INSERT INTO visitor_visit_zones (visit_id, zone_id)
-         SELECT $1, z.id FROM zones z WHERE z.deleted_at IS NULL AND z.status = 'active' AND (z.zone_type = 'gate' OR z.zone_code = ANY($2))`,
-        [id, cfg.defaultZoneCodes],
-      );
+      await m.query(`INSERT INTO visitor_visit_zones (visit_id, zone_id) SELECT $1, unnest($2::uuid[])`, [id, zoneIds]);
       await this.addEvent(m, id, 'registered', { actorUserId: actor?.userId ?? null });
       if (approvedNow) await this.addEvent(m, id, 'approved', { actorUserId: actor?.userId ?? hostRow!.id });
       return id;

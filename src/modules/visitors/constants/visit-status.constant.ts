@@ -11,6 +11,7 @@ export const VISIT_EVENT_TYPES = [
   'registered', 'approved', 'rejected', 'cancelled', 'revoked', 'extended', 'photo_added',
   'face_verified', 'manual_review', 'access_denied', 'check_in', 'check_out', 'expired',
   'face_removed', 'email_sent', 'host_notified', 'security_notified', 'manual_close', 'exit_unrecorded', 'host_reassigned',
+  'access_updated',
 ] as const;
 export type VisitEventType = (typeof VISIT_EVENT_TYPES)[number];
 

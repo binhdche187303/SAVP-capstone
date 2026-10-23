@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 
 /** Dữ liệu khách: mọi trường tùy chọn ở tầng cấu trúc; nghiệp vụ kiểm ở `validateVisitPayload` (thông điệp trùng FE). */
 export class VisitorInfoDto {
@@ -26,4 +26,6 @@ export class PublicRegistrationDto {
 /** Tạo lượt nội bộ: lễ tân (walk_in, chọn người được gặp) hoặc người được gặp mời khách (host_invite). */
 export class CreateVisitDto extends PublicRegistrationDto {
   @IsIn(['walk_in', 'host_invite']) channel!: 'walk_in' | 'host_invite';
+  /** Khu được phép; bỏ trống = khu mặc định (mọi khu `open`). */
+  @IsOptional() @IsArray() @IsString({ each: true }) zoneIds?: string[];
 }

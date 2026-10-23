@@ -14,7 +14,7 @@ import type { VisitView } from '../presenters/visit-view.presenter.js';
 
 export type HostNotificationType =
   | 'visitor_pending_approval' | 'visitor_registered' | 'visitor_arrived'
-  | 'visitor_left' | 'visitor_overstay' | 'visitor_must_leave';
+  | 'visitor_left' | 'visitor_overstay' | 'visitor_must_leave' | 'visitor_zone_violation';
 
 const TYPE_MAP: Record<HostNotificationType, NotificationType> = {
   visitor_pending_approval: NotificationType.VISITOR_PENDING_APPROVAL,
@@ -23,6 +23,7 @@ const TYPE_MAP: Record<HostNotificationType, NotificationType> = {
   visitor_left: NotificationType.VISITOR_LEFT,
   visitor_overstay: NotificationType.VISITOR_OVERSTAY,
   visitor_must_leave: NotificationType.VISITOR_MUST_LEAVE,
+  visitor_zone_violation: NotificationType.VISITOR_ZONE_VIOLATION,
 };
 
 /**
@@ -65,17 +66,23 @@ export class VisitorNotifier {
 
   /** Cảnh báo an ninh (Trung tâm cảnh báo). dedupeKey = id lượt: một lượt chỉ có một cảnh báo mở mỗi loại. */
   async alertSecurity(
-    visit: Pick<VisitView, 'id' | 'code' | 'visitor'>,
+    visit: Pick<VisitView, 'id' | 'code' | 'visitor'> & Partial<Pick<VisitView, 'hostName' | 'zoneNames'>>,
     alertType: 'visitor_overstay' | 'visitor_must_leave' | 'visitor_zone_violation',
     zoneId: string | null,
     detail: string,
+    sourceEventId: string | null = null,
   ): Promise<boolean> {
     try {
+      // sourceEventId → Trung tâm cảnh báo hiện ảnh chụp camera; hostName/zoneNames để bảo vệ biết khách của ai, được đi đâu.
       await this.alerts.recordAlert({
         alertType,
         zoneId,
         dedupeKey: visit.id,
-        payloadJson: { visitId: visit.id, code: visit.code, visitorName: visit.visitor.fullName, detail },
+        sourceEventId,
+        payloadJson: {
+          visitId: visit.id, code: visit.code, visitorName: visit.visitor.fullName, detail,
+          hostName: visit.hostName ?? null, allowedZoneNames: visit.zoneNames ?? [],
+        },
       });
       return true;
     } catch (e) {

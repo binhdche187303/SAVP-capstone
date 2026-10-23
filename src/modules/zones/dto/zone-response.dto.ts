@@ -26,6 +26,7 @@ export interface ZoneResponse {
   longitude: number | null;
   metadata_json: Record<string, unknown> | null;
   status: string;
+  visitor_policy: string;
   created_at: Date;
   updated_at: Date;
   iot_devices?: IotDeviceResponseDto[];
@@ -62,6 +63,7 @@ export function toZoneResponse(
     longitude: entity.longitude ?? null,
     metadata_json: entity.metadataJson,
     status: entity.status,
+    visitor_policy: entity.visitorPolicy,
     created_at: entity.createdAt,
     updated_at: entity.updatedAt,
   };
