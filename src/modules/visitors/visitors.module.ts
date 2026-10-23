@@ -33,6 +33,8 @@ import { FaceAccessModule } from '../face-access/face-access.module.js';
 import { VisitorHostService } from './services/visitor-host.service.js';
 import { VisitorIdentityService } from './services/visitor-identity.service.js';
 import { VisitorNotifier } from './services/visitor-notifier.service.js';
+import { VisitorVerificationService } from './services/visitor-verification.service.js';
+import { WebsocketModule } from '../websocket/websocket.module.js';
 
 /**
  * VisitorsModule (VIS-BE-001) — phân hệ Khách đến làm việc (2.10).
@@ -48,6 +50,7 @@ import { VisitorNotifier } from './services/visitor-notifier.service.js';
     AccountsModule,
     AlertsModule,
     NotificationsModule,
+    WebsocketModule,
     ZonesModule,
     TypeOrmModule.forFeature([VisitorEntity, VisitorVisitEntity, VisitorVisitZoneEntity, VisitorVisitEventEntity]),
   ],
@@ -61,6 +64,7 @@ import { VisitorNotifier } from './services/visitor-notifier.service.js';
     VisitorHostService,
     VisitorActorService,
     VisitorNotifier,
+    VisitorVerificationService,
     VisitService,
     VisitActionsService,
     VisitQueryService,

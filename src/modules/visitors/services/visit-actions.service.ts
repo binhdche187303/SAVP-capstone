@@ -51,7 +51,7 @@ export class VisitActionsService {
 
   async approve(id: string, dto: { access?: { validFrom?: string; validTo?: string; zoneIds?: string[] } }, actor: Actor): Promise<VisitView> {
     const row = await this.load(id);
-    this.authorizeHost(row, actor);
+    await this.authorizeHostOrManage(row, actor);
     const to = this.guard(row.status, 'approve');
     const access = dto.access ? await this.validateAccess(dto.access) : null;
 
@@ -79,7 +79,7 @@ export class VisitActionsService {
 
   async reject(id: string, dto: { reason?: string }, actor: Actor): Promise<VisitView> {
     const row = await this.load(id);
-    this.authorizeHost(row, actor);
+    await this.authorizeHostOrManage(row, actor);
     const reason = String(dto.reason ?? '').trim();
     const to = this.guard(row.status, 'reject');
     if (!reason) throw err(400, 'VALIDATION_ERROR', 'Vui lòng nhập lý do từ chối');
@@ -308,6 +308,7 @@ export class VisitActionsService {
     const view = await this.visits.getView(visitId);
     await this.notifier.notifyHost(view, hostType, message(view));
     await this.sync(visitId);
+    this.notifier.visitChanged(view, hostType);
     return view;
   }
 
@@ -415,6 +416,7 @@ export class VisitActionsService {
         .logAction({ userId: actor.userId, actionType: auditAction, entityType: 'visitor_visits', entityId: visitId, metadataJson: { code: view.code, status: view.status } })
         .catch((e) => this.logger.warn(`audit lỗi: ${e instanceof Error ? e.message : 'unknown'}`));
     }
+    this.notifier.visitChanged(view, auditAction);
     return view;
   }
 }

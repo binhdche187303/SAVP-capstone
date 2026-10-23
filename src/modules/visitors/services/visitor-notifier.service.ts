@@ -11,6 +11,8 @@ import {
 } from '../../mail/templates/builders.js';
 import { VisitorConfigService } from '../config/visitor-config.service.js';
 import type { VisitView } from '../presenters/visit-view.presenter.js';
+import { WebsocketService } from '../../websocket/websocket.service.js';
+import { FaceProfileService } from '../../accounts/services/face-profile.service.js';
 
 export type HostNotificationType =
   | 'visitor_pending_approval' | 'visitor_registered' | 'visitor_arrived'
@@ -39,7 +41,18 @@ export class VisitorNotifier {
     private readonly appConfig: ConfigService,
     private readonly dataSource: DataSource,
     private readonly alerts: AlertsService,
+    private readonly websocket: WebsocketService,
+    private readonly faceProfiles: FaceProfileService,
   ) {}
+
+  /** Tín hiệu dùng để các màn hình Desk đồng bộ lại danh sách ngay lập tức. */
+  visitChanged(visit: Pick<VisitView, 'id' | 'status'>, kind: string): void {
+    try {
+      this.websocket.emitVisitorVisitChanged({ visitId: visit.id, status: visit.status, kind });
+    } catch (e) {
+      this.logger.warn(`visitChanged thất bại: ${e instanceof Error ? e.message : 'unknown'}`);
+    }
+  }
 
   /** Thông báo trong ứng dụng (+ email nếu bật) cho người được gặp. Nội dung không chứa giấy tờ/điện thoại khách. */
   async notifyHost(visit: Pick<VisitView, 'id' | 'code' | 'hostId' | 'visitor'>, type: HostNotificationType, message: string): Promise<boolean> {
@@ -71,11 +84,63 @@ export class VisitorNotifier {
     detail: string,
   ): Promise<boolean> {
     try {
+      const context = (await this.dataSource.query(
+        `SELECT v.photo_file_id, v.last_seen_zone_id, z.zone_name,
+                last_event.device_event_id, last_event.device_id,
+                d.device_name, d.device_code, cg.group_name
+           FROM visitor_visits v
+           LEFT JOIN zones z ON z.id = v.last_seen_zone_id
+           LEFT JOIN LATERAL (
+             SELECT e.device_event_id, de.device_id
+               FROM visitor_visit_events e
+               LEFT JOIN iot_device_events de ON de.id = e.device_event_id
+              WHERE e.visit_id = v.id
+              ORDER BY e.event_time DESC, e.created_at DESC
+              LIMIT 1
+           ) last_event ON TRUE
+           LEFT JOIN iot_devices d ON d.id = last_event.device_id
+           LEFT JOIN LATERAL (
+             SELECT g.group_name
+               FROM camera_group_members m
+               JOIN camera_groups g ON g.id = m.group_id
+              WHERE m.device_id = last_event.device_id
+              ORDER BY g.group_name
+              LIMIT 1
+           ) cg ON TRUE
+          WHERE v.id = $1 AND v.deleted_at IS NULL
+          LIMIT 1`,
+        [visit.id],
+      ))[0] as {
+        photo_file_id: string | null;
+        last_seen_zone_id: string | null;
+        zone_name: string | null;
+        device_event_id: string | null;
+        device_id: string | null;
+        device_name: string | null;
+        device_code: string | null;
+        group_name: string | null;
+      } | undefined;
+      const visitorPhoto = context?.photo_file_id ? await this.faceProfiles.getMediaDataUrl(context.photo_file_id) : null;
+      const effectiveZoneId = zoneId ?? context?.last_seen_zone_id ?? null;
       await this.alerts.recordAlert({
         alertType,
-        zoneId,
+        zoneId: effectiveZoneId,
         dedupeKey: visit.id,
-        payloadJson: { visitId: visit.id, code: visit.code, visitorName: visit.visitor.fullName, detail },
+        sourceEventId: context?.device_event_id ?? null,
+        payloadJson: {
+          visitId: visit.id,
+          code: visit.code,
+          visitorName: visit.visitor.fullName,
+          detail,
+          zoneId: effectiveZoneId,
+          zoneName: context?.zone_name ?? null,
+          cameraId: context?.device_id ?? null,
+          cameraName: context?.device_name ?? null,
+          cameraCode: context?.device_code ?? null,
+          cameraGroupName: context?.group_name ?? null,
+          sourceEventId: context?.device_event_id ?? null,
+          ...(visitorPhoto ? { visitorPhoto } : {}),
+        },
       });
       return true;
     } catch (e) {

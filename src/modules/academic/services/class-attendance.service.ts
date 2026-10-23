@@ -45,6 +45,12 @@ interface AttendanceRow {
   status: string | null;
   confidence: number | null;
   evidence_image: string | null;
+  source: string | null;
+  manual_reason: string | null;
+  actor_user_id: string | null;
+  zone_id: string | null;
+  camera_group_id: string | null;
+  camera_id: string | null;
 }
 
 const DEFAULT_CLASS_START_TIME = '08:00';
@@ -228,7 +234,13 @@ export class ClassAttendanceService {
              car.check_out_at,
              car.status,
              car.confidence,
-             car.evidence_image
+             car.evidence_image,
+             car.source,
+             car.manual_reason,
+             car.actor_user_id,
+             car.zone_id,
+             car.camera_group_id,
+             car.camera_id
         FROM class_attendance_records car
        WHERE car.class_section_id = $1
          AND car.attendance_date = $2::date
@@ -258,6 +270,12 @@ export class ClassAttendanceService {
         statusLabel: this.statusLabel(status),
         checkInText: this.formatTime(record?.check_in_at),
         checkOutText: this.formatTime(record?.check_out_at),
+        source: record?.source ?? null,
+        manualReason: record?.manual_reason ?? null,
+        actorUserId: record?.actor_user_id ?? null,
+        zoneId: record?.zone_id ?? null,
+        cameraGroupId: record?.camera_group_id ?? null,
+        cameraId: record?.camera_id ?? null,
       };
     });
   }
@@ -271,6 +289,40 @@ export class ClassAttendanceService {
     return this.summarizeRows(rows);
   }
 
+  async getEvents(currentUserId: string, classId: string, date = this.todayKey()) {
+    const resolvedClassId = await this.assertClassAccess(currentUserId, classId);
+    const rows = await this.dataSource.manager.query(
+      `SELECT e.id, e.student_id, st.student_code, u.full_name AS student_name,
+              e.direction, e.status, e.source, e.actor_user_id, actor.full_name AS actor_name,
+              e.reason, e.zone_id, e.camera_group_id, e.camera_id, e.evidence_image, e.occurred_at
+         FROM class_attendance_events e
+         JOIN students st ON st.id = e.student_id
+         JOIN users u ON u.id = st.user_id
+         LEFT JOIN users actor ON actor.id = e.actor_user_id
+        WHERE e.class_section_id = $1 AND e.attendance_date = $2::date
+        ORDER BY e.occurred_at DESC`,
+      [resolvedClassId, date],
+    );
+    return rows.map((row: any) => ({
+      id: row.id,
+      studentId: row.student_id,
+      studentCode: row.student_code,
+      studentName: row.student_name,
+      direction: row.direction,
+      status: row.status,
+      source: row.source,
+      sourceLabel: row.source === 'manual' ? 'Thủ công' : 'Tự động',
+      actorUserId: row.actor_user_id,
+      actorName: row.actor_name,
+      reason: row.reason,
+      zoneId: row.zone_id,
+      cameraGroupId: row.camera_group_id,
+      cameraId: row.camera_id,
+      evidenceImage: row.evidence_image,
+      occurredAt: row.occurred_at,
+    }));
+  }
+
   async scan(
     currentUserId: string,
     body: {
@@ -278,6 +330,9 @@ export class ClassAttendanceService {
       administrativeClass?: string;
       direction?: 'in' | 'out' | 'enter' | 'leave';
       snapshotImageBase64?: string;
+      zoneId?: string;
+      cameraGroupId?: string;
+      cameraId?: string;
     },
   ) {
     if (!body.classId) {
@@ -367,7 +422,7 @@ export class ClassAttendanceService {
       `
       INSERT INTO class_attendance_records (
         class_section_id, student_id, attendance_date, check_in_at, check_out_at,
-        status, confidence, evidence_image, source, updated_at
+        status, confidence, evidence_image, source, zone_id, camera_group_id, camera_id, updated_at
       )
       VALUES (
         $1, $2, $3::date,
@@ -386,8 +441,11 @@ export class ClassAttendanceService {
         confidence = $9,
         evidence_image = COALESCE($7, class_attendance_records.evidence_image),
         source = $8,
+        zone_id = COALESCE($10, class_attendance_records.zone_id),
+        camera_group_id = COALESCE($11, class_attendance_records.camera_group_id),
+        camera_id = COALESCE($12, class_attendance_records.camera_id),
         updated_at = now()
-      RETURNING id, student_id, check_in_at, check_out_at, status, confidence, evidence_image
+      RETURNING id, student_id, check_in_at, check_out_at, status, confidence, evidence_image, source
       `,
       [
         classId,
@@ -403,8 +461,17 @@ export class ClassAttendanceService {
             ? 'webcam'
             : 'camera',
         confidence,
+        body.zoneId ?? null,
+        body.cameraGroupId ?? null,
+        body.cameraId ?? null,
       ],
     )) as AttendanceRow[];
+
+    await this.recordAttendanceEvent({
+      classId, studentId: student.id, date, direction, status, source: recognition?.face ? 'automatic_face' : 'automatic_camera',
+      actorUserId: null, reason: null, zoneId: body.zoneId, cameraGroupId: body.cameraGroupId, cameraId: body.cameraId,
+      evidenceImage: body.snapshotImageBase64,
+    });
 
     return {
       success: true,
@@ -426,6 +493,50 @@ export class ClassAttendanceService {
               }.`,
       },
     };
+  }
+
+  async updateManual(
+    currentUserId: string,
+    body: {
+      classId?: string;
+      studentId?: string;
+      date?: string;
+      status?: 'on_time' | 'late' | 'absent' | 'left';
+      checkInAt?: string | null;
+      checkOutAt?: string | null;
+      reason?: string;
+      zoneId?: string;
+      cameraGroupId?: string;
+      cameraId?: string;
+      evidenceImage?: string;
+    },
+  ) {
+    if (!body.classId || !body.studentId || !body.status || !body.reason?.trim()) {
+      throw new BadRequestException('classId, studentId, status và reason là bắt buộc');
+    }
+    const classId = await this.assertClassAccess(currentUserId, body.classId, ['TEACHER', 'SYSTEM_ADMIN', 'ADMIN', 'BUSINESS_ADMIN']);
+    const students = await this.getClassStudents(classId);
+    const student = students.find((item) => item.id === body.studentId);
+    if (!student) throw new BadRequestException('Sinh viên không thuộc lớp này');
+    const date = body.date ?? this.todayKey();
+    const checkIn = body.status === 'absent' ? null : (body.checkInAt ?? new Date().toISOString());
+    const checkOut = body.status === 'left' ? (body.checkOutAt ?? new Date().toISOString()) : (body.checkOutAt ?? null);
+    const rows = await this.dataSource.manager.query(
+      `INSERT INTO class_attendance_records (class_section_id, student_id, attendance_date, check_in_at, check_out_at, status, confidence, evidence_image, source, manual_reason, actor_user_id, zone_id, camera_group_id, camera_id, updated_at)
+       VALUES ($1,$2,$3::date,$4::timestamptz,$5::timestamptz,$6,NULL,$7,'manual',$8,$9,$10,$11,$12,now())
+       ON CONFLICT (class_section_id, student_id, attendance_date) DO UPDATE SET check_in_at=$4::timestamptz, check_out_at=$5::timestamptz, status=$6, evidence_image=COALESCE($7,class_attendance_records.evidence_image), source='manual', manual_reason=$8, actor_user_id=$9, zone_id=$10, camera_group_id=$11, camera_id=$12, updated_at=now()
+       RETURNING id, student_id, check_in_at, check_out_at, status, source, manual_reason`,
+      [classId, student.id, date, checkIn, checkOut, body.status, body.evidenceImage ?? null, body.reason.trim(), currentUserId, body.zoneId ?? null, body.cameraGroupId ?? null, body.cameraId ?? null],
+    );
+    await this.recordAttendanceEvent({ classId, studentId: student.id, date, direction: checkOut ? 'out' : 'in', status: body.status, source: 'manual', actorUserId: currentUserId, reason: body.reason.trim(), zoneId: body.zoneId, cameraGroupId: body.cameraGroupId, cameraId: body.cameraId, evidenceImage: body.evidenceImage });
+    return { student, record: rows[0], message: `Đã cập nhật thủ công trạng thái của ${student.name}.` };
+  }
+
+  private async recordAttendanceEvent(input: { classId: string; studentId: string; date: string; direction: string; status: string; source: string; actorUserId: string | null; reason?: string | null; zoneId?: string | null; cameraGroupId?: string | null; cameraId?: string | null; evidenceImage?: string | null }) {
+    await this.dataSource.manager.query(
+      `INSERT INTO class_attendance_events (class_section_id, student_id, attendance_date, direction, status, source, actor_user_id, reason, zone_id, camera_group_id, camera_id, evidence_image) VALUES ($1,$2,$3::date,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+      [input.classId, input.studentId, input.date, input.direction, input.status, input.source, input.actorUserId, input.reason ?? null, input.zoneId ?? null, input.cameraGroupId ?? null, input.cameraId ?? null, input.evidenceImage ?? null],
+    );
   }
 
   async getStudentReport(

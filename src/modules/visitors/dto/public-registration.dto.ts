@@ -11,6 +11,8 @@ export class VisitorInfoDto {
   @IsOptional() @IsString() @MaxLength(16) plateNumber?: string;
   /** Data URL ảnh khuôn mặt; ≤ 2 MB sau giải mã, chỉ JPEG/PNG. */
   @IsOptional() @IsString() @MaxLength(3_200_000) photo?: string | null;
+  /** Khách đã xác thực và muốn dùng lại Face ID đã lưu. */
+  @IsOptional() @IsBoolean() reuseFaceProfile?: boolean;
 }
 
 export class PublicRegistrationDto {

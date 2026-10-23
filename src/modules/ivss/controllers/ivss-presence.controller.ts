@@ -126,4 +126,26 @@ export class IvssPresenceController {
     }
     return { success: true, message: 'IVSS meeting presence retrieved', data };
   }
+
+  @Get(':meetingId/access-events')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('ivss.presence.read')
+  @ApiOperation({ summary: 'Xem nhật ký vào/ra chi tiết của phòng họp' })
+  async meetingAccessEvents(
+    @Param('meetingId', ParseUUIDPipe) meetingId: string,
+    @CurrentUser() currentUser: { userId: string },
+  ) {
+    const data = await this.presenceQueryService.getMeetingAccessEvents(
+      meetingId,
+      currentUser.userId,
+    );
+    if (!data) {
+      throw new NotFoundException({
+        code: 'MEETING_NOT_FOUND',
+        message: 'Meeting not found.',
+      });
+    }
+    return { success: true, message: 'Meeting access events retrieved', data };
+  }
+
 }

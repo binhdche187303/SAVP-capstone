@@ -2,11 +2,13 @@ import { Body, Controller, ForbiddenException, Get, HttpCode, HttpStatus, NotFou
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { VisitorConfigService } from '../config/visitor-config.service.js';
 import { PublicRegistrationDto } from '../dto/public-registration.dto.js';
+import { RequestVisitorVerificationDto, VerifyVisitorVerificationDto } from '../dto/visitor-verification.dto.js';
 import { PublicRateLimit, PublicRateLimitGuard } from '../guards/public-rate-limit.guard.js';
 import { VisitorsEnabledGuard } from '../guards/visitors-enabled.guard.js';
 import { toPublicVisitView, toVisitView } from '../presenters/visit-view.presenter.js';
 import { VisitorHostService } from '../services/visitor-host.service.js';
 import { VisitService } from '../services/visit.service.js';
+import { VisitorVerificationService } from '../services/visitor-verification.service.js';
 
 const bodyPipe = new ValidationPipe({ whitelist: true, transform: true });
 const ok = (message: string, data: unknown) => ({ success: true, message, data, meta: {} });
@@ -23,6 +25,7 @@ export class PublicVisitorController {
     private readonly visits: VisitService,
     private readonly hosts: VisitorHostService,
     private readonly config: VisitorConfigService,
+    private readonly verification: VisitorVerificationService,
   ) {}
 
   @Post('visitor-registrations')
@@ -33,6 +36,24 @@ export class PublicVisitorController {
   async register(@Body() dto: PublicRegistrationDto) {
     const view = await this.visits.create('online', dto, null);
     return ok('Đã nhận đăng ký. Kết quả sẽ được gửi qua email.', view);
+  }
+
+  @Post('visitor-verifications/request')
+  @PublicRateLimit('lookup')
+  @HttpCode(HttpStatus.OK)
+  @UsePipes(bodyPipe)
+  @ApiOperation({ summary: 'Gửi mã xác thực khách quay lại qua Zalo ZBS' })
+  async requestVerification(@Body() dto: RequestVisitorVerificationDto) {
+    return ok('Đã gửi mã xác thực qua Zalo OA', await this.verification.request(dto.contact));
+  }
+
+  @Post('visitor-verifications/verify')
+  @PublicRateLimit('lookup')
+  @HttpCode(HttpStatus.OK)
+  @UsePipes(bodyPipe)
+  @ApiOperation({ summary: 'Xác thực mã khách quay lại' })
+  async verifyVerification(@Body() dto: VerifyVisitorVerificationDto) {
+    return ok('Xác thực thành công', await this.verification.verify(dto.verificationId, dto.code));
   }
 
   @Get('visitor-registrations/:code')

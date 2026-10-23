@@ -364,6 +364,7 @@ export class AlertsService {
                        true
                      )
               END
+              || COALESCE($6::jsonb, '{}'::jsonb)
         WHERE id = $1`,
       [
         id,
@@ -371,6 +372,7 @@ export class AlertsService {
         MAX_OCCURRENCES_PER_ALERT,
         debounceSeconds,
         input.alertType,
+        JSON.stringify(input.payloadJson ?? {}),
       ],
     );
     return this.getOrThrow(id);

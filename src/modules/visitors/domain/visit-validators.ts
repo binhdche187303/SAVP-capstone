@@ -12,7 +12,7 @@ export class VisitValidationError extends Error {
 export interface VisitPayload {
   visitor?: {
     fullName?: string; idNumber?: string; phone?: string; email?: string;
-    organization?: string; plateNumber?: string; photo?: string | null;
+    organization?: string; plateNumber?: string; photo?: string | null; reuseFaceProfile?: boolean;
   };
   hostId?: string;
   purpose?: string;
@@ -70,7 +70,7 @@ export function validateVisitPayload(
   if (to - from > cfg.maxVisitDays * DAY_MS) throw new VisitValidationError(`Khung giờ hẹn tối đa ${cfg.maxVisitDays} ngày`);
 
   if (channel !== 'host_invite') {
-    if (!v.photo) throw new VisitValidationError('Vui lòng chụp hoặc tải ảnh khuôn mặt');
+    if (!v.photo && v.reuseFaceProfile !== true) throw new VisitValidationError('Vui lòng chụp hoặc tải ảnh khuôn mặt');
     if (p.consent !== true) throw new VisitValidationError('Cần đồng ý xử lý dữ liệu sinh trắc để tiếp tục');
   }
 }

@@ -99,6 +99,17 @@ export class VisitService {
         actor?.userId ?? null,
       );
       photoFileId = enrolled.mediaFileId;
+    } else if (payload.visitor?.reuseFaceProfile === true) {
+      const profiles: Array<{ primary_image_file_id: string }> = await this.dataSource.query(
+        `SELECT primary_image_file_id
+         FROM face_profiles
+         WHERE user_id = $1 AND deleted_at IS NULL AND primary_image_file_id IS NOT NULL
+         ORDER BY last_updated_at DESC NULLS LAST, enrolled_at DESC NULLS LAST
+         LIMIT 1`,
+        [identity.userId],
+      );
+      photoFileId = profiles[0]?.primary_image_file_id ?? null;
+      if (!photoFileId) throw err(400, 'FACE_PROFILE_NOT_FOUND', 'Không tìm thấy Face ID đã lưu, vui lòng chụp lại ảnh khuôn mặt');
     }
 
     const from = new Date(String(payload.scheduledFrom));
@@ -134,6 +145,7 @@ export class VisitService {
     });
 
     const created = await this.getView(visitId);
+    this.notifier.visitChanged(created, 'registered');
     await this.afterCreate(created, channel, actor);
     return this.getView(visitId); // đọc lại để có sự kiện email_sent
   }

@@ -9,6 +9,22 @@ interface RawEvt {
   similarity: string | null;
   sz_uid: string | null;
 }
+
+interface MeetingAccessEventRow {
+  id: string;
+  event_time: Date | string;
+  user_id: string | null;
+  full_name: string | null;
+  direction: string | null;
+  match_state: string | null;
+  similarity: string | null;
+  room_name: string | null;
+  zone_id: string | null;
+  zone_name: string | null;
+  camera_id: string | null;
+  camera_name: string | null;
+  camera_group_name: string | null;
+}
 interface BoundRow {
   start_time: Date | string;
   end_time: Date | string;
@@ -389,6 +405,113 @@ export class IvssPresenceQueryService {
       await this.loadMeetingUnmatchedIdentityCount(meetingId);
 
     return { participants: rows, meetingUnmatchedIdentityCount };
+  }
+
+  /** Nhật ký vào/ra chi tiết của một cuộc họp, dùng cho màn theo dõi phòng họp. */
+  async getMeetingAccessEvents(meetingId: string, callerId: string) {
+    const bound = await this.loadBound(meetingId);
+    if (!bound) return null;
+
+    // Nhật ký của phòng họp được chia sẻ cho người tham gia trong đúng cuộc họp.
+    // Không mở quyền xem cho người ngoài cuộc họp và không áp dụng scope phòng ban
+    // của màn quản trị vào luồng theo dõi trực tiếp này.
+    const participantRows: Array<{ user_id: string }> =
+      await this.dataSource.manager.query(
+        `SELECT user_id
+           FROM meeting_participants
+          WHERE meeting_id = $1
+            AND user_id = $2
+            AND invitation_status <> 'declined'
+          LIMIT 1`,
+        [meetingId, callerId],
+      );
+    if (!participantRows.length) {
+      const isHost = await this.isCallerHostOfMeeting(callerId, meetingId);
+      if (!isHost) {
+        throw new ForbiddenException({
+          success: false,
+          message: 'Only meeting participants can view meeting access events',
+          error: { code: 'MEETING_PARTICIPANT_ONLY', details: {} },
+        });
+      }
+    }
+
+    const rows: MeetingAccessEventRow[] = await this.dataSource.manager.query(
+      `SELECT e.id,
+              e.event_time,
+              NULLIF(e.payload_json->>'userId', '')::uuid AS user_id,
+              u.full_name,
+              e.payload_json->>'direction' AS direction,
+              e.payload_json->>'matchState' AS match_state,
+              e.payload_json->>'similarity' AS similarity,
+              r.room_name,
+              e.zone_id,
+              z.zone_name,
+              e.device_id AS camera_id,
+              d.device_name AS camera_name,
+              (
+                SELECT string_agg(DISTINCT cg.group_name, ', ' ORDER BY cg.group_name)
+                  FROM camera_group_members cgm
+                  JOIN camera_groups cg ON cg.id = cgm.group_id
+                 WHERE cgm.device_id = e.device_id
+              ) AS camera_group_name
+         FROM iot_device_events e
+         LEFT JOIN users u ON u.id = NULLIF(e.payload_json->>'userId', '')::uuid
+         LEFT JOIN rooms r ON r.id = e.room_id
+         LEFT JOIN zones z ON z.id = e.zone_id
+         LEFT JOIN iot_devices d ON d.id = e.device_id
+        WHERE e.event_type = 'ivss_face_event'
+          AND e.meeting_id = $1
+        UNION ALL
+       SELECT ae.id,
+              ae.event_time,
+              ae.user_id,
+              u2.full_name,
+              CASE WHEN ae.event_type = 'check_out' THEN 'leave' ELSE 'enter' END AS direction,
+              'camera_verified' AS match_state,
+              ae.confidence_score::text AS similarity,
+              r2.room_name,
+              NULL AS zone_id,
+              NULL AS zone_name,
+              ae.device_id AS camera_id,
+              COALESCE(d2.device_name, ae.metadata_json->>'cameraName') AS camera_name,
+              (
+                SELECT string_agg(DISTINCT cg2.group_name, ', ' ORDER BY cg2.group_name)
+                  FROM camera_group_members cgm2
+                  JOIN camera_groups cg2 ON cg2.id = cgm2.group_id
+                 WHERE cgm2.device_id = ae.device_id
+              ) AS camera_group_name
+         FROM attendance_events ae
+         LEFT JOIN users u2 ON u2.id = ae.user_id
+         LEFT JOIN rooms r2 ON r2.id = ae.room_id
+         LEFT JOIN iot_devices d2 ON d2.id = ae.device_id
+        WHERE ae.meeting_id = $1
+          AND ae.event_type IN ('check_in', 'check_out')
+        ORDER BY event_time DESC
+        LIMIT 200`,
+      [meetingId],
+    );
+
+    return {
+      meetingId,
+      roomName: rows.find((r) => r.room_name)?.room_name ?? null,
+      events: rows.map((r) => ({
+        id: r.id,
+        eventTime: new Date(r.event_time).toISOString(),
+        userId: r.user_id,
+        fullName: r.full_name ?? (r.user_id ? 'Chưa rõ danh tính' : 'Người chưa xác định'),
+        direction: r.direction,
+        matchState: r.match_state,
+        similarity: r.similarity === null ? null : Number(r.similarity),
+        zoneId: r.zone_id,
+        zoneName: r.zone_name,
+        cameraId: r.camera_id,
+        cameraName: r.camera_name,
+        cameraGroupName: r.camera_group_name,
+        isStranger: !r.user_id,
+        isUnmatched: typeof r.match_state === 'string' && r.match_state.startsWith('unmatched'),
+      })),
+    };
   }
 
   // ── CORE: buildSession (B1/B2/B3 + interval/cluster/hở + dedup) ──────────
