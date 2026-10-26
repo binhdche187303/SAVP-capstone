@@ -103,15 +103,32 @@ export class CameraTraceService {
     const page = q.page ?? 1;
     const limit = q.limit ?? 100;
 
-    const devices: Array<{ id: string; device_code: string; device_name: string }> = await this.dataSource.query(
-      `SELECT d.id, d.device_code, d.device_name
+    const devices: Array<{
+      id: string;
+      device_code: string;
+      device_name: string;
+      channel_id: number | null;
+    }> = await this.dataSource.query(
+      `SELECT
+                d.id,
+                d.device_code,
+                d.device_name,
+                (
+                  SELECT NULLIF(camera.mapped_channel, '')::int
+                  FROM system_configs sc
+                  CROSS JOIN LATERAL jsonb_each_text(sc.config_json)
+                    AS camera(camera_name, mapped_channel)
+                  WHERE sc.config_key = 'hgvision.camera_channel_map'
+                    AND sc.is_active = true
+                    AND LOWER(camera.camera_name) = LOWER(d.device_name)
+                  LIMIT 1
+                ) AS channel_id
          FROM iot_devices d
         WHERE ($1::uuid IS NULL OR d.id = $1::uuid)
           AND ($2::uuid IS NULL OR EXISTS (
                 SELECT 1 FROM camera_group_members m WHERE m.group_id = $2::uuid AND m.device_id = d.id))
-          AND ($3::uuid IS NULL OR d.zone_id = $3::uuid)
         ORDER BY d.device_name`,
-      [q.deviceId ?? null, q.groupId ?? null, q.zoneId ?? null],
+      [q.deviceId ?? null, q.groupId ?? null],
     );
     const base = {
       devices: devices.map((d) => ({ id: d.id, deviceCode: d.device_code, deviceName: d.device_name })),
@@ -128,6 +145,7 @@ export class CameraTraceService {
     };
     const scopeSql = await this.scopeClause(callerId, bind);
     const filters: string[] = [];
+    if (q.zoneId) filters.push("COALESCE(x.zone_id, d.zone_id) = " + bind(q.zoneId));
     if (q.kind) filters.push(`x.kind = ${bind(q.kind)}`);
     const needle = q.q?.trim();
     if (needle) {
@@ -145,13 +163,48 @@ export class CameraTraceService {
            FROM gate_access_logs g
           WHERE g.device_id = ANY($1::uuid[]) AND g.access_time >= $2 AND g.access_time < $3
          UNION ALL
-         SELECT e.id::text, e.event_time, 'meeting', e.device_id, e.zone_id,
+         SELECT
+                e.id::text,
+                e.event_time,
+                'meeting',
+                COALESCE(mapped_camera.id, e.device_id),
+                COALESCE(e.zone_id, mapped_camera.zone_id),
                 NULLIF(e.payload_json->>'userId','')::uuid,
-                e.payload_json->>'direction', NULL, r.room_name, e.id::text
+                e.payload_json->>'direction',
+                NULL,
+                r.room_name,
+                e.id::text
            FROM iot_device_events e
-           LEFT JOIN rooms r ON r.id = COALESCE(e.room_id, NULLIF(e.payload_json->>'roomId','')::uuid)
-                            AND r.deleted_at IS NULL
-          WHERE e.event_type = $4 AND e.device_id = ANY($1::uuid[]) AND e.event_time >= $2 AND e.event_time < $3
+           LEFT JOIN rooms r
+             ON r.id = COALESCE(
+                  e.room_id,
+                  NULLIF(e.payload_json->>'roomId','')::uuid
+                )
+            AND r.deleted_at IS NULL
+           LEFT JOIN LATERAL (
+                SELECT d2.id, d2.zone_id
+                FROM iot_devices d2
+                CROSS JOIN LATERAL (
+                    SELECT camera_name, mapped_channel
+                    FROM system_configs sc
+                    CROSS JOIN LATERAL jsonb_each_text(sc.config_json)
+                      AS camera(camera_name, mapped_channel)
+                    WHERE sc.config_key = 'hgvision.camera_channel_map'
+                      AND sc.is_active = true
+                ) camera
+                WHERE d2.id = ANY($1::uuid[])
+                  AND LOWER(camera.camera_name) = LOWER(d2.device_name)
+                  AND camera.mapped_channel =
+                      e.payload_json->>'channelId'
+                LIMIT 1
+           ) mapped_camera ON true
+          WHERE e.event_type = $4
+            AND (
+              e.device_id = ANY($1::uuid[])
+              OR mapped_camera.id IS NOT NULL
+            )
+            AND e.event_time >= $2
+            AND e.event_time < $3
          UNION ALL
          SELECT p.id::text, p.event_time, 'zone', p.device_id, p.zone_id, p.user_id,
                 p.event_type, NULL, NULL, p.metadata_json->>'sourceEventId'

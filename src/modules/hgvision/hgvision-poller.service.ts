@@ -5,6 +5,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
+import { readFile } from 'node:fs/promises';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { IVSS_EVENT_HANDLER } from '../../common/ports/ivss-event-hook.js';
@@ -30,7 +31,7 @@ const POLL_OVERLAP_SEC = 30;
 const SEEN_TTL_MS = (POLL_OVERLAP_SEC + 60) * 1000;
 const PAGE_SIZE = 100;
 /** Chặn vòng lặp phân trang khi backlog quá lớn (vd sau khi BE tắt lâu). */
-const MAX_PAGES_PER_TICK = 20;
+const MAX_PAGES_PER_TICK = 100;
 
 /**
  * HgvisionPollerService — HGVision không có webhook nên BE tự poll GET /api/history
@@ -67,7 +68,7 @@ export class HgvisionPollerService implements OnModuleInit, OnModuleDestroy {
       'HGVISION_POLL_INTERVAL_MS',
       5000,
     );
-    this.cursorSec = Math.floor(Date.now() / 1000) - POLL_OVERLAP_SEC;
+    this.cursorSec = Math.floor(Date.now() / 1000) - 604800;
     this.timer = setInterval(() => void this.tick(), intervalMs);
     this.logger.log(`HGVision poller bật (mỗi ${intervalMs}ms).`);
   }
@@ -114,6 +115,12 @@ export class HgvisionPollerService implements OnModuleInit, OnModuleDestroy {
 
         const faceEvt = toIvssFaceEvent(obj, cameraMap);
         if (faceEvt) {
+          if (this.config.get<string>('HGVISION_REPLAY_HISTORY_ENABLED', 'false') === 'true') {
+            faceEvt.allowHistorical = true;
+          }
+          if (obj.face_image_path || obj.object_image_path) {
+            faceEvt.imageBase64 = await this.loadFaceImage(obj);
+          }
           await this.dispatch(obj, () => this.handler.onFaceEvent(faceEvt));
         }
         const vehicleEvt = toVehicleEvent(obj, cameraMap);
@@ -161,11 +168,39 @@ export class HgvisionPollerService implements OnModuleInit, OnModuleDestroy {
           e instanceof Error ? e.message : 'unknown'
         }`,
       );
+      if (path.startsWith("/")) {
+        try {
+          return (await readFile(path)).toString("base64");
+        } catch {}
+      }
+      if (path.startsWith("/")) {
+        try {
+          return (await readFile(path)).toString("base64");
+        } catch {}
+      }
       return undefined;
     }
   }
 
   /** Biển đang active trong vehicle_control_list (blocklist/watchlist). Lỗi DB → coi như không. */
+  private async loadFaceImage(
+    obj: HgvisionHistoryObject,
+  ): Promise<string | undefined> {
+    const imagePath = obj.face_image_path || obj.object_image_path;
+    if (!imagePath) return undefined;
+    try {
+      return await this.client.fetchImageBase64(imagePath);
+    } catch (e) {
+      if (imagePath.startsWith("/")) {
+        try {
+          return (await readFile(imagePath)).toString("base64");
+        } catch {}
+      }
+      this.logger.warn(`HGVision face image ${obj.object_id} failed: ${e instanceof Error ? e.message : "unknown"}`);
+      return undefined;
+    }
+  }
+
   private async isControlListed(plateNumber: string): Promise<boolean> {
     try {
       const rows: unknown[] = await this.dataSource.manager.query(

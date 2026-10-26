@@ -190,7 +190,7 @@ export class StrangerAlertService implements StrangerAlertHook {
     // Có from/to ⇒ lọc theo khoảng ngày giờ VN; không có ⇒ giữ hành vi cũ (cửa sổ N phút).
     const params: unknown[] = [];
     // Sự kiện đã được hậu kiểm (xác nhận là ai) rời khỏi hàng chờ.
-    const conds = [`e.event_type = 'face_stranger'`, `NOT (e.payload_json ? 'reviewedAt')`];
+    const conds = [`(e.event_type = 'face_stranger' OR (e.event_type = 'ivss_face_event' AND e.payload_json->>'matchState' = 'unmatched_both'))`, `NOT (e.payload_json ? 'reviewedAt')`];
     // Mặc định chỉ hàng chờ; 'dismissed' = đã đóng cảnh báo (có lý do + người đóng); 'all' = cả hai.
     const status = query.status ?? 'pending';
     if (status === 'pending') conds.push(`NOT (e.payload_json ? 'dismissedAt')`);
@@ -222,17 +222,45 @@ export class StrangerAlertService implements StrangerAlertHook {
     }
     if (query.deviceId) {
       params.push(query.deviceId);
-      conds.push(`e.device_id = $${params.length}`);
+      conds.push(`(
+        e.device_id = $${params.length}
+        OR e.payload_json->>'channelId' = (
+          SELECT x.mapped_channel
+          FROM system_configs sc
+          CROSS JOIN LATERAL jsonb_each_text(sc.config_json)
+            AS x(camera_name, mapped_channel)
+          JOIN iot_devices cam ON cam.id = $${params.length}
+          WHERE sc.config_key = 'hgvision.camera_channel_map'
+            AND sc.is_active = true
+            AND (
+              x.camera_name = cam.device_name
+              OR x.camera_name = cam.device_code
+            )
+          LIMIT 1
+        )
+      )`);
     }
     const where = conds.join(' AND ');
 
     // SEC-02: KHÔNG select payload_json/raw_payload_sample → không lộ base64/snapshot
     // (chỉ trả id event/media để FE gọi route snapshot có phân quyền).
     const rows: StrangerRow[] = await this.dataSource.manager.query(
-      `SELECT g.*, d.device_code, r.room_name, z.zone_name, du.full_name AS dismissed_by_name
+      `SELECT g.*,
+                COALESCE(cam.camera_name, d.device_code) AS device_code,
+                r.room_name,
+                z.zone_name,
+                du.full_name AS dismissed_by_name
          FROM (
            SELECT e.device_id,
-                  e.payload_json->'extracted_fields'->>'stranger_id'  AS stranger_id,
+                  e.payload_json->>'channelId' AS channel_id,
+                  COALESCE(
+                    e.payload_json->'extracted_fields'->>'stranger_id',
+                    CASE
+                      WHEN e.snapshot_file_id IS NOT NULL
+                        THEN 'snapshot:' || e.snapshot_file_id::text
+                      ELSE 'event:' || e.id::text
+                    END
+                  ) AS stranger_id,
                   MIN(e.created_at)                                    AS first_seen,
                   MAX(e.created_at)                                    AS last_seen,
                   COUNT(*)::int                                        AS hit_count,
@@ -254,9 +282,19 @@ export class StrangerAlertService implements StrangerAlertHook {
                      FILTER (WHERE e.payload_json ? 'dismissedAt'))[1] AS dismiss_note
              FROM iot_device_events e
             WHERE ${where}
-            GROUP BY e.device_id, stranger_id
+            GROUP BY e.device_id, channel_id, stranger_id, e.snapshot_file_id
          ) g
          LEFT JOIN iot_devices d ON d.id = g.device_id
+         LEFT JOIN LATERAL (
+           SELECT x.camera_name
+           FROM system_configs sc
+           CROSS JOIN LATERAL jsonb_each_text(sc.config_json)
+             AS x(camera_name, mapped_channel)
+           WHERE sc.config_key = 'hgvision.camera_channel_map'
+             AND sc.is_active = true
+             AND x.mapped_channel = g.channel_id
+           LIMIT 1
+         ) cam ON true
          LEFT JOIN rooms r ON r.id = g.room_id
          LEFT JOIN zones z ON z.id = d.zone_id
          LEFT JOIN users du ON du.id::text = g.dismissed_by
@@ -267,7 +305,9 @@ export class StrangerAlertService implements StrangerAlertHook {
     const totalRows: { total: number }[] = await this.dataSource.manager.query(
       `SELECT COUNT(*)::int AS total FROM (
          SELECT 1 FROM iot_device_events e WHERE ${where}
-          GROUP BY e.device_id, e.payload_json->'extracted_fields'->>'stranger_id'
+          GROUP BY e.device_id,
+                  e.payload_json->'extracted_fields'->>'stranger_id',
+                  e.snapshot_file_id
        ) t`,
       params,
     );
@@ -319,11 +359,22 @@ export class StrangerAlertService implements StrangerAlertHook {
               e.payload_json->'extracted_fields'->>'similarity' AS similarity,
               (e.snapshot_file_id IS NOT NULL)                  AS has_snapshot
          FROM iot_device_events e
-        WHERE e.event_type = 'face_stranger'
+        WHERE (e.event_type = 'face_stranger' OR (e.event_type = 'ivss_face_event' AND e.payload_json->>'matchState' = 'unmatched_both'))
           AND NOT (e.payload_json ? 'reviewedAt')
           AND ${status === 'dismissed' ? '' : 'NOT '}(e.payload_json ? 'dismissedAt')
           AND e.device_id = $1
-          AND (e.payload_json->'extracted_fields'->>'stranger_id') IS NOT DISTINCT FROM $2
+          AND (
+              ($2 LIKE 'snapshot:%'
+                AND e.snapshot_file_id = substring($2 from 10)::uuid)
+              OR
+              ($2 LIKE 'event:%'
+                AND e.id = substring($2 from 7)::uuid)
+              OR
+              ($2 NOT LIKE 'snapshot:%'
+                AND $2 NOT LIKE 'event:%'
+                AND (e.payload_json->'extracted_fields'->>'stranger_id')
+                    IS NOT DISTINCT FROM $2)
+            )
         ORDER BY e.created_at DESC
         LIMIT 100`,
       [deviceId, strangerId],
@@ -350,7 +401,7 @@ export class StrangerAlertService implements StrangerAlertHook {
       await this.dataSource.manager.query(
         `SELECT COALESCE(e.room_id, d.room_id) AS room_id, e.created_at
            FROM iot_device_events e LEFT JOIN iot_devices d ON d.id = e.device_id
-          WHERE e.id = $1 AND e.event_type = 'face_stranger' LIMIT 1`,
+          WHERE e.id = $1 AND (e.event_type = 'face_stranger' OR (e.event_type = 'ivss_face_event' AND e.payload_json->>'matchState' = 'unmatched_both')) LIMIT 1`,
         [eventId],
       );
     if (events.length === 0) throw new NotFoundException('Không tìm thấy sự kiện người lạ.');

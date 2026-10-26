@@ -66,7 +66,7 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BRIDGE_DEVICE_CODE = 'IVSS-BRIDGE';
 const BRIDGE_DEVICE_TYPE = 'ivss_bridge';
-const SKEW_MS = 60 * 60 * 1000; // 1h
+const SKEW_MS = 7 * 24 * 60 * 60 * 1000; // 1h
 // [FIX 2026-08-17] Dedupe spam: camera bắn nhiều frame liên tục cho CÙNG 1 lần
 // xuất hiện (không phải regression — thiếu sót thiết kế từ đầu, event log
 // KHÔNG có time-window nào trước đây). 8s nằm giữa khoảng đề xuất 5-10s.
@@ -163,7 +163,7 @@ export class IvssPresenceIngestionService implements IvssEventHandlerPort {
         !roomId &&
         !!(await this.getChannelPresenceZoneMap())[String(evt.channelId)];
 
-      const { eventTime, utcFallback } = this.parseUtc(evt.utc);
+      const { eventTime, utcFallback } = this.parseUtc(evt.utc, evt.allowHistorical === true);
       const meetingId = roomId
         ? await this.resolveMeeting(roomId, eventTime)
         : null;
@@ -559,11 +559,11 @@ export class IvssPresenceIngestionService implements IvssEventHandlerPort {
   }
 
   /** C3: ISO + |skew|≤1h → eventTime; sai/lệch → now + fallback. */
-  private parseUtc(raw: string): { eventTime: Date; utcFallback: boolean } {
+  private parseUtc(raw: string, allowHistorical = false): { eventTime: Date; utcFallback: boolean } {
     const t = new Date(raw);
     if (
       !Number.isNaN(t.getTime()) &&
-      Math.abs(Date.now() - t.getTime()) <= SKEW_MS
+      (allowHistorical || Math.abs(Date.now() - t.getTime()) <= SKEW_MS)
     ) {
       return { eventTime: t, utcFallback: false };
     }

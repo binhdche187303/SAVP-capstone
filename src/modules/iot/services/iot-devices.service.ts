@@ -412,6 +412,7 @@ export class IotDevicesService {
     const qb = this.dataSource
       .getRepository(IoTDeviceEntity)
       .createQueryBuilder('d');
+        qb.andWhere("(d.metadata_json IS NULL OR (COALESCE(d.metadata_json->>'mock_camera','false') <> 'true' AND COALESCE(d.metadata_json->>'hidden','false') <> 'true'))");
 
     if (query.status) {
       qb.andWhere('d.status = :status', { status: query.status });

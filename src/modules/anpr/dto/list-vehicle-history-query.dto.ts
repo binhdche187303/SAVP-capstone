@@ -82,4 +82,19 @@ export class ListVehicleHistoryQueryDto {
   @IsString()
   @MaxLength(255)
   ownerName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  cameraName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  zoneId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  vehicleType?: string;
 }

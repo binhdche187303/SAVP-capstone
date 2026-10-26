@@ -23,6 +23,7 @@ export interface IvssFaceEvent {
   utc: string;
   /** Ảnh chụp base64 (nếu có) — SEC-01: KHÔNG log/audit. */
   imageBase64?: string;
+  allowHistorical?: boolean;
 }
 
 export interface IvssEventHandlerPort {

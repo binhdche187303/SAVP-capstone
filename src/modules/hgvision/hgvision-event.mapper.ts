@@ -18,7 +18,9 @@ export function toIvssFaceEvent(
   obj: HgvisionHistoryObject,
   cameraChannelMap: Record<string, number>,
 ): IvssFaceEvent | null {
-  if (!obj.face_image_path && !obj.face_ident_text) return null;
+  const objectType = obj.object_type?.trim().toLowerCase();
+  const isPersonObject = objectType === 'pedestrian' || objectType === 'person';
+  if (!obj.face_image_path && !obj.face_ident_text && !(isPersonObject && obj.object_image_path)) return null;
 
   const channelId = cameraChannelMap[obj.camera_id];
   if (channelId === undefined) return null;

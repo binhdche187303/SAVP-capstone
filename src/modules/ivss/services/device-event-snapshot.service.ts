@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import {
   Injectable,
   NotFoundException,
@@ -142,6 +143,14 @@ export class DeviceEventSnapshotService {
         remote: true,
       };
     } catch {
+      try {
+        const buffer = await readFile(path);
+        return {
+          buffer,
+          mimeType: "image/jpeg",
+          fileName: path.split("/").pop() || "snapshot.jpg",
+        };
+      } catch {}
       throw new NotFoundException({
         code: 'DEVICE_EVENT_SNAPSHOT_NOT_FOUND',
         message: 'Ảnh trên HGVision không còn hoặc không truy cập được.',
