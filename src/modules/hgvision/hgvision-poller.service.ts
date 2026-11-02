@@ -5,6 +5,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
+import { readFile } from 'node:fs/promises';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { IVSS_EVENT_HANDLER } from '../../common/ports/ivss-event-hook.js';
@@ -30,7 +31,7 @@ const POLL_OVERLAP_SEC = 30;
 const SEEN_TTL_MS = (POLL_OVERLAP_SEC + 60) * 1000;
 const PAGE_SIZE = 100;
 /** Chặn vòng lặp phân trang khi backlog quá lớn (vd sau khi BE tắt lâu). */
-const MAX_PAGES_PER_TICK = 20;
+const MAX_PAGES_PER_TICK = 100;
 
 /**
  * HgvisionPollerService — HGVision không có webhook nên BE tự poll GET /api/history
@@ -114,6 +115,15 @@ export class HgvisionPollerService implements OnModuleInit, OnModuleDestroy {
 
         const faceEvt = toIvssFaceEvent(obj, cameraMap);
         if (faceEvt) {
+          if (
+            this.config.get<string>('HGVISION_REPLAY_HISTORY_ENABLED', 'false') ===
+            'true'
+          ) {
+            faceEvt.allowHistorical = true;
+          }
+          if (obj.face_image_path || obj.object_image_path) {
+            faceEvt.imageBase64 = await this.loadFaceImage(obj);
+          }
           await this.dispatch(obj, () => this.handler.onFaceEvent(faceEvt));
         }
         const vehicleEvt = toVehicleEvent(obj, cameraMap);
@@ -158,6 +168,33 @@ export class HgvisionPollerService implements OnModuleInit, OnModuleDestroy {
     } catch (e) {
       this.logger.warn(
         `HGVision tải ảnh ${obj.object_id} lỗi: ${
+          e instanceof Error ? e.message : 'unknown'
+        }`,
+      );
+      return undefined;
+    }
+  }
+
+  /** Tải ảnh khuôn mặt để IVSS ingestion lưu snapshot cho màn hình truy vết. */
+  private async loadFaceImage(
+    obj: HgvisionHistoryObject,
+  ): Promise<string | undefined> {
+    const imagePath = obj.face_image_path || obj.object_image_path;
+    if (!imagePath) return undefined;
+    try {
+      return await this.client.fetchImageBase64(imagePath);
+    } catch (e) {
+      // HGVision may deny /api/media/images to OAuth clients. When both services
+      // run on the same host, use the absolute path returned by its history API.
+      if (imagePath.startsWith('/')) {
+        try {
+          return (await readFile(imagePath)).toString('base64');
+        } catch {
+          // Keep the original warning below when the local file is unavailable.
+        }
+      }
+      this.logger.warn(
+        `HGVision tải ảnh khuôn mặt ${obj.object_id} lỗi: ${
           e instanceof Error ? e.message : 'unknown'
         }`,
       );

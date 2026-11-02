@@ -12,13 +12,23 @@ import type { HgvisionHistoryObject } from './hgvision.client.js';
  *   ivss.channel_room_map / channel_presence_zone_map / channel_direction_map.
  * - personUid: face_ident_text (định danh đăng ký trên HGVision) → resolve qua
  *   device_user_mappings (metadata_json.source = 'hgvision').
- * - Trả null nếu không phải sự kiện khuôn mặt hoặc camera chưa ánh xạ.
+ * - HGVision có thể chỉ trả object_image_path cho người đi bộ; vẫn nhận đó
+ *   là event hiện diện để màn hình truy vết hiển thị ảnh.
+ * - Trả null nếu không có ảnh/định danh hoặc camera chưa ánh xạ.
  */
 export function toIvssFaceEvent(
   obj: HgvisionHistoryObject,
   cameraChannelMap: Record<string, number>,
 ): IvssFaceEvent | null {
-  if (!obj.face_image_path && !obj.face_ident_text) return null;
+  const objectType = obj.object_type?.trim().toLowerCase();
+  const isPersonObject = objectType === 'pedestrian' || objectType === 'person';
+  if (
+    !obj.face_image_path &&
+    !obj.face_ident_text &&
+    !(isPersonObject && obj.object_image_path)
+  ) {
+    return null;
+  }
 
   const channelId = cameraChannelMap[obj.camera_id];
   if (channelId === undefined) return null;
