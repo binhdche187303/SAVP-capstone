@@ -253,6 +253,11 @@ export const envValidationSchema = Joi.object({
     .min(1000)
     .max(60000)
     .default(5000),
+  // API Đào tạo UEL (module uel-sync). Trống = tắt đồng bộ.
+  UEL_API_BASE_URL: Joi.string().uri().allow('').default(''),
+  UEL_API_PROJECT_CODE: Joi.string().default('uelapi'),
+  UEL_API_KEY: Joi.string().allow('').default(''),
+  UEL_API_TIMEOUT_MS: Joi.number().integer().min(1000).default(30000),
   // REC-005: ffprobe trích metadata media (best-effort).
   FFPROBE_PATH: Joi.string().default('ffprobe'),
   // NSC-001 (#31): token nội bộ cho POST /internal/no-show-cases (fail-closed nếu rỗng).

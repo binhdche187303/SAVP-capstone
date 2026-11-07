@@ -77,10 +77,9 @@ export class LoginService {
       });
     }
 
-    const passwordMatched = await bcrypt.compare(
-      loginDto.password,
-      user.passwordHash,
-    );
+    const passwordMatched =
+      !!user.passwordHash &&
+      (await bcrypt.compare(loginDto.password, user.passwordHash));
     if (!passwordMatched) {
       throw new UnauthorizedException({
         code: AUTH_ERROR_CODES.AUTH_INVALID_CREDENTIALS,

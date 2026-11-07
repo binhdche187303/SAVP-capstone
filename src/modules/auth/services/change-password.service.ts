@@ -106,10 +106,9 @@ export class ChangePasswordService {
       }
 
       // BL-4: Verify currentPassword via bcrypt
-      const currentPasswordValid = await bcrypt.compare(
-        dto.currentPassword,
-        user.passwordHash,
-      );
+      const currentPasswordValid =
+        !!user.passwordHash &&
+        (await bcrypt.compare(dto.currentPassword, user.passwordHash));
 
       if (!currentPasswordValid) {
         // Increment rate-limit counter (may throw InternalServerErrorException on Redis failure)
@@ -138,10 +137,9 @@ export class ChangePasswordService {
       }
 
       // BL-5: newPassword must not equal current password (E5 — server-side bcrypt check)
-      const sameAsCurrent = await bcrypt.compare(
-        dto.newPassword,
-        user.passwordHash,
-      );
+      const sameAsCurrent =
+        !!user.passwordHash &&
+        (await bcrypt.compare(dto.newPassword, user.passwordHash));
       if (sameAsCurrent) {
         throw new UnprocessableEntityException({
           success: false,

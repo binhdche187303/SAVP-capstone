@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { SemesterEntity } from './entities/semester.entity.js';
 import { SubjectEntity } from './entities/subject.entity.js';
 import { StudyShiftEntity } from './entities/study-shift.entity.js';
+import { StudyPeriodEntity } from './entities/study-period.entity.js';
 import { StudentEntity } from './entities/student.entity.js';
 import { ClassSectionEntity } from './entities/class-section.entity.js';
 import { ClassEnrollmentEntity } from './entities/class-enrollment.entity.js';
@@ -24,6 +25,7 @@ import { HgVisionService } from './services/hgvision.service.js';
       SemesterEntity,
       SubjectEntity,
       StudyShiftEntity,
+      StudyPeriodEntity,
       StudentEntity,
       ClassSectionEntity,
       ClassEnrollmentEntity,

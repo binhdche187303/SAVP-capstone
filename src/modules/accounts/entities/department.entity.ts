@@ -16,10 +16,6 @@
   unique: true,
   where: 'deleted_at IS NULL',
 })
-@Index('ux_departments_name', ['departmentName'], {
-  unique: true,
-  where: 'deleted_at IS NULL',
-})
 export class DepartmentEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -53,6 +49,13 @@ export class DepartmentEntity {
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
+
+  /** Nguồn dữ liệu: 'manual' (nhập tay) | 'uel_api' (đồng bộ API Đào tạo UEL). */
+  @Column({ type: 'varchar', length: 20, default: 'manual' })
+  source: 'manual' | 'uel_api';
+
+  @Column({ name: 'last_synced_at', type: 'timestamptz', nullable: true })
+  lastSyncedAt: Date | null;
 
   @DeleteDateColumn({ name: 'deleted_at', type: 'timestamptz', nullable: true })
   deletedAt: Date | null;
