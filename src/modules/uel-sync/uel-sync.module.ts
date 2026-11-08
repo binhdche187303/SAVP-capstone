@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuthModule } from '../auth/auth.module.js';
 import { UelApiClient } from './uel-api.client.js';
+import { UelLookupService } from './uel-lookup.service.js';
 import { UEL_API_CLIENT } from './uel-sync.constants.js';
 import { UelSyncController } from './uel-sync.controller.js';
 import { UelSyncScheduler } from './uel-sync.scheduler.js';
@@ -31,6 +32,7 @@ import { UelSyncService } from './uel-sync.service.js';
     UelSyncService,
     UelSyncSettingsService,
     UelSyncScheduler,
+    UelLookupService,
   ],
   exports: [UelSyncService],
 })

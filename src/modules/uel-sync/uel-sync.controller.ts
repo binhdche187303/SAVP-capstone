@@ -18,6 +18,8 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { PermissionsGuard } from '../auth/guards/permissions.guard.js';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator.js';
+import { UelLookupDto } from './uel-lookup.dto.js';
+import { UelLookupService } from './uel-lookup.service.js';
 import { UelSyncRunDto } from './uel-sync-run.dto.js';
 import {
   StudyPeriodsDto,
@@ -45,6 +47,7 @@ export class UelSyncController {
     private readonly sync: UelSyncService,
     private readonly settings: UelSyncSettingsService,
     private readonly scheduler: UelSyncScheduler,
+    private readonly lookupService: UelLookupService,
   ) {}
 
   @Post('run')
@@ -119,5 +122,16 @@ export class UelSyncController {
   @ApiOperation({ summary: 'Thay toàn bộ bảng giờ tiết học' })
   replacePeriods(@Body() dto: StudyPeriodsDto) {
     return this.settings.replacePeriods(dto.periods);
+  }
+
+  @Post('lookup')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Tra cứu trực tiếp từ API UEL (1 người / 1 ngày / 1 buổi)',
+    description:
+      'Chuyển tiếp tới 6 API tra cứu của Đào tạo UEL, không ghi vào DB. 502 khi API UEL báo lỗi, 503 khi chưa cấu hình key.',
+  })
+  lookup(@Body() dto: UelLookupDto) {
+    return this.lookupService.lookup(dto);
   }
 }
