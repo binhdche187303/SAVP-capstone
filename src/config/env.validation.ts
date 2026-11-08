@@ -301,6 +301,7 @@ export const envValidationSchema = Joi.object({
   SCHEDULER_KPI_ROLLUP_ENABLED: Joi.boolean().default(false),
   VISITORS_ENABLED: Joi.boolean().default(false),
   SCHEDULER_VISITOR_ENABLED: Joi.boolean().default(false),
+  SCHEDULER_UEL_SYNC_ENABLED: Joi.boolean().default(false),
   VISITOR_FACEGATE_ENABLED: Joi.boolean().default(false),
   VISITOR_VERIFICATION_TTL_SECONDS: Joi.number().integer().min(60).max(900).default(300),
   VISITOR_VERIFICATION_MAX_ATTEMPTS: Joi.number().integer().min(1).max(10).default(5),

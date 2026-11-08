@@ -1,12 +1,20 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { AuthModule } from '../auth/auth.module.js';
 import { UelApiClient } from './uel-api.client.js';
 import { UEL_API_CLIENT } from './uel-sync.constants.js';
 import { UelSyncController } from './uel-sync.controller.js';
+import { UelSyncScheduler } from './uel-sync.scheduler.js';
+import { UelSyncSettingsService } from './uel-sync-settings.service.js';
 import { UelSyncService } from './uel-sync.service.js';
 
-/** UelSyncModule — đồng bộ đơn vị, cán bộ, SV, lớp HP, đăng ký, lịch học từ API Đào tạo UEL. */
+/**
+ * UelSyncModule — đồng bộ đơn vị, cán bộ, SV, lớp HP, đăng ký, lịch học từ API Đào tạo UEL.
+ * Cron `uel-sync-nightly` dùng ScheduleModule.forRoot() đã đăng ký ở SchedulerModule.
+ */
 @Module({
+  // JwtAuthGuard + PermissionsGuard của controller cần JwtService/AuthConfigService từ AuthModule.
+  imports: [AuthModule],
   controllers: [UelSyncController],
   providers: [
     {
@@ -21,6 +29,8 @@ import { UelSyncService } from './uel-sync.service.js';
         }),
     },
     UelSyncService,
+    UelSyncSettingsService,
+    UelSyncScheduler,
   ],
   exports: [UelSyncService],
 })

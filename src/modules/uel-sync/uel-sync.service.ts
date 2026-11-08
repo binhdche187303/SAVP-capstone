@@ -4,6 +4,7 @@ import {
   Inject,
   Injectable,
   Logger,
+  OnModuleInit,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { UelApiClient } from './uel-api.client.js';
@@ -62,11 +63,31 @@ export interface UelSyncStepResult {
   error?: string;
 }
 
+export type UelSyncTrigger = 'manual' | 'schedule';
+export type UelSyncRunStatus = 'running' | 'succeeded' | 'partial' | 'failed';
+
 export interface UelSyncRun {
+  /** id dòng uel_sync_runs (null nếu ghi lịch sử lỗi). */
+  id: string | null;
+  trigger: UelSyncTrigger;
+  requestedBy: string | null;
+  status: UelSyncRunStatus;
   startedAt: string;
   finishedAt: string | null;
   options: UelSyncOptions;
   results: UelSyncStepResult[];
+}
+
+/** Lượt đọc từ lịch sử, kèm tên người bấm. */
+export interface UelSyncRunView extends UelSyncRun {
+  requestedByName: string | null;
+}
+
+/** failed: mọi bước lỗi; partial: có bước lỗi; còn lại succeeded. */
+export function runStatusOf(results: UelSyncStepResult[]): UelSyncRunStatus {
+  const errors = results.filter((r) => r.error).length;
+  if (!results.length || errors === 0) return 'succeeded';
+  return errors === results.length ? 'failed' : 'partial';
 }
 
 /** Giữ tối đa N cảnh báo mỗi bước để kết quả không phình to. */
@@ -79,7 +100,8 @@ interface IdRow {
 }
 
 interface StepCtx {
-  runStart: Date;
+  /** Mốc bắt đầu bước theo đồng hồ DB (text timestamptz, đủ micro giây). */
+  runStart: string;
   r: UelSyncStepResult;
 }
 
@@ -94,7 +116,7 @@ interface StepCtx {
  * - Mỗi câu lệnh chạy độc lập: 1 dòng lỗi (vd trùng email) chỉ bị bỏ qua + ghi cảnh báo.
  */
 @Injectable()
-export class UelSyncService {
+export class UelSyncService implements OnModuleInit {
   private readonly logger = new Logger(UelSyncService.name);
   private running = false;
   private lastRun: UelSyncRun | null = null;
@@ -114,24 +136,123 @@ export class UelSyncService {
     return this.lastRun;
   }
 
+  get configured(): boolean {
+    return this.client.configured;
+  }
+
+  /** Server tắt giữa chừng ⇒ lượt "running" cũ không bao giờ kết thúc; đánh dấu failed khi khởi động. */
+  async onModuleInit(): Promise<void> {
+    try {
+      await this.db.query(
+        `UPDATE uel_sync_runs SET status = 'failed', finished_at = now()
+          WHERE status = 'running'`,
+      );
+    } catch (e) {
+      this.logger.warn(`Không dọn được uel_sync_runs: ${(e as Error).message}`);
+    }
+  }
+
   /** Kiểm tra tham số + khóa chạy; trả về promise chạy nền. */
-  start(options: UelSyncOptions): Promise<UelSyncRun> {
+  start(
+    options: UelSyncOptions,
+    meta: { trigger?: UelSyncTrigger; requestedBy?: string | null } = {},
+  ): Promise<UelSyncRun> {
     const steps = this.validate(options);
     if (this.running) {
       throw new ConflictException('Đang có một lượt đồng bộ UEL chạy.');
     }
     this.running = true;
     const run: UelSyncRun = {
+      id: null,
+      trigger: meta.trigger ?? 'manual',
+      requestedBy: meta.requestedBy ?? null,
+      status: 'running',
       startedAt: new Date().toISOString(),
       finishedAt: null,
       options: { ...options, steps },
       results: [],
     };
     this.lastRun = run;
-    return this.execute(run, steps).finally(() => {
-      run.finishedAt = new Date().toISOString();
-      this.running = false;
+    return this.persistStart(run)
+      .then(() => this.execute(run, steps))
+      .finally(async () => {
+        run.finishedAt = new Date().toISOString();
+        run.status = runStatusOf(run.results);
+        await this.persistFinish(run);
+        this.running = false;
+      });
+  }
+
+  /** Lịch sử các lượt, mới nhất trước. */
+  async history(limit = 20): Promise<UelSyncRunView[]> {
+    const rows = await this.db.query<
+      {
+        id: string;
+        trigger: UelSyncTrigger;
+        requested_by: string | null;
+        requested_by_name: string | null;
+        status: UelSyncRunStatus;
+        options: UelSyncOptions;
+        results: UelSyncStepResult[];
+        started_at: Date;
+        finished_at: Date | null;
+      }[]
+    >(
+      `SELECT r.id, r.trigger, r.requested_by, u.full_name AS requested_by_name, r.status,
+              r.options, r.results, r.started_at, r.finished_at
+         FROM uel_sync_runs r LEFT JOIN users u ON u.id = r.requested_by
+        ORDER BY r.started_at DESC
+        LIMIT $1`,
+      [Math.min(Math.max(1, limit), 100)],
+    );
+    return rows.map((r) => {
+      // Lượt đang chạy trong tiến trình này: trả kết quả trực tiếp (DB chỉ ghi lúc xong).
+      const live =
+        this.lastRun?.id === r.id && r.status === 'running'
+          ? this.lastRun
+          : null;
+      return {
+        id: r.id,
+        trigger: r.trigger,
+        requestedBy: r.requested_by,
+        requestedByName: r.requested_by_name,
+        status: live?.status ?? r.status,
+        options: r.options,
+        results: live?.results ?? r.results,
+        startedAt: new Date(r.started_at).toISOString(),
+        finishedAt: r.finished_at
+          ? new Date(r.finished_at).toISOString()
+          : null,
+      };
     });
+  }
+
+  private async persistStart(run: UelSyncRun): Promise<void> {
+    try {
+      const rows = await this.db.query<IdRow[]>(
+        `INSERT INTO uel_sync_runs (trigger, requested_by, status, options)
+         VALUES ($1, $2, 'running', $3::jsonb) RETURNING id`,
+        [run.trigger, run.requestedBy, JSON.stringify(run.options)],
+      );
+      run.id = rows[0]?.id ?? null;
+    } catch (e) {
+      // Không ghi được lịch sử thì vẫn đồng bộ.
+      this.logger.warn(`Không ghi được uel_sync_runs: ${(e as Error).message}`);
+    }
+  }
+
+  private async persistFinish(run: UelSyncRun): Promise<void> {
+    if (!run.id) return;
+    try {
+      await this.db.query(
+        `UPDATE uel_sync_runs SET status = $2, results = $3::jsonb, finished_at = now() WHERE id = $1`,
+        [run.id, run.status, JSON.stringify(run.results)],
+      );
+    } catch (e) {
+      this.logger.warn(
+        `Không cập nhật được uel_sync_runs: ${(e as Error).message}`,
+      );
+    }
   }
 
   private validate(o: UelSyncOptions): UelSyncStep[] {
@@ -186,8 +307,8 @@ export class UelSyncService {
         warnings: [],
       };
       run.results.push(r);
-      const ctx: StepCtx = { runStart: new Date(), r };
       try {
+        const ctx: StepCtx = { runStart: await this.dbNow(), r };
         switch (step) {
           case 'departments':
             await this.syncDepartments(ctx);
@@ -336,7 +457,9 @@ export class UelSyncService {
     // Cán bộ uel_api không còn trong danh sách (và không phải SV) → nghỉ.
     if (rows.length) {
       r.deactivated = await this.affected(
-        `UPDATE users u SET employment_status = 'resigned', updated_at = now()
+        `UPDATE users u SET employment_status = 'resigned',
+                account_status = CASE WHEN u.account_status = 'active' THEN 'inactive' ELSE u.account_status END,
+                updated_at = now()
           WHERE u.source = 'uel_api' AND u.deleted_at IS NULL
             AND u.employment_status <> 'resigned'
             AND (u.last_synced_at IS NULL OR u.last_synced_at < $1)
@@ -695,6 +818,11 @@ export class UelSyncService {
                 employment_status = CASE WHEN $5 THEN 'resigned'
                                          WHEN employment_status = 'resigned' THEN 'active'
                                          ELSE employment_status END,
+                -- Đăng nhập chỉ xét account_status ⇒ nghỉ việc phải khóa tài khoản; đi làm lại thì mở.
+                account_status = CASE WHEN $5 AND account_status = 'active' THEN 'inactive'
+                                      WHEN NOT $5 AND employment_status = 'resigned'
+                                           AND account_status = 'inactive' THEN 'active'
+                                      ELSE account_status END,
                 source = 'uel_api', last_synced_at = now(), updated_at = now()
           WHERE id = $1`,
         [existing[0].id, u.fullName, email, deptId, u.resigned],
@@ -705,7 +833,7 @@ export class UelSyncService {
     const inserted = await this.db.query<IdRow[]>(
       `INSERT INTO users (employee_code, username, email, password_hash, full_name, department_id,
                           employment_status, account_status, source, last_synced_at)
-       VALUES ($1, $2, $3, NULL, $4, $5, $6, 'active', 'uel_api', now())
+       VALUES ($1, $2, $3, NULL, $4, $5, $6, $7, 'uel_api', now())
        RETURNING id`,
       [
         u.code,
@@ -714,6 +842,7 @@ export class UelSyncService {
         u.fullName,
         deptId,
         u.resigned ? 'resigned' : 'active',
+        u.resigned ? 'inactive' : 'active',
       ],
     );
     return inserted[0].id;
@@ -836,6 +965,17 @@ export class UelSyncService {
   private async idMap(sql: string): Promise<Map<string, string>> {
     const rows = await this.db.query<{ k: string; id: string }[]>(sql);
     return new Map(rows.map((x) => [x.k, x.id]));
+  }
+
+  /**
+   * Mốc "bắt đầu bước" lấy từ đồng hồ DB, không dùng new Date(): last_synced_at = now() của DB,
+   * nếu đồng hồ app nhanh hơn DB vài ms thì bản ghi vừa đồng bộ bị coi là cũ và bị vô hiệu nhầm.
+   */
+  private async dbNow(): Promise<string> {
+    const rows = await this.db.query<{ t: string }[]>(
+      `SELECT clock_timestamp()::text AS t`,
+    );
+    return rows[0].t;
   }
 
   /** Số dòng bị ảnh hưởng của UPDATE (pg trả [rows, count]). */
