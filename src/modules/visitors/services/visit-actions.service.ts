@@ -20,6 +20,7 @@ import { VisitRow, VisitView } from '../presenters/visit-view.presenter.js';
 import { Actor, err, VisitService } from './visit.service.js';
 import { VisitorDeviceSync } from './visitor-device-sync.js';
 import { VisitorNotifier } from './visitor-notifier.service.js';
+import { VisitorZonePolicyService } from './visitor-zone-policy.service.js';
 
 type SetColumns = Partial<
   Record<
@@ -72,6 +73,7 @@ export class VisitActionsService {
     private readonly deviceSync: VisitorDeviceSync,
     private readonly faceProfiles: FaceProfileService,
     private readonly audit: AuditLogsService,
+    private readonly zonePolicy: VisitorZonePolicyService,
   ) {}
 
   // ───────────── Duyệt / từ chối / hủy / thu hồi ─────────────
@@ -86,7 +88,7 @@ export class VisitActionsService {
     const row = await this.load(id);
     await this.authorizeHostOrManage(row, actor);
     const to = this.guard(row.status, 'approve');
-    const access = dto.access ? await this.validateAccess(dto.access) : null;
+    const access = dto.access ? await this.validateAccess(dto.access, actor) : null;
 
     await this.dataSource.transaction(async (m) => {
       const from = access?.validFrom ?? row.valid_from;
@@ -333,6 +335,31 @@ export class VisitActionsService {
     return this.finish(row.id, 'visitor_visit_extend', actor);
   }
 
+  /** Sửa khu được phép sau khi đã duyệt (người được gặp hoặc quản lý). Khung giờ giữ nguyên — đổi giờ dùng `extend`. */
+  async updateAccess(id: string, dto: { zoneIds?: string[] }, actor: Actor): Promise<VisitView> {
+    const row = await this.load(id);
+    const canManage = actor.permissions.includes(VISITOR_PERMISSIONS.VISIT_MANAGE);
+    if (!canManage && !(actor.userId && actor.userId === row.host_user_id)) {
+      throw new ForbiddenException({ success: false, message: 'Bạn không có quyền thực hiện thao tác này', error: { code: 'VISIT_FORBIDDEN', details: {} } });
+    }
+    if (row.status !== 'approved' && row.status !== 'checked_in') {
+      throw err(409, 'VISIT_INVALID_TRANSITION', 'Chỉ sửa khu vực cho lượt đã duyệt hoặc đang trong khuôn viên');
+    }
+    const zoneIds = await this.zonePolicy.resolve(dto.zoneIds, actor);
+    await this.dataSource.transaction(async (m) => {
+      await this.conditionalUpdate(m, row, row.status, {});
+      await m.query(`DELETE FROM visitor_visit_zones WHERE visit_id = $1`, [row.id]);
+      await m.query(
+        `INSERT INTO visitor_visit_zones (visit_id, zone_id, route_order)
+         SELECT $1, zone_id, route_order::int FROM unnest($2::uuid[]) WITH ORDINALITY AS route(zone_id, route_order)`,
+        [row.id, zoneIds],
+      );
+      const names: Array<{ zone_name: string }> = await m.query(`SELECT zone_name FROM zones WHERE id = ANY($1::uuid[]) ORDER BY zone_name`, [zoneIds]);
+      await this.visits.addEvent(m, row.id, 'access_updated', { note: `Khu được phép: ${names.map((n) => n.zone_name).join(', ')}`, actorUserId: actor.userId });
+    });
+    return this.finish(row.id, 'visitor_visit_update_access', actor);
+  }
+
   async attachPhoto(
     id: string,
     dto: { photo?: string },
@@ -537,6 +564,7 @@ export class VisitActionsService {
       zoneId: string | null;
       score: number | null;
       deviceEventId: string | null;
+      note?: string;
     },
   ): Promise<VisitView | null> {
     return this.systemTransition(
@@ -560,6 +588,7 @@ export class VisitActionsService {
           zoneId: input.zoneId,
           deviceEventId: input.deviceEventId,
           at: input.at,
+          note: input.note ?? null,
         });
         await this.visits.addEvent(m, row.id, 'host_notified', {
           note: 'Thông báo khách đã đến',
@@ -752,11 +781,10 @@ export class VisitActionsService {
     }
   }
 
-  private async validateAccess(a: {
-    validFrom?: string;
-    validTo?: string;
-    zoneIds?: string[];
-  }) {
+  private async validateAccess(
+    a: { validFrom?: string; validTo?: string; zoneIds?: string[] },
+    actor: Actor,
+  ) {
     const validFrom = new Date(String(a.validFrom ?? ''));
     const validTo = new Date(String(a.validTo ?? ''));
     if (
@@ -766,15 +794,7 @@ export class VisitActionsService {
     ) {
       throw err(400, 'VALIDATION_ERROR', 'Hiệu lực đến phải sau hiệu lực từ');
     }
-    const zoneIds = [...new Set(a.zoneIds ?? [])];
-    if (zoneIds.length === 0)
-      throw err(400, 'VALIDATION_ERROR', 'Chọn ít nhất một khu vực được phép');
-    const found = await this.dataSource.query(
-      `SELECT id FROM zones WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL`,
-      [zoneIds],
-    );
-    if (found.length !== zoneIds.length)
-      throw err(400, 'VALIDATION_ERROR', 'Có khu vực không tồn tại');
+    const zoneIds = await this.zonePolicy.resolve(a.zoneIds, actor);
     return { validFrom, validTo, zoneIds };
   }
 

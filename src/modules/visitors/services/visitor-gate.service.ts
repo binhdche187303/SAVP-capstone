@@ -109,7 +109,7 @@ export class VisitorGateService implements VisitorFaceEventHook {
         return;
       }
       if (outcome === 'manual_review') {
-        if (this.allow(row.id, reason ?? 'manual_review')) await this.actions.recordGateEvent(row.id, 'manual_review', { zoneId: evt.zoneId, score, note: REASON_NOTES[reason ?? ''] ?? null, deviceEventId: evt.sourceEventId, at: evt.eventTime });
+        if (this.allow(row.id, `${reason ?? 'manual_review'}:${evt.zoneId ?? '-'}`)) await this.actions.recordGateEvent(row.id, 'manual_review', { zoneId: evt.zoneId, score, note: REASON_NOTES[reason ?? ''] ?? null, deviceEventId: evt.sourceEventId, at: evt.eventTime });
         return;
       }
       if (reason === 'invalid_status' || reason === 'already_inside') return;
@@ -122,17 +122,39 @@ export class VisitorGateService implements VisitorFaceEventHook {
       await this.deny(row, 'access_revoked', evt, null);
       return;
     }
-    if (row.status === 'checked_in' && evt.zoneId && !like.access.zoneIds.includes(evt.zoneId)) {
-      await this.deny(row, 'zone_not_allowed', evt, null);
+    if (!evt.zoneId) return; // kênh camera chưa gán khu → không biết khách đang ở đâu
+    const allowed = like.access.zoneIds.includes(evt.zoneId);
+    if (row.status === 'checked_in') {
+      if (!allowed) await this.deny(row, 'zone_not_allowed', evt, null);
+      return;
     }
+    // Lượt `approved` mà camera thấy khách đã ở bên trong: camera cổng bỏ sót (hướng `seen`) hoặc khách đi lối khác.
+    if (row.status !== 'approved') return;
+    const t = evt.eventTime.getTime();
+    const inWindow = t >= new Date(like.access.validFrom).getTime() && t <= new Date(like.access.validTo).getTime();
+    if (!inWindow) {
+      await this.deny(row, 'outside_window', evt, null);
+      return;
+    }
+    if (!allowed) {
+      await this.deny(row, 'zone_not_allowed', evt, null);
+      return;
+    }
+    await this.actions.systemCheckIn(row.id, { at: evt.eventTime, zoneId: evt.zoneId, score: null, deviceEventId: evt.sourceEventId, note: 'Camera thấy khách trong khuôn viên, không ghi nhận qua cổng' });
   }
 
   private async deny(row: VisitRow, reason: string, evt: VisitorIvssFaceEvent, score: number | null): Promise<void> {
-    if (!this.allow(row.id, reason)) return; // camera thấy khách liên tục: chỉ ghi/báo mỗi 60 giây một lần cho mỗi lý do
-    await this.actions.recordGateEvent(row.id, 'access_denied', { zoneId: evt.zoneId, score, note: REASON_NOTES[reason] ?? reason, deviceEventId: evt.sourceEventId, at: evt.eventTime });
+    // Camera thấy khách liên tục: mỗi (lý do, khu) chỉ ghi/báo 60 giây một lần — khóa theo khu để đi sang khu cấm khác vẫn báo ngay.
+    if (!this.allow(row.id, `${reason}:${evt.zoneId ?? '-'}`)) return;
+    const note = REASON_NOTES[reason] ?? reason;
+    await this.actions.recordGateEvent(row.id, 'access_denied', { zoneId: evt.zoneId, score, note, deviceEventId: evt.sourceEventId, at: evt.eventTime });
     const view = await this.visits.getView(row.id);
     const alertType = reason === 'access_revoked' ? 'visitor_must_leave' : 'visitor_zone_violation';
-    await this.notifier.alertSecurity(view, alertType, evt.zoneId, REASON_NOTES[reason] ?? reason);
+    await this.notifier.alertSecurity(view, alertType, evt.zoneId, note, evt.sourceEventId);
+    if (alertType === 'visitor_zone_violation') {
+      const zoneName = await this.zoneName(evt.zoneId);
+      await this.notifier.notifyHost(view, 'visitor_zone_violation', `Khách ${view.visitor.fullName} bị camera ghi nhận tại ${zoneName ?? 'khu vực không được phép'} (${note.toLowerCase()}), đã báo bảo vệ`);
+    }
   }
 
   private async checkOut(row: VisitRow, userId: string, at: Date, zoneId: string | null, eventId: string | null, deviceId: string | null): Promise<void> {
@@ -187,6 +209,12 @@ export class VisitorGateService implements VisitorFaceEventHook {
       [visitorId, at],
     );
     return ids[0] ? this.visits.loadRow(ids[0].id) : null;
+  }
+
+  private async zoneName(zoneId: string | null): Promise<string | null> {
+    if (!zoneId) return null;
+    const rows: Array<{ zone_name: string }> = await this.dataSource.query(`SELECT zone_name FROM zones WHERE id = $1`, [zoneId]);
+    return rows[0]?.zone_name ?? null;
   }
 
   private async zoneType(zoneId: string): Promise<string | null> {

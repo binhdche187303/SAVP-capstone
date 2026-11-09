@@ -20,6 +20,7 @@ import { VisitActionsService } from './services/visit-actions.service.js';
 import { VisitCodeService } from './services/visit-code.service.js';
 import { VisitQueryService } from './services/visit-query.service.js';
 import { VisitService } from './services/visit.service.js';
+import { VisitorZonePolicyService } from './services/visitor-zone-policy.service.js';
 import { VisitorDeviceSync } from './services/visitor-device-sync.js';
 import { VisitorActorService } from './services/visitor-actor.service.js';
 import { ZonesModule } from '../zones/zones.module.js';
@@ -66,6 +67,7 @@ import { WebsocketModule } from '../websocket/websocket.module.js';
     VisitorNotifier,
     VisitorVerificationService,
     VisitService,
+    VisitorZonePolicyService,
     VisitActionsService,
     VisitQueryService,
     VisitorFaceLifecycleService,

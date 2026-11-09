@@ -77,6 +77,7 @@ export enum NotificationType {
   ATTENDANCE_EXCUSE_REVIEWED = 'attendance_excuse_reviewed',
   VISITOR_OVERSTAY = 'visitor_overstay',
   VISITOR_MUST_LEAVE = 'visitor_must_leave',
+  VISITOR_ZONE_VIOLATION = 'visitor_zone_violation',
   VISITOR_EMAIL = 'visitor_email',
   // RPT-CENTER-BE-001: email báo cáo gửi định kỳ.
   REPORT_SCHEDULE_DELIVERY = 'report_schedule_delivery',

@@ -16,6 +16,9 @@ export class ReassignHostDto {
   @IsOptional() @IsString() hostId?: string;
   @IsOptional() @IsString() @MaxLength(1000) reason?: string;
 }
+export class UpdateAccessDto {
+  @IsOptional() @IsArray() @IsString({ each: true }) zoneIds?: string[];
+}
 export class ExtendVisitDto {
   @IsOptional() @IsString() validTo?: string;
 }

@@ -68,7 +68,7 @@ export class HgvisionPollerService implements OnModuleInit, OnModuleDestroy {
       'HGVISION_POLL_INTERVAL_MS',
       5000,
     );
-    this.cursorSec = Math.floor(Date.now() / 1000) - POLL_OVERLAP_SEC;
+    this.cursorSec = Math.floor(Date.now() / 1000) - 604800;
     this.timer = setInterval(() => void this.tick(), intervalMs);
     this.logger.log(`HGVision poller bật (mỗi ${intervalMs}ms).`);
   }
@@ -171,6 +171,11 @@ export class HgvisionPollerService implements OnModuleInit, OnModuleDestroy {
           e instanceof Error ? e.message : 'unknown'
         }`,
       );
+      if (path.startsWith("/")) {
+        try {
+          return (await readFile(path)).toString("base64");
+        } catch {}
+      }
       return undefined;
     }
   }

@@ -16,7 +16,7 @@ import { FaceProfileService } from '../../accounts/services/face-profile.service
 
 export type HostNotificationType =
   | 'visitor_pending_approval' | 'visitor_registered' | 'visitor_arrived'
-  | 'visitor_left' | 'visitor_overstay' | 'visitor_must_leave';
+  | 'visitor_left' | 'visitor_overstay' | 'visitor_must_leave' | 'visitor_zone_violation';
 
 const TYPE_MAP: Record<HostNotificationType, NotificationType> = {
   visitor_pending_approval: NotificationType.VISITOR_PENDING_APPROVAL,
@@ -25,6 +25,7 @@ const TYPE_MAP: Record<HostNotificationType, NotificationType> = {
   visitor_left: NotificationType.VISITOR_LEFT,
   visitor_overstay: NotificationType.VISITOR_OVERSTAY,
   visitor_must_leave: NotificationType.VISITOR_MUST_LEAVE,
+  visitor_zone_violation: NotificationType.VISITOR_ZONE_VIOLATION,
 };
 
 /**
@@ -78,10 +79,11 @@ export class VisitorNotifier {
 
   /** Cảnh báo an ninh (Trung tâm cảnh báo). dedupeKey = id lượt: một lượt chỉ có một cảnh báo mở mỗi loại. */
   async alertSecurity(
-    visit: Pick<VisitView, 'id' | 'code' | 'visitor'>,
+    visit: Pick<VisitView, 'id' | 'code' | 'visitor'> & Partial<Pick<VisitView, 'hostName' | 'zoneNames'>>,
     alertType: 'visitor_overstay' | 'visitor_must_leave' | 'visitor_zone_violation',
     zoneId: string | null,
     detail: string,
+    sourceEventId: string | null = null,
   ): Promise<boolean> {
     try {
       const context = (await this.dataSource.query(
@@ -126,12 +128,14 @@ export class VisitorNotifier {
         alertType,
         zoneId: effectiveZoneId,
         dedupeKey: visit.id,
-        sourceEventId: context?.device_event_id ?? null,
+        sourceEventId: sourceEventId ?? context?.device_event_id ?? null,
         payloadJson: {
           visitId: visit.id,
           code: visit.code,
           visitorName: visit.visitor.fullName,
           detail,
+          hostName: visit.hostName ?? null,
+          allowedZoneNames: visit.zoneNames ?? [],
           zoneId: effectiveZoneId,
           zoneName: context?.zone_name ?? null,
           cameraId: context?.device_id ?? null,

@@ -80,6 +80,10 @@ export class ZoneEntity {
   @Column({ name: 'status', type: 'varchar', length: 30, default: 'active' })
   status: string;
 
+  /** Chính sách cho khách đến làm việc — xem `ZONE_VISITOR_POLICIES` (migration 20261023000001). */
+  @Column({ name: 'visitor_policy', type: 'varchar', length: 20, default: 'grantable' })
+  visitorPolicy: string;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

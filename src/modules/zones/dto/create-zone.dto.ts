@@ -11,6 +11,10 @@ import {
 } from 'class-validator';
 import { Expose } from 'class-transformer';
 import { ZONE_TYPES, type ZoneType } from '../constants/zone-type.constant.js';
+import {
+  ZONE_VISITOR_POLICIES,
+  type ZoneVisitorPolicy,
+} from '../constants/zone-visitor-policy.constant.js';
 
 /**
  * CreateZoneDto (ZNC-001 / UC-90) — body tạo khu vực.
@@ -63,6 +67,12 @@ export class CreateZoneDto {
   @IsOptional()
   @IsObject()
   metadataJson?: Record<string, unknown>;
+
+  // Không gửi → cổng mặc định `open`, khu khác `grantable` (ZonesService.create).
+  @Expose({ name: 'visitor_policy' })
+  @IsOptional()
+  @IsIn([...ZONE_VISITOR_POLICIES])
+  visitorPolicy?: ZoneVisitorPolicy;
 
   // Toạ độ GPS cho Bản đồ khuôn viên — phải gửi đủ cặp (kiểm ở ZonesService).
   @IsOptional()
