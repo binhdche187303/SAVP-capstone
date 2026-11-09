@@ -38,11 +38,24 @@ export class ClassSessionEntity {
   @Column({ name: 'session_date', type: 'date' })
   sessionDate: string;
 
-  @Column({ name: 'shift_id', type: 'uuid' })
-  shiftId: string;
+  /** Null khi buổi học đến từ UEL (dùng period_start/period_count thay cho ca). */
+  @Column({ name: 'shift_id', type: 'uuid', nullable: true })
+  shiftId: string | null;
 
-  @Column({ name: 'room_id', type: 'uuid' })
-  roomId: string;
+  @Column({ name: 'room_id', type: 'uuid', nullable: true })
+  roomId: string | null;
+
+  /** ma_lich_hoc của UEL — key upsert khi đồng bộ. */
+  @Column({ name: 'external_id', type: 'varchar', length: 50, nullable: true })
+  externalId: string | null;
+
+  /** tiet_bat_dau của UEL. */
+  @Column({ name: 'period_start', type: 'smallint', nullable: true })
+  periodStart: number | null;
+
+  /** so_tiet của UEL. */
+  @Column({ name: 'period_count', type: 'smallint', nullable: true })
+  periodCount: number | null;
 
   @Column({ name: 'start_time', type: 'timestamptz' })
   startTime: Date;
@@ -66,16 +79,23 @@ export class ClassSessionEntity {
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
 
+  /** Nguồn dữ liệu: 'manual' (nhập tay) | 'uel_api' (đồng bộ API Đào tạo UEL). */
+  @Column({ type: 'varchar', length: 20, default: 'manual' })
+  source: 'manual' | 'uel_api';
+
+  @Column({ name: 'last_synced_at', type: 'timestamptz', nullable: true })
+  lastSyncedAt: Date | null;
+
   // Relations
   @ManyToOne(() => ClassSectionEntity, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'class_section_id' })
   classSection: ClassSectionEntity;
 
-  @ManyToOne(() => StudyShiftEntity, { onDelete: 'RESTRICT' })
+  @ManyToOne(() => StudyShiftEntity, { nullable: true, onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'shift_id' })
-  shift: StudyShiftEntity;
+  shift: StudyShiftEntity | null;
 
-  @ManyToOne(() => RoomEntity, { onDelete: 'RESTRICT' })
+  @ManyToOne(() => RoomEntity, { nullable: true, onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'room_id' })
-  room: RoomEntity;
+  room: RoomEntity | null;
 }

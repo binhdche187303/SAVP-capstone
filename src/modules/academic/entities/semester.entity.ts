@@ -37,11 +37,11 @@ export class SemesterEntity {
   })
   academicYear: string | null;
 
-  @Column({ name: 'start_date', type: 'date' })
-  startDate: string;
+  @Column({ name: 'start_date', type: 'date', nullable: true })
+  startDate: string | null;
 
-  @Column({ name: 'end_date', type: 'date' })
-  endDate: string;
+  @Column({ name: 'end_date', type: 'date', nullable: true })
+  endDate: string | null;
 
   @Column({ type: 'varchar', length: 20, default: SemesterStatus.UPCOMING })
   status: SemesterStatus;
@@ -51,6 +51,13 @@ export class SemesterEntity {
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
+
+  /** Nguồn dữ liệu: 'manual' (nhập tay) | 'uel_api' (đồng bộ API Đào tạo UEL). */
+  @Column({ type: 'varchar', length: 20, default: 'manual' })
+  source: 'manual' | 'uel_api';
+
+  @Column({ name: 'last_synced_at', type: 'timestamptz', nullable: true })
+  lastSyncedAt: Date | null;
 
   @DeleteDateColumn({ name: 'deleted_at', type: 'timestamptz', nullable: true })
   deletedAt: Date | null;

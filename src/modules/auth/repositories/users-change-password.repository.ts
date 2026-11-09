@@ -7,7 +7,7 @@ import { DataSource, EntityManager } from 'typeorm';
  */
 export interface UserChangePasswordRecord {
   id: string;
-  passwordHash: string;
+  passwordHash: string | null;
   accountStatus: string;
   mustChangePassword: boolean;
   deletedAt: Date | null;

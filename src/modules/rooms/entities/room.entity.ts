@@ -45,8 +45,21 @@ export class RoomEntity {
   @Column({ name: 'location_description', type: 'text', nullable: true })
   locationDescription: string | null;
 
-  @Column({ type: 'integer' })
+  @Column({ type: 'integer', default: 0 })
   capacity: number;
+
+  /** ma_day_nha của UEL. */
+  @Column({
+    name: 'building_code',
+    type: 'varchar',
+    length: 50,
+    nullable: true,
+  })
+  buildingCode: string | null;
+
+  /** ma_co_so của UEL. */
+  @Column({ name: 'campus_code', type: 'varchar', length: 50, nullable: true })
+  campusCode: string | null;
 
   @Column({
     name: 'room_type',
@@ -108,6 +121,13 @@ export class RoomEntity {
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
+
+  /** Nguồn dữ liệu: 'manual' (nhập tay) | 'uel_api' (đồng bộ API Đào tạo UEL). */
+  @Column({ type: 'varchar', length: 20, default: 'manual' })
+  source: 'manual' | 'uel_api';
+
+  @Column({ name: 'last_synced_at', type: 'timestamptz', nullable: true })
+  lastSyncedAt: Date | null;
 
   @DeleteDateColumn({ name: 'deleted_at', type: 'timestamptz', nullable: true })
   deletedAt: Date | null;

@@ -33,7 +33,8 @@ export interface RequestContextInfo {
 export interface AuthenticatedUserRecord {
   id: string;
   email: string;
-  passwordHash: string;
+  /** Null với tài khoản đồng bộ từ UEL chưa đặt mật khẩu. */
+  passwordHash: string | null;
   fullName: string;
   avatarUrl: string | null;
   departmentId: string | null;
