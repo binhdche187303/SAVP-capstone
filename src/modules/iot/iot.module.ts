@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
 import { CacheModule } from '@nestjs/cache-manager';
 import { AuthModule } from '../auth/auth.module.js';
+import { WebsocketModule } from '../websocket/websocket.module.js';
 import { IoTDeviceEntity } from './entities/iot-device.entity.js';
 import { IoTDeviceEventEntity } from './entities/iot-device-event.entity.js';
 import { DeviceUserMappingEntity } from './entities/device-user-mapping.entity.js';
@@ -32,6 +33,8 @@ import { IotAuditRepository } from './repositories/iot-audit.repository.js';
     AuthModule,
     JwtModule.register({}),
     CacheModule.register(),
+    // Đẩy thay đổi trạng thái/sức khỏe camera realtime (hạng mục 1.2).
+    WebsocketModule,
   ],
   controllers: [
     IotDevicesController,

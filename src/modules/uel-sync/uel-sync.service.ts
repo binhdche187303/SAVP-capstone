@@ -17,21 +17,29 @@ import type {
   UelPhongBan,
   UelSvLopSv,
   UelTkbLopHp1Ngay,
+  UelTkbNguoi1Ngay,
 } from './uel-api.types.js';
 import {
   clean,
+  codeListOf,
   eachDate,
   emailOf,
   fullNameOf,
   roomNameOf,
   semesterCodeOf,
+  semesterNameOf,
+  sessionTimesFromClock,
   sessionTimesOf,
   staffRoleOf,
+  isCohortInScope,
   toIsoDate,
   usernameOf,
 } from './uel-sync.mapper.js';
 import type { PeriodTime } from './uel-sync.mapper.js';
-import { UEL_API_CLIENT } from './uel-sync.constants.js';
+import {
+  UEL_API_CLIENT,
+  UEL_MIN_STUDENT_COHORT,
+} from './uel-sync.constants.js';
 
 export const UEL_SYNC_STEPS = [
   'departments',
@@ -51,6 +59,12 @@ export interface UelSyncOptions {
   /** Bắt buộc cho sessions (yyyy-MM-dd). */
   fromDate?: string;
   toDate?: string;
+  /**
+   * sessions theo người: chỉ lấy TKB của các mã GV / SV này (chi_tiet_tkb_gv|sv_1ngay).
+   * Có mã ⇒ không gọi tkb_lophp_1ngay và không hủy buổi nào.
+   */
+  lecturerCodes?: string[];
+  studentCodes?: string[];
 }
 
 export interface UelSyncStepResult {
@@ -94,9 +108,21 @@ export function runStatusOf(results: UelSyncStepResult[]): UelSyncRunStatus {
 const MAX_WARNINGS = 50;
 /** Lịch học: tối đa 1 lần gọi = 1 ngày; chặn khoảng quá dài. */
 const MAX_SESSION_DAYS = 120;
+/** Lịch theo người: mỗi mã × mỗi ngày = 1 lần gọi; giới hạn để không bị UEL chặn (429). */
+const MAX_SESSION_CODES = 30;
+const MAX_TARGETED_CALLS = 600;
 
 interface IdRow {
   id: string;
+}
+
+interface SessionCtx {
+  r: UelSyncStepResult;
+  periods: Map<number, PeriodTime>;
+  sectionIds: Map<string, string>;
+  roomCache: Map<string, string | null>;
+  /** external_id đã ghi trong lượt này (GV/SV trùng buổi). */
+  seen: Set<string>;
 }
 
 interface StepCtx {
@@ -282,9 +308,22 @@ export class UelSyncService implements OnModuleInit {
           'Bước sessions cần fromDate ≤ toDate (yyyy-MM-dd).',
         );
       }
-      if (eachDate(from, to).length > MAX_SESSION_DAYS) {
+      const days = eachDate(from, to).length;
+      if (days > MAX_SESSION_DAYS) {
         throw new BadRequestException(
           `Khoảng ngày tối đa ${MAX_SESSION_DAYS} ngày.`,
+        );
+      }
+      const codes =
+        codeListOf(o.lecturerCodes).length + codeListOf(o.studentCodes).length;
+      if (codes > MAX_SESSION_CODES) {
+        throw new BadRequestException(
+          `Lịch theo người: tối đa ${MAX_SESSION_CODES} mã GV + SV.`,
+        );
+      }
+      if (codes * days > MAX_TARGETED_CALLS) {
+        throw new BadRequestException(
+          `Lịch theo người: ${codes} mã × ${days} ngày = ${codes * days} lần gọi API, tối đa ${MAX_TARGETED_CALLS}. Rút ngắn khoảng ngày.`,
         );
       }
     }
@@ -330,6 +369,10 @@ export class UelSyncService implements OnModuleInit {
               ctx,
               toIsoDate(o.fromDate!)!,
               toIsoDate(o.toDate!)!,
+              {
+                lecturerCodes: codeListOf(o.lecturerCodes),
+                studentCodes: codeListOf(o.studentCodes),
+              },
             );
             break;
         }
@@ -418,6 +461,7 @@ export class UelSyncService implements OnModuleInit {
   private async syncStaff({ runStart, r }: StepCtx): Promise<void> {
     const rows = await this.client.all<UelNhanSu>(UEL_API.DS_NHANSU);
     r.fetched = rows.length;
+    const academic = await this.academicDepartmentCodes();
 
     for (const row of rows) {
       const code = clean(row.ma_nhan_su);
@@ -433,7 +477,11 @@ export class UelSyncService implements OnModuleInit {
           departmentCode: clean(row.ma_phong_ban),
           resigned: row.khong_con_cong_tac === true,
         });
-        await this.ensureRole(userId, staffRoleOf(row.loai));
+        const deptCode = clean(row.ma_phong_ban);
+        await this.ensureRole(
+          userId,
+          staffRoleOf(row.loai, !!deptCode && academic.has(deptCode)),
+        );
         r.upserted++;
       });
     }
@@ -474,10 +522,16 @@ export class UelSyncService implements OnModuleInit {
   private async syncStudents({ r }: StepCtx): Promise<void> {
     const classes = await this.client.all<UelLopSv>(UEL_API.DS_LOPSV);
     const deptByName = await this.departmentIdsByName();
+    let outOfScope = 0;
 
     for (const lop of classes) {
       const maLop = clean(lop.ma_lop);
       if (!maLop) continue;
+      // Khóa cũ (đã tốt nghiệp) ⇒ không lấy SV, khỏi gọi API.
+      if (!isCohortInScope(maLop, UEL_MIN_STUDENT_COHORT)) {
+        outOfScope++;
+        continue;
+      }
       let students: UelSvLopSv[];
       try {
         students = await this.client.all<UelSvLopSv>(UEL_API.DS_SV_LOPSV, {
@@ -519,6 +573,9 @@ export class UelSyncService implements OnModuleInit {
         });
       }
     }
+    this.logger.log(
+      `UEL sync students: bỏ qua ${outOfScope}/${classes.length} lớp trước khóa K${UEL_MIN_STUDENT_COHORT}`,
+    );
     // Không vô hiệu SV vắng mặt: API không có trạng thái học, ds theo lớp có thể thiếu
     // (lớp lỗi khi gọi) ⇒ để quản trị xử lý thủ công.
   }
@@ -561,6 +618,7 @@ export class UelSyncService implements OnModuleInit {
         // Bước sessions gán chắc chắn hơn từ ma_giang_vien.
         const gv = clean(row.giang_vien);
         if (gv) {
+          await this.grantTeacherByCode(gv);
           await this.db.query(
             `UPDATE class_sections cs SET lecturer_user_id = u.id
                FROM users u
@@ -652,23 +710,58 @@ export class UelSyncService implements OnModuleInit {
     { runStart, r }: StepCtx,
     fromDate: string,
     toDate: string,
+    targets: { lecturerCodes: string[]; studentCodes: string[] },
   ): Promise<void> {
-    const periods = await this.loadPeriods();
-    if (!periods.size) {
-      throw new Error(
-        'Bảng study_periods trống — cần nhập giờ từng tiết trước khi đồng bộ lịch học.',
-      );
-    }
-    const sectionIds = await this.idMap(
-      `SELECT s.semester_code || '|' || sub.subject_code || '|' || cs.class_code AS k, cs.id
-         FROM class_sections cs
-         JOIN semesters s ON s.id = cs.semester_id
-         JOIN subjects sub ON sub.id = cs.subject_id
-        WHERE cs.deleted_at IS NULL`,
-    );
-    const roomCache = new Map<string, string | null>();
+    const ctx: SessionCtx = {
+      r,
+      periods: await this.loadPeriods(),
+      sectionIds: await this.idMap(
+        `SELECT s.semester_code || '|' || sub.subject_code || '|' || cs.class_code AS k, cs.id
+           FROM class_sections cs
+           JOIN semesters s ON s.id = cs.semester_id
+           JOIN subjects sub ON sub.id = cs.subject_id
+          WHERE cs.deleted_at IS NULL`,
+      ),
+      roomCache: new Map(),
+      seen: new Set(),
+    };
+    const targeted =
+      targets.lecturerCodes.length > 0 || targets.studentCodes.length > 0;
 
     for (const date of eachDate(fromDate, toDate)) {
+      if (targeted) {
+        // Chỉ lấy TKB của các GV/SV được chọn; KHÔNG hủy buổi khác (không thấy cả trường).
+        const calls: [string, Record<string, string>][] = [
+          ...targets.lecturerCodes.map(
+            (c) =>
+              [UEL_API.TKB_GV_1NGAY, { ma_giang_vien: c, ngay_hoc: date }] as [
+                string,
+                Record<string, string>,
+              ],
+          ),
+          ...targets.studentCodes.map(
+            (c) =>
+              [UEL_API.TKB_SV_1NGAY, { ma_sinh_vien: c, ngay_hoc: date }] as [
+                string,
+                Record<string, string>,
+              ],
+          ),
+        ];
+        for (const [api, filter] of calls) {
+          let rows: UelTkbNguoi1Ngay[];
+          try {
+            rows = await this.client.all<UelTkbNguoi1Ngay>(api, filter);
+          } catch (e) {
+            const who = filter.ma_giang_vien ?? filter.ma_sinh_vien;
+            this.warn(r, `${who} ngày ${date}: ${(e as Error).message}`);
+            continue;
+          }
+          r.fetched += rows.length;
+          for (const row of rows) await this.upsertSessionRow(ctx, row, date);
+        }
+        continue;
+      }
+
       let rows: UelTkbLopHp1Ngay[];
       try {
         rows = await this.client.all<UelTkbLopHp1Ngay>(
@@ -682,80 +775,7 @@ export class UelSyncService implements OnModuleInit {
         continue;
       }
       r.fetched += rows.length;
-
-      for (const row of rows) {
-        const code = clean(row.ma_lop_hoc_phan);
-        const key = `${semesterCodeOf(row.nam_hoc ?? '', row.hoc_ky ?? '')}|${clean(row.ma_hoc_phan)}|${code}`;
-        const sectionId = sectionIds.get(key);
-        const sessionDate = toIsoDate(row.ngay_hoc) ?? date;
-        const times = sessionTimesOf(
-          sessionDate,
-          row.tiet_bat_dau,
-          row.so_tiet,
-          periods,
-        );
-        if (!code || !sectionId || !times) {
-          r.skipped++;
-          if (code && !sectionId) {
-            this.warn(
-              r,
-              `${date} ${code}: chưa có lớp HP (chạy bước sections).`,
-            );
-          } else if (code && !times) {
-            this.warn(
-              r,
-              `${date} ${code}: không quy đổi được tiết ${row.tiet_bat_dau}+${row.so_tiet}.`,
-            );
-          }
-          continue;
-        }
-        await this.tryRow(r, `buổi ${code} ${date}`, async () => {
-          const roomId = await this.resolveRoom(row, roomCache);
-          const externalId =
-            row.ma_lich_hoc !== null && row.ma_lich_hoc !== undefined
-              ? String(row.ma_lich_hoc)
-              : `${code}|${sessionDate}|${row.tiet_bat_dau}`;
-          await this.db.query(
-            `INSERT INTO class_sessions
-               (class_section_id, session_date, shift_id, room_id, start_time, end_time, status,
-                external_id, period_start, period_count, source, last_synced_at)
-             VALUES ($1, $2, NULL, $3, $4, $5, 'scheduled', $6, $7, $8, 'uel_api', now())
-             ON CONFLICT (external_id) WHERE external_id IS NOT NULL DO UPDATE
-               SET class_section_id = EXCLUDED.class_section_id,
-                   session_date = EXCLUDED.session_date,
-                   room_id = EXCLUDED.room_id,
-                   start_time = EXCLUDED.start_time,
-                   end_time = EXCLUDED.end_time,
-                   period_start = EXCLUDED.period_start,
-                   period_count = EXCLUDED.period_count,
-                   status = CASE WHEN class_sessions.status = 'cancelled' THEN 'scheduled'
-                                 ELSE class_sessions.status END,
-                   source = 'uel_api', last_synced_at = now(), updated_at = now()`,
-            [
-              sectionId,
-              sessionDate,
-              roomId,
-              times.start,
-              times.end,
-              externalId,
-              row.tiet_bat_dau,
-              row.so_tiet,
-            ],
-          );
-          // Giảng viên + phòng mặc định của lớp HP (chỉ điền khi còn trống / theo mã GV).
-          await this.db.query(
-            `UPDATE class_sections cs
-                SET lecturer_user_id = COALESCE(
-                      (SELECT id FROM users WHERE employee_code = $2 AND deleted_at IS NULL LIMIT 1),
-                      cs.lecturer_user_id),
-                    default_room_id = COALESCE(cs.default_room_id, $3),
-                    updated_at = now()
-              WHERE cs.id = $1`,
-            [sectionId, clean(row.ma_giang_vien), roomId],
-          );
-          r.upserted++;
-        });
-      }
+      for (const row of rows) await this.upsertSessionRow(ctx, row, date);
 
       // Buổi uel_api của ngày này không còn trong TKB → hủy (chỉ buổi chưa diễn ra).
       r.deactivated += await this.affected(
@@ -848,6 +868,35 @@ export class UelSyncService implements OnModuleInit {
     return inserted[0].id;
   }
 
+  /**
+   * Mã đơn vị học thuật: tên bắt đầu "Khoa"/"Bộ môn" và mọi đơn vị con của chúng
+   * (vd "Phòng Nghiên cứu…" thuộc Khoa HTTT).
+   */
+  private async academicDepartmentCodes(): Promise<Set<string>> {
+    const rows = await this.db.query<{ code: string }[]>(
+      `WITH RECURSIVE t AS (
+         SELECT id, department_code FROM departments
+          WHERE deleted_at IS NULL AND (ltrim(department_name) ILIKE 'khoa %'
+                OR ltrim(department_name) ILIKE 'bộ môn %'
+                OR ltrim(department_name) LIKE 'Bộ môn %')
+         UNION
+         SELECT d.id, d.department_code FROM departments d
+           JOIN t ON d.parent_department_id = t.id
+          WHERE d.deleted_at IS NULL)
+       SELECT department_code AS code FROM t WHERE department_code IS NOT NULL`,
+    );
+    return new Set(rows.map((x) => x.code));
+  }
+
+  /** Người được ghi là GV của lớp HP / buổi học ⇒ thêm role TEACHER (giữ role cũ). */
+  private async grantTeacherByCode(code: string): Promise<void> {
+    const rows = await this.db.query<IdRow[]>(
+      `SELECT id FROM users WHERE employee_code = $1 AND deleted_at IS NULL LIMIT 1`,
+      [code],
+    );
+    if (rows[0]) await this.ensureRole(rows[0].id, 'TEACHER');
+  }
+
   private async ensureRole(userId: string, roleCode: string): Promise<void> {
     await this.db.query(
       `INSERT INTO user_roles (user_id, role_id)
@@ -867,7 +916,7 @@ export class UelSyncService implements OnModuleInit {
        RETURNING id`,
       [
         semesterCodeOf(namHoc, hocKy),
-        `Học kỳ ${hocKy.trim()} năm học ${namHoc.trim()}`,
+        semesterNameOf(namHoc, hocKy),
         namHoc.trim().slice(0, 20),
       ],
     );
@@ -890,6 +939,88 @@ export class UelSyncService implements OnModuleInit {
       [code, name ?? code, credits !== null && credits >= 0 ? credits : null],
     );
     return rows[0].id;
+  }
+
+  /**
+   * Ghi 1 buổi học từ dòng TKB (dùng chung cho cả trường / theo GV-SV).
+   * Giờ: ưu tiên gio_bat_dau/gio_ket_thuc API trả kèm; thiếu thì quy đổi tiết qua study_periods.
+   */
+  private async upsertSessionRow(
+    { r, periods, sectionIds, roomCache, seen }: SessionCtx,
+    row: UelTkbLopHp1Ngay,
+    date: string,
+  ): Promise<void> {
+    const code = clean(row.ma_lop_hoc_phan);
+    const sessionDate = toIsoDate(row.ngay_hoc) ?? date;
+    const externalId =
+      row.ma_lich_hoc !== null && row.ma_lich_hoc !== undefined
+        ? String(row.ma_lich_hoc)
+        : `${code}|${sessionDate}|${row.tiet_bat_dau}`;
+    // GV và SV cùng học 1 buổi ⇒ API trả trùng; chỉ ghi 1 lần mỗi lượt.
+    if (seen.has(externalId)) return;
+    seen.add(externalId);
+
+    const key = `${semesterCodeOf(row.nam_hoc ?? '', row.hoc_ky ?? '')}|${clean(row.ma_hoc_phan)}|${code}`;
+    const sectionId = sectionIds.get(key);
+    const times =
+      sessionTimesFromClock(sessionDate, row.gio_bat_dau, row.gio_ket_thuc) ??
+      sessionTimesOf(sessionDate, row.tiet_bat_dau, row.so_tiet, periods);
+    if (!code || !sectionId || !times) {
+      r.skipped++;
+      if (code && !sectionId) {
+        this.warn(r, `${date} ${code}: chưa có lớp HP (chạy bước sections).`);
+      } else if (code && !times) {
+        this.warn(
+          r,
+          `${date} ${code}: API không có giờ và bảng tiết chưa có tiết ${row.tiet_bat_dau}+${row.so_tiet}.`,
+        );
+      }
+      return;
+    }
+    await this.tryRow(r, `buổi ${code} ${date}`, async () => {
+      const roomId = await this.resolveRoom(row, roomCache);
+      await this.db.query(
+        `INSERT INTO class_sessions
+           (class_section_id, session_date, shift_id, room_id, start_time, end_time, status,
+            external_id, period_start, period_count, source, last_synced_at)
+         VALUES ($1, $2, NULL, $3, $4, $5, 'scheduled', $6, $7, $8, 'uel_api', now())
+         ON CONFLICT (external_id) WHERE external_id IS NOT NULL DO UPDATE
+           SET class_section_id = EXCLUDED.class_section_id,
+               session_date = EXCLUDED.session_date,
+               room_id = EXCLUDED.room_id,
+               start_time = EXCLUDED.start_time,
+               end_time = EXCLUDED.end_time,
+               period_start = EXCLUDED.period_start,
+               period_count = EXCLUDED.period_count,
+               status = CASE WHEN class_sessions.status = 'cancelled' THEN 'scheduled'
+                             ELSE class_sessions.status END,
+               source = 'uel_api', last_synced_at = now(), updated_at = now()`,
+        [
+          sectionId,
+          sessionDate,
+          roomId,
+          times.start,
+          times.end,
+          externalId,
+          row.tiet_bat_dau,
+          row.so_tiet,
+        ],
+      );
+      // Giảng viên + phòng mặc định của lớp HP (chỉ điền khi còn trống / theo mã GV).
+      const gvCode = clean(row.ma_giang_vien);
+      await this.db.query(
+        `UPDATE class_sections cs
+            SET lecturer_user_id = COALESCE(
+                  (SELECT id FROM users WHERE employee_code = $2 AND deleted_at IS NULL LIMIT 1),
+                  cs.lecturer_user_id),
+                default_room_id = COALESCE(cs.default_room_id, $3),
+                updated_at = now()
+          WHERE cs.id = $1`,
+        [sectionId, gvCode, roomId],
+      );
+      if (gvCode) await this.grantTeacherByCode(gvCode);
+      r.upserted++;
+    });
   }
 
   /** Phòng theo (room_code, campus_code); chưa có thì tạo (capacity mặc định 0). */

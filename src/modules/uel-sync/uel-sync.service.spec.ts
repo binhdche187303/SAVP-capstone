@@ -111,12 +111,97 @@ describe('UelSyncService.start', () => {
     ]);
   });
 
-  it('sessions khi study_periods trống → bước báo lỗi rõ ràng', async () => {
-    const run = await makeService().svc.start({
+  const tkbRow = (over: Record<string, unknown> = {}) => ({
+    ngay_hoc: '2026-11-12',
+    ma_lop_hoc_phan: '261BMA202504',
+    ma_hoc_phan: 'BMA2025',
+    nam_hoc: '2026-2027',
+    hoc_ky: 'HK01',
+    tiet_bat_dau: 1,
+    so_tiet: 4,
+    ma_phong_hoc: null,
+    ma_lich_hoc: 9001,
+    ma_giang_vien: 'GV0001',
+    gio_bat_dau: '07:00',
+    gio_ket_thuc: '11:00',
+    ...over,
+  });
+  const sectionMap = {
+    "semester_code || '|'": [
+      { k: '2026-2027_HK01|BMA2025|261BMA202504', id: 'sec-1' },
+    ],
+  };
+
+  it('sessions: study_periods trống vẫn ghi buổi theo gio_bat_dau/gio_ket_thuc API', async () => {
+    const { svc, query } = makeService(true, [tkbRow()]);
+    query.mockImplementation(fakeQuery(sectionMap));
+    const run = await svc.start({
       steps: ['sessions'],
-      fromDate: '2026-11-09',
-      toDate: '2026-11-09',
+      fromDate: '2026-11-12',
+      toDate: '2026-11-12',
     });
-    expect(run.results[0].error).toMatch(/study_periods/);
+    expect(run.results[0]).toMatchObject({ upserted: 1, skipped: 0 });
+    expect(run.results[0].error).toBeUndefined();
+    const ins = query.mock.calls.find(([sql]) =>
+      sql.includes('INSERT INTO class_sessions'),
+    );
+    expect(ins?.[1]?.slice(3, 6)).toEqual([
+      '2026-11-12T07:00:00+07:00',
+      '2026-11-12T11:00:00+07:00',
+      '9001',
+    ]);
+  });
+
+  it('sessions: thiếu giờ API và không có bảng tiết → bỏ qua + cảnh báo', async () => {
+    const { svc, query } = makeService(true, [
+      tkbRow({ gio_bat_dau: null, gio_ket_thuc: null }),
+    ]);
+    query.mockImplementation(fakeQuery(sectionMap));
+    const run = await svc.start({
+      steps: ['sessions'],
+      fromDate: '2026-11-12',
+      toDate: '2026-11-12',
+    });
+    expect(run.results[0]).toMatchObject({ upserted: 0, skipped: 1 });
+    expect(run.results[0].warnings[0]).toMatch(/không có giờ/);
+  });
+
+  it('sessions theo người: gọi API GV/SV, gộp buổi trùng, không hủy buổi', async () => {
+    const { svc, query } = makeService(true, [tkbRow()]);
+    query.mockImplementation(fakeQuery(sectionMap));
+    const all = (svc as unknown as { client: { all: jest.Mock } }).client.all;
+    const run = await svc.start({
+      steps: ['sessions'],
+      fromDate: '2026-11-12',
+      toDate: '2026-11-13',
+      lecturerCodes: ['GV0001', ' GV0001 '],
+      studentCodes: ['K240000001'],
+    });
+    const apis = all.mock.calls.map(([api]) => api as string);
+    expect(apis).toHaveLength(4); // 2 mã × 2 ngày (GV0001 trùng bị gộp)
+    expect(apis.some((a) => a.includes('tkb_lophp_1ngay'))).toBe(false);
+    expect(all.mock.calls[0][1]).toEqual({
+      ma_giang_vien: 'GV0001',
+      ngay_hoc: '2026-11-12',
+    });
+    // Cùng ma_lich_hoc 9001 trả về 4 lần → chỉ ghi 1 lần.
+    expect(run.results[0]).toMatchObject({ fetched: 4, upserted: 1 });
+    expect(
+      query.mock.calls.some(([sql]) =>
+        sql.includes("SET status = 'cancelled'"),
+      ),
+    ).toBe(false);
+  });
+
+  it('sessions theo người: quá nhiều lần gọi API → 400', () => {
+    const { svc } = makeService();
+    expect(() =>
+      svc.start({
+        steps: ['sessions'],
+        fromDate: '2026-11-01',
+        toDate: '2027-01-31',
+        lecturerCodes: Array.from({ length: 10 }, (_, i) => `GV${i}`),
+      }),
+    ).toThrow(BadRequestException);
   });
 });

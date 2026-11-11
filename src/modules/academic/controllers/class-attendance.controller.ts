@@ -61,6 +61,21 @@ export class ClassAttendanceController {
     };
   }
 
+  /** Lịch buổi học thật (class_sessions) theo khoảng ngày: ?from=yyyy-MM-dd&to=yyyy-MM-dd (tối đa 62 ngày). */
+  @Get('sessions')
+  async listSessions(
+    @CurrentUser() user: { userId: string },
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const data = await this.service.listSessions(user.userId, from, to);
+    return {
+      success: true,
+      message: 'Class sessions retrieved successfully',
+      data,
+    };
+  }
+
   @Get('classes/:classId/rows')
   async getRows(
     @CurrentUser() user: { userId: string },
@@ -96,7 +111,11 @@ export class ClassAttendanceController {
     @Query('date') date?: string,
   ) {
     const data = await this.service.getEvents(user.userId, classId, date);
-    return { success: true, message: 'Class attendance events retrieved successfully', data };
+    return {
+      success: true,
+      message: 'Class attendance events retrieved successfully',
+      data,
+    };
   }
 
   @Post('scan')
@@ -124,7 +143,8 @@ export class ClassAttendanceController {
   @Post('manual')
   async updateManual(
     @CurrentUser() user: { userId: string },
-    @Body() body: {
+    @Body()
+    body: {
       classId?: string;
       studentId?: string;
       date?: string;

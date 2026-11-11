@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { LoginMethod } from '../types/login.types';
 
 @Injectable()
 export class AuthAuditRepository {
@@ -11,6 +12,7 @@ export class AuthAuditRepository {
     ipAddress?: string;
     userAgent?: string;
     jti: string;
+    method?: LoginMethod;
   }): Promise<void> {
     await this.dataSource.query(
       `
@@ -23,7 +25,11 @@ export class AuthAuditRepository {
         params.ipAddress ?? null,
         params.userAgent ?? null,
         params.requestId ?? null,
-        JSON.stringify({ jti: params.jti }),
+        JSON.stringify(
+          params.method && params.method !== 'password'
+            ? { jti: params.jti, method: params.method }
+            : { jti: params.jti },
+        ),
       ],
     );
   }

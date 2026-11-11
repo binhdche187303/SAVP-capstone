@@ -47,3 +47,6 @@ export interface AuthSessionRecord {
   userId: string;
   expiresAt: Date;
 }
+
+/** Cách user được xác thực — ghi vào audit_logs.metadata_json.method (bỏ qua khi 'password'). */
+export type LoginMethod = 'password' | 'uel_sso';

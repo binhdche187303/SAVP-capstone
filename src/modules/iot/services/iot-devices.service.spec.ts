@@ -1190,6 +1190,81 @@ describe('IotDevicesService', () => {
       });
     });
 
+    describe('hạng mục 1.2 — mọi loại camera, sức khỏe, realtime', () => {
+      /** manager.query: echo id cho UPDATE health … RETURNING id. */
+      const healthCalls = () =>
+        (dataSourceMock.manager.query as jest.Mock).mock.calls.filter(
+          ([sql]: [string]) => sql.includes('health_status'),
+        );
+      let broadcast: jest.Mock;
+
+      beforeEach(() => {
+        (dataSourceMock.manager.query as jest.Mock).mockImplementation(
+          (sql: string, params: any[]) =>
+            Promise.resolve(
+              sql.includes('RETURNING')
+                ? [params[1].map((id: string) => ({ id })), params[1].length]
+                : [],
+            ),
+        );
+        broadcast = jest.fn();
+        (service as any).websocketService = { broadcast };
+      });
+
+      it('quét cả camera vào/ra, phòng, biển số (không chỉ ip_camera)', async () => {
+        (dataSourceMock.manager.find as jest.Mock).mockResolvedValue([]);
+        await service.detectOfflineDevices(null);
+        const where = (dataSourceMock.manager.find as jest.Mock).mock.calls[0][1]
+          .where;
+        expect(where.deviceType).toEqual(
+          In([
+            IoTDeviceType.IP_CAMERA,
+            IoTDeviceType.DOOR_CAMERA,
+            IoTDeviceType.ROOM_CAMERA,
+            IoTDeviceType.ANPR_CAMERA,
+          ]),
+        );
+      });
+
+      it('lỗi chưa đủ ngưỡng → warning; đủ ngưỡng → faulty; có lại → healthy', async () => {
+        const d = cam({
+          id: 'c1',
+          deviceType: IoTDeviceType.ANPR_CAMERA,
+          status: 'online',
+          healthStatus: 'healthy',
+        });
+        (dataSourceMock.manager.find as jest.Mock).mockResolvedValue([d]);
+        probeTcpMock.mockResolvedValue('offline');
+
+        await service.detectOfflineDevices(null);
+        expect(healthCalls()[0][1]).toEqual(['warning', ['c1']]);
+        expect(broadcast).toHaveBeenCalledWith(
+          'iot.device.status_changed',
+          expect.objectContaining({ deviceIds: ['c1'] }),
+        );
+
+        d.healthStatus = 'warning';
+        await runTimes(2);
+        expect(healthCalls().at(-1)[1]).toEqual(['faulty', ['c1']]);
+
+        d.status = 'offline';
+        d.healthStatus = 'faulty';
+        probeTcpMock.mockResolvedValue('online');
+        await service.detectOfflineDevices(null);
+        expect(healthCalls().at(-1)[1]).toEqual(['healthy', ['c1']]);
+      });
+
+      it('KHÔNG ghi đè faulty do Ping thủ công khi TCP probe vẫn OK', async () => {
+        (dataSourceMock.manager.find as jest.Mock).mockResolvedValue([
+          cam({ id: 'c1', status: 'online', healthStatus: 'faulty' }),
+        ]);
+        probeTcpMock.mockResolvedValue('online');
+        await service.detectOfflineDevices(null);
+        expect(healthCalls()).toEqual([]);
+        expect(broadcast).not.toHaveBeenCalled();
+      });
+    });
+
     describe('device offline alert hook (theo lô)', () => {
       it('online->offline (đủ ngưỡng) → gọi onDevicesOffline 1 lần với device + zoneId', async () => {
         (dataSourceMock.manager.find as jest.Mock).mockResolvedValue([
@@ -1978,6 +2053,21 @@ describe('IotDevicesService', () => {
       expect(lac(r).reason_code).toBe('DEVICE_ROOM_ASSIGNMENT_REQUIRED');
       expect(lac(r).runtime_verified).toBe(false);
       expect(probeRtspRuntimeMock).not.toHaveBeenCalled();
+    });
+
+    it('1.1: camera biển số gắn khu vực (không phòng) vẫn Ping được', async () => {
+      dataSourceMock.manager.findOne.mockResolvedValue(
+        camera({
+          deviceType: IoTDeviceType.ANPR_CAMERA,
+          roomId: null,
+          zoneId: 'zone-gate',
+        }),
+      );
+      probeRtspRuntimeMock.mockResolvedValue(probeResult() as any);
+      const r = await service.checkAvailability('u1', 'cam-1');
+      expect(probeRtspRuntimeMock).toHaveBeenCalled();
+      expect(lac(r).is_available).toBe(true);
+      expect(r.status).toBe('online');
     });
 
     it('AC-7: thiếu rtsp_config → RTSP_CONFIG_MISSING, không probe', async () => {

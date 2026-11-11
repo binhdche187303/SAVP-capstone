@@ -18,7 +18,9 @@ import { BiometricStatusRawRepository } from '../repositories/biometric-status-r
 import { resolveBiometricReviewStatus } from '../../../common/utils/biometric-status-resolver.util';
 import { isBiometricExemptRole } from '../../../common/utils/biometric-exempt-roles.util';
 import {
+  AuthenticatedUserRecord,
   AuthUserSummary,
+  LoginMethod,
   LoginSuccessData,
   RequestContextInfo,
 } from '../types/login.types';
@@ -87,6 +89,15 @@ export class LoginService {
       });
     }
 
+    this.assertAccountUsable(user);
+    const { result } = await this.issueSession(user, requestContext);
+    return result;
+  }
+
+  /**
+   * Chặn tài khoản hết hạn / không active. Dùng chung cho đăng nhập mật khẩu và SSO UEL.
+   */
+  assertAccountUsable(user: AuthenticatedUserRecord): void {
     if (
       user.accountExpiresAt &&
       user.accountExpiresAt.getTime() <= Date.now()
@@ -118,7 +129,17 @@ export class LoginService {
           message: 'Account status is not allowed for login.',
         });
     }
+  }
 
+  /**
+   * Cấp phiên (JWT access + refresh) cho user đã xác thực xong — bằng mật khẩu hoặc SSO UEL.
+   * Caller PHẢI gọi assertAccountUsable trước.
+   */
+  async issueSession(
+    user: AuthenticatedUserRecord,
+    ctx: RequestContextInfo,
+    method: LoginMethod = 'password',
+  ): Promise<{ result: LoginSuccessData; jti: string }> {
     const jti = randomUUID();
     let accessToken: string;
     let refreshToken: string;
@@ -159,10 +180,11 @@ export class LoginService {
     try {
       await this.authAuditRepository.logLoginSuccess({
         userId: user.id,
-        requestId: requestContext.requestId,
-        ipAddress: requestContext.ipAddress,
-        userAgent: requestContext.userAgent,
+        requestId: ctx.requestId,
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
         jti,
+        method,
       });
     } catch (error) {
       this.logger.error(
@@ -215,10 +237,13 @@ export class LoginService {
     };
 
     return {
-      accessToken,
-      refreshToken,
-      expiresIn: this.authConfigService.getAccessTokenTtlSeconds(),
-      user: summary,
+      jti,
+      result: {
+        accessToken,
+        refreshToken,
+        expiresIn: this.authConfigService.getAccessTokenTtlSeconds(),
+        user: summary,
+      },
     };
   }
 }
