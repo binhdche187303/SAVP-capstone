@@ -71,7 +71,16 @@ export class UelApiClient {
     const body = JSON.stringify({ ...filter, page, limit });
     for (let attempt = 0; ; attempt++) {
       const res = await this.post(api, body);
-      if (res.ok) return (await res.json()) as UelPage<T>;
+      if (res.ok) {
+        const data = (await res.json()) as UelPage<T>;
+        if (!Array.isArray(data.items) || data.page !== page ||
+            !Number.isInteger(data.totalPages) || data.totalPages < 0 ||
+            !Number.isInteger(data.total) || data.total < 0 ||
+            (data.total > 0 && data.totalPages < page)) {
+          throw new UelApiError('UEL API trả phân trang không hợp lệ; dừng đồng bộ để bảo vệ dữ liệu.', 200);
+        }
+        return data;
+      }
 
       // 404 Data.NotFound = "không có dữ liệu theo điều kiện" → coi như trang rỗng.
       const err = await this.toError(res);
@@ -95,7 +104,14 @@ export class UelApiClient {
     const first = await this.page<T>(api, filter, 1);
     const out = [...first.items];
     for (let p = 2; p <= first.totalPages; p++) {
-      out.push(...(await this.page<T>(api, filter, p)).items);
+      const next = await this.page<T>(api, filter, p);
+      if (next.totalPages !== first.totalPages || next.total !== first.total || !next.items.length) {
+        throw new UelApiError('Dữ liệu phân trang UEL thay đổi hoặc thiếu; cần chạy lại đồng bộ.', 200);
+      }
+      out.push(...next.items);
+    }
+    if (out.length !== first.total) {
+      throw new UelApiError('UEL API trả thiếu dữ liệu so với tổng số bản ghi.', 200);
     }
     return out;
   }

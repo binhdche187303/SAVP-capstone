@@ -195,6 +195,7 @@ describe('MeetingRequestReviewService', () => {
     // Nhóm E (2026-08-08): MeetingRequestReviewService giờ inject MeetingsService
     // để lấy suggestedAlternatives lúc reject() — chỉ cần mock getAvailableRooms.
     meetingsService = {
+      canReviewMeeting: jest.fn().mockResolvedValue(true),
       getAvailableRooms: jest.fn().mockResolvedValue([]),
       getMeetingRequestApproverIds: jest.fn().mockResolvedValue([]),
       emitMeetingRequestUpdate: jest.fn(),

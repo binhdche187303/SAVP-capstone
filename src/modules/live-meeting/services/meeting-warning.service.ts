@@ -142,16 +142,6 @@ export class MeetingWarningService {
     bufferMinutes: number,
   ): Promise<RoomBookingEntity | null> {
     try {
-      const nextBooking = await this.dataSource
-        .getRepository(RoomBookingEntity)
-        .findOne({
-          where: {
-            roomId,
-            meetingId: In([meetingId, null]), // This doesn't work for NOT EQUAL — need query builder
-          },
-          order: { reservedStartTime: 'ASC' },
-        });
-
       // Use QueryBuilder for NOT EQUAL on meetingId
       const qb = this.dataSource
         .getRepository(RoomBookingEntity)

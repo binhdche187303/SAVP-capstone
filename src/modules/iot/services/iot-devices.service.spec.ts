@@ -786,7 +786,7 @@ describe('IotDevicesService', () => {
 
       const result = await service.findAll({ page: 1, limit: 20 });
 
-      expect(qbMock.andWhere).not.toHaveBeenCalled();
+      expect(qbMock.andWhere).toHaveBeenCalledWith(expect.stringContaining("mock_camera"));
       expect(qbMock.orderBy).toHaveBeenCalledWith('d.createdAt', 'DESC');
       expect(qbMock.skip).toHaveBeenCalledWith(0);
       expect(qbMock.take).toHaveBeenCalledWith(20);

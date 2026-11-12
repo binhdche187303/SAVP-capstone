@@ -1,3 +1,7 @@
+import { NoteResponseDto } from '../dto/note-response.dto.js';
+import { InternalServerErrorException } from '@nestjs/common';
+import { MEETING_NOTE_ERRORS } from '../constants/meeting-note-error.constant.js';
+import { sanitizeNoteContent } from '../../../common/utils/sanitize-note-content.util.js';
 import {
   Injectable,
   Logger,
@@ -3699,8 +3703,7 @@ export class LiveMeetingService {
     meetingId: string,
     userId: string,
   ): Promise<boolean> {
-    const { MeetingParticipantEntity } =
-      await import('../../meetings/entities/meeting-participant.entity.js');
+
     const count = await em
       .createQueryBuilder(MeetingParticipantEntity, 'mp')
       .where('mp.meetingId = :meetingId', { meetingId })
@@ -3723,16 +3726,6 @@ export class LiveMeetingService {
     dto,
     authUser: AuthUser,
   ): Promise<any> {
-    const { sanitizeNoteContent } =
-      await import('../../../common/utils/sanitize-note-content.util.js');
-    const { MEETING_NOTE_ERRORS } =
-      await import('../constants/meeting-note-error.constant.js');
-    const { MeetingNoteEntity } =
-      await import('../../meetings/entities/meeting-note.entity.js');
-    const { UserEntity } =
-      await import('../../accounts/entities/user.entity.js');
-    const { BadRequestException, InternalServerErrorException } =
-      await import('@nestjs/common');
 
     const currentUserId = authUser.userId;
 
@@ -3872,7 +3865,6 @@ export class LiveMeetingService {
       );
     }
 
-    const { NoteResponseDto } = await import('../dto/note-response.dto.js');
     return new NoteResponseDto({
       id: noteWithAuthor.id,
       meetingId: noteWithAuthor.meetingId,
@@ -3904,8 +3896,6 @@ export class LiveMeetingService {
   ): Promise<void> {
     const { UserEntity } =
       await import('../../accounts/entities/user.entity.js');
-    const { MeetingParticipantEntity } =
-      await import('../../meetings/entities/meeting-participant.entity.js');
 
     // Get current user's department_id
     const currentUser = await this.dataSource
@@ -3968,7 +3958,6 @@ export class LiveMeetingService {
       await import('../../meetings/entities/meeting.entity.js');
     const { MEETING_NOTE_ERRORS } =
       await import('../constants/meeting-note-error.constant.js');
-    const { NoteResponseDto } = await import('../dto/note-response.dto.js');
 
     // Verify meeting exists
     const meeting = await this.dataSource.getRepository(MeetingEntity).findOne({
@@ -4568,8 +4557,7 @@ export class LiveMeetingService {
       await import('../../meetings/entities/meeting.entity.js');
     const { UserEntity } =
       await import('../../accounts/entities/user.entity.js');
-    const { MeetingParticipantEntity } =
-      await import('../../meetings/entities/meeting-participant.entity.js');
+
     const { MeetingEventEntity } =
       await import('../../meetings/entities/meeting-event.entity.js');
     const { MEETING_NOTE_ERRORS } =

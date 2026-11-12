@@ -60,7 +60,7 @@ describe('VehicleTrafficStatsService (VTS-001 / UC-114 + KPI-001)', () => {
     await service.getStats({ from, to });
     for (const [sql] of query.mock.calls) {
       expect(sql).toMatch(
-        /FROM iot_device_events\s+WHERE event_type = 'ivss_vehicle_event' AND/,
+        /FROM iot_device_events\s+WHERE event_type = \$\d+/,
       );
     }
   });

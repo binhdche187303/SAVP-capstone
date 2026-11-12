@@ -129,6 +129,7 @@ describe('MeetingsService — Agenda Attachment (feat-attach-meeting-agenda-docu
         {} as any,
         {} as any,
         undefined,
+        undefined,
         cloudinaryService as any,
       );
     });
@@ -363,6 +364,7 @@ describe('MeetingsService — Agenda Attachment (feat-attach-meeting-agenda-docu
         configService as any,
         {} as any,
         {} as any,
+        undefined,
         undefined,
         cloudinaryService as any,
       );

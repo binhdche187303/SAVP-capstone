@@ -1,3 +1,7 @@
+// Keep time-dependent fixtures independent of the machine date.
+beforeEach(() => { jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'hrtime', 'performance', 'queueMicrotask'], now: new Date('2026-07-12T00:00:00Z').getTime() }); });
+afterEach(() => { jest.useRealTimers(); jest.restoreAllMocks(); });
+
 import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getEntityManagerToken } from '@nestjs/typeorm';

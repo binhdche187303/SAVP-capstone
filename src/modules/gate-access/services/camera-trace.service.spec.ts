@@ -25,8 +25,8 @@ describe('CameraTraceService (họp 20/10 — truy vết theo camera/nhóm/khu v
     query = jest.fn().mockImplementation((sql: string, params: any[]) => {
       captured.push({ sql, params });
       if (sql.includes('FROM user_roles')) return Promise.resolve(roles.map((role_code) => ({ role_code })));
-      if (sql.includes('FROM iot_devices d')) return Promise.resolve(devices);
       if (sql.includes('WITH ev AS')) return Promise.resolve(events);
+      if (sql.includes('FROM iot_devices d')) return Promise.resolve(devices);
       return Promise.resolve([]);
     });
     service = new CameraTraceService({ query, manager: { insert } } as any);
@@ -78,7 +78,7 @@ describe('CameraTraceService (họp 20/10 — truy vết theo camera/nhóm/khu v
     events = [row()];
     await service.trace(CALLER, { groupId: GROUP_ID, ...range });
     const resolve = captured.find((c) => c.sql.includes('FROM iot_devices d'))!;
-    expect(resolve.params).toEqual([null, GROUP_ID, null]);
+    expect(resolve.params).toEqual([null, GROUP_ID]);
     const evq = captured.find((c) => c.sql.includes('WITH ev AS'))!;
     expect(evq.params[0]).toEqual([DEVICE_ID]);
     expect(evq.sql).toContain('FROM gate_access_logs');

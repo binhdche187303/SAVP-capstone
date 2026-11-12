@@ -1,5 +1,6 @@
 ﻿import {
   IsString,
+  IsNotEmpty,
   IsOptional,
   Matches,
   MaxLength,
@@ -25,6 +26,7 @@ export class CreatePermissionDto {
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
   )
+  @IsNotEmpty()
   @IsString({ message: 'permissionName phải là chuỗi ký tự' })
   @MaxLength(150, { message: 'permissionName không được vượt quá 150 ký tự' })
   permissionName: string;
@@ -42,6 +44,7 @@ export class CreatePermissionDto {
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim().toLowerCase() : value,
   )
+  @IsNotEmpty()
   @IsString({ message: 'actionCode phải là chuỗi ký tự' })
   @MaxLength(80, { message: 'actionCode không được vượt quá 80 ký tự' })
   actionCode: string;

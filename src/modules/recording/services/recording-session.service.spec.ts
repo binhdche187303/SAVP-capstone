@@ -1110,6 +1110,7 @@ describe('RecordingSessionService.listRecordingSessions', () => {
     const result = await service.listRecordingSessions('m1', 'u1');
     expect(result).toHaveLength(2);
     expect(result[0]).toEqual({
+      mediaFiles: [],
       recordingSessionId: 'sess-2',
       sessionType: 'audio',
       sourceType: 'manual_upload',

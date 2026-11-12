@@ -1,3 +1,5 @@
+import { MeetingSeriesService } from '../services/meeting-series.service.js';
+import { MeetingPrepService } from '../services/meeting-prep.service.js';
 import { Test, TestingModule } from '@nestjs/testing';
 import { MeetingsController } from '../controllers/meetings.controller.js';
 import { MeetingsService } from '../services/meetings.service.js';
@@ -40,6 +42,8 @@ describe('MeetingsController.updateAgendaItem', () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [MeetingsController],
       providers: [
+        { provide: MeetingSeriesService, useValue: {} },
+        { provide: MeetingPrepService, useValue: {} },
         { provide: MeetingsService, useValue: meetingsService },
         { provide: MeetingRequestReviewService, useValue: {} },
         { provide: ParticipantImportService, useValue: {} },

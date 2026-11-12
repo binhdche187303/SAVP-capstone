@@ -1,3 +1,5 @@
+beforeEach(() => jest.useFakeTimers({ now: new Date('2026-07-01T00:00:00Z') }));
+afterEach(() => jest.useRealTimers());
 import 'reflect-metadata';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';

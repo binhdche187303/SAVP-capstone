@@ -302,6 +302,7 @@ describe('AttendanceService', () => {
     it('should return late when checkInTime > startTime by 1s, no grace period', () => {
       const record = {
         ...mockAttendanceRecord,
+        attendanceStatus: null as any,
         checkInTime: new Date('2026-06-16T09:00:01Z'),
       };
       const result = service.deriveAttendanceStatus(
@@ -317,6 +318,7 @@ describe('AttendanceService', () => {
     it('should return lateMinutes=2 when checkInTime > startTime by 65s', () => {
       const record = {
         ...mockAttendanceRecord,
+        attendanceStatus: null as any,
         checkInTime: new Date('2026-06-16T09:01:05Z'),
       };
       const result = service.deriveAttendanceStatus(

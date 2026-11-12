@@ -24,7 +24,7 @@ describe('PartnerAccountRestrictionGuard', () => {
     const dataSource = {
       query: jest
         .fn()
-        .mockResolvedValue([{ department_id: options.departmentId }]),
+        .mockResolvedValue([{ department_code: options.departmentId === PARTNER_DEPARTMENT_ID ? 'PARTNER' : 'OTHER' }]),
     } as any;
     return new PartnerAccountRestrictionGuard(reflector as any, dataSource);
   };

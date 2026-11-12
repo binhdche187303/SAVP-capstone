@@ -86,8 +86,10 @@ export interface UelSyncRunView extends UelSyncRun {
 /** failed: mọi bước lỗi; partial: có bước lỗi; còn lại succeeded. */
 export function runStatusOf(results: UelSyncStepResult[]): UelSyncRunStatus {
   const errors = results.filter((r) => r.error).length;
-  if (!results.length || errors === 0) return 'succeeded';
-  return errors === results.length ? 'failed' : 'partial';
+  if (results.length && errors === results.length) return 'failed';
+  return results.some((r) => r.error || r.skipped > 0 || (r.warnings?.length ?? 0) > 0)
+    ? 'partial'
+    : 'succeeded';
 }
 
 /** Giữ tối đa N cảnh báo mỗi bước để kết quả không phình to. */
@@ -386,7 +388,7 @@ export class UelSyncService implements OnModuleInit {
     }
     await this.applyDepartmentManagers();
 
-    if (rows.length) {
+    if (rows.length && r.skipped === 0) {
       r.deactivated = await this.affected(
         `UPDATE departments SET is_active = false, updated_at = now()
           WHERE source = 'uel_api' AND deleted_at IS NULL AND is_active = true
@@ -455,7 +457,7 @@ export class UelSyncService implements OnModuleInit {
     await this.applyDepartmentManagers();
 
     // Cán bộ uel_api không còn trong danh sách (và không phải SV) → nghỉ.
-    if (rows.length) {
+    if (rows.length && r.skipped === 0) {
       r.deactivated = await this.affected(
         `UPDATE users u SET employment_status = 'resigned',
                 account_status = CASE WHEN u.account_status = 'active' THEN 'inactive' ELSE u.account_status END,
@@ -608,6 +610,7 @@ export class UelSyncService implements OnModuleInit {
         continue;
       }
       r.fetched += rows.length;
+      const skippedBefore = r.skipped;
       let missing = 0;
       for (const row of rows) {
         const studentId = studentIds.get(clean(row.ma_sinh_vien) ?? '');
@@ -637,6 +640,8 @@ export class UelSyncService implements OnModuleInit {
           `lớp HP ${sec.class_code}: ${missing} SV chưa có trong hệ thống (chạy bước students).`,
         );
       }
+      // Do not infer withdrawals from a scope that could not be fully applied.
+      if (r.skipped !== skippedBefore) continue;
       r.deactivated += await this.affected(
         `UPDATE class_enrollments SET status = 'dropped', updated_at = now()
           WHERE class_section_id = $1 AND source = 'uel_api' AND status = 'active'
@@ -682,6 +687,7 @@ export class UelSyncService implements OnModuleInit {
         continue;
       }
       r.fetched += rows.length;
+      const skippedBefore = r.skipped;
 
       for (const row of rows) {
         const code = clean(row.ma_lop_hoc_phan);
@@ -757,6 +763,8 @@ export class UelSyncService implements OnModuleInit {
         });
       }
 
+      // Keep previous sessions when any source row for this day was not applied.
+      if (r.skipped !== skippedBefore) continue;
       // Buổi uel_api của ngày này không còn trong TKB → hủy (chỉ buổi chưa diễn ra).
       r.deactivated += await this.affected(
         `UPDATE class_sessions SET status = 'cancelled', updated_at = now()

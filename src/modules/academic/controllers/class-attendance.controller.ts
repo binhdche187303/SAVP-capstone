@@ -52,8 +52,8 @@ export class ClassAttendanceController {
   }
 
   @Get('classes')
-  async listClasses(@CurrentUser() user: { userId: string }) {
-    const data = await this.service.listClasses(user.userId);
+  async listClasses(@CurrentUser() user: { userId: string }, @Query('date') date?: string) {
+    const data = await this.service.listClasses(user.userId, date);
     return {
       success: true,
       message: 'Class attendance classes retrieved successfully',

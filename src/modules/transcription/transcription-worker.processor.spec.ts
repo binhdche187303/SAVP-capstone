@@ -98,6 +98,7 @@ describe('TranscriptionWorkerProcessor (T008/T009)', () => {
     backgroundJobsService = {
       markRunning: jest.fn().mockResolvedValue(undefined),
       markCompleted: jest.fn().mockResolvedValue(undefined),
+      markRetrying: jest.fn().mockResolvedValue(undefined),
       markFailed: jest.fn().mockResolvedValue(undefined),
     };
     transcriptionService = {
@@ -187,7 +188,7 @@ describe('TranscriptionWorkerProcessor (T008/T009)', () => {
     await expect(processor.process(makeJob())).rejects.toThrow(
       'AI_WORKER_FAILED',
     );
-    expect(backgroundJobsService.markFailed).toHaveBeenCalled();
+    expect(backgroundJobsService.markRetrying).toHaveBeenCalled();
     expect(transcriptionService.failTranscript).not.toHaveBeenCalled();
   });
 

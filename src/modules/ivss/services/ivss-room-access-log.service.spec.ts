@@ -316,7 +316,7 @@ describe('IvssRoomAccessLogService (RAL-001 / Màn 2 + ALS-002)', () => {
     expect(q.sql).not.toMatch(/\$2::date AT TIME ZONE/);
     expect(q.sql).toContain('LEFT JOIN users u');
     expect(q.params.slice(0, 5)).toEqual([
-      'ivss_face_event',
+      ['camera_face_event', 'ivss_face_event'],
       '2026-07-28',
       ROOM_ID,
       null,

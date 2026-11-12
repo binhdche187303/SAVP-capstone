@@ -162,10 +162,14 @@ export class ClassAttendanceService {
     return this.getSettings(body.classId, body.administrativeClass);
   }
 
-  async listClasses(currentUserId: string) {
+  async listClasses(currentUserId: string, date = this.todayKey()) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date))) {
+      throw new BadRequestException('Ngày học không hợp lệ.');
+    }
     const roles = await this.getRoleCodes(currentUserId);
     const where = this.classScopeWhere(roles);
-    const params = where.params(currentUserId);
+    const params = [...where.params(currentUserId), date];
+    const dateParam = `$${params.length}`;
     const rows = (await this.dataSource.manager.query(
       `
       SELECT cs.id,
@@ -174,17 +178,19 @@ export class ClassAttendanceService {
              subj.subject_name AS subject,
              sem.semester_name AS semester,
              teacher.full_name AS teacher,
-             COALESCE(room.room_name, split_part(cs.note, ' | ', 2)) AS room,
-             split_part(cs.note, ' | ', 1) AS schedule,
-             CASE
-               WHEN split_part(cs.note, ' | ', 1) ILIKE 'Thu 2%' OR split_part(cs.note, ' | ', 1) ILIKE 'Thứ 2%' THEN 1
-               WHEN split_part(cs.note, ' | ', 1) ILIKE 'Thu 3%' OR split_part(cs.note, ' | ', 1) ILIKE 'Thứ 3%' THEN 2
-               WHEN split_part(cs.note, ' | ', 1) ILIKE 'Thu 4%' OR split_part(cs.note, ' | ', 1) ILIKE 'Thứ 4%' THEN 3
-               WHEN split_part(cs.note, ' | ', 1) ILIKE 'Thu 5%' OR split_part(cs.note, ' | ', 1) ILIKE 'Thứ 5%' THEN 4
-               WHEN split_part(cs.note, ' | ', 1) ILIKE 'Thu 6%' OR split_part(cs.note, ' | ', 1) ILIKE 'Thứ 6%' THEN 5
-               WHEN split_part(cs.note, ' | ', 1) ILIKE 'Thu 7%' OR split_part(cs.note, ' | ', 1) ILIKE 'Thứ 7%' THEN 6
-               ELSE NULL
-             END AS schedule_weekday,
+             CASE WHEN cs.source = 'uel_api' THEN lesson.rooms
+                  ELSE COALESCE(lesson.rooms, room.room_name, split_part(cs.note, ' | ', 2)) END AS room,
+             CASE WHEN cs.source = 'uel_api' THEN lesson.schedule
+                  ELSE COALESCE(lesson.schedule, split_part(cs.note, ' | ', 1)) END AS schedule,
+             COALESCE(lesson.weekday, CASE WHEN cs.source = 'manual' THEN
+               CASE
+                 WHEN split_part(cs.note, ' | ', 1) ILIKE 'Thu 2%' OR split_part(cs.note, ' | ', 1) ILIKE 'Thứ 2%' THEN 1
+                 WHEN split_part(cs.note, ' | ', 1) ILIKE 'Thu 3%' OR split_part(cs.note, ' | ', 1) ILIKE 'Thứ 3%' THEN 2
+                 WHEN split_part(cs.note, ' | ', 1) ILIKE 'Thu 4%' OR split_part(cs.note, ' | ', 1) ILIKE 'Thứ 4%' THEN 3
+                 WHEN split_part(cs.note, ' | ', 1) ILIKE 'Thu 5%' OR split_part(cs.note, ' | ', 1) ILIKE 'Thứ 5%' THEN 4
+                 WHEN split_part(cs.note, ' | ', 1) ILIKE 'Thu 6%' OR split_part(cs.note, ' | ', 1) ILIKE 'Thứ 6%' THEN 5
+                 WHEN split_part(cs.note, ' | ', 1) ILIKE 'Thu 7%' OR split_part(cs.note, ' | ', 1) ILIKE 'Thứ 7%' THEN 6
+               END END) AS schedule_weekday,
              COUNT(ce.id)::text AS student_count
              , ARRAY_REMOVE(ARRAY_AGG(DISTINCT st.administrative_class), NULL) AS administrative_classes
         FROM class_sections cs
@@ -192,10 +198,21 @@ export class ClassAttendanceService {
         JOIN semesters sem ON sem.id = cs.semester_id
         LEFT JOIN users teacher ON teacher.id = cs.lecturer_user_id
         LEFT JOIN rooms room ON room.id = cs.default_room_id
+        LEFT JOIN LATERAL (
+          SELECT string_agg(DISTINCT r.room_name, ' / ') AS rooms,
+                 string_agg(to_char(se.start_time AT TIME ZONE 'Asia/Ho_Chi_Minh', 'HH24:MI')
+                   || ' - ' || to_char(se.end_time AT TIME ZONE 'Asia/Ho_Chi_Minh', 'HH24:MI'),
+                   ' / ' ORDER BY se.start_time) AS schedule,
+                 min(extract(isodow FROM se.session_date))::int AS weekday
+            FROM class_sessions se
+            LEFT JOIN rooms r ON r.id = se.room_id AND r.deleted_at IS NULL
+           WHERE se.class_section_id = cs.id
+             AND se.session_date = ${dateParam}::date AND se.status <> 'cancelled'
+        ) lesson ON true
         LEFT JOIN class_enrollments ce ON ce.class_section_id = cs.id AND ce.status = 'active'
         LEFT JOIN students st ON st.id = ce.student_id AND st.deleted_at IS NULL
         ${where.sql}
-       GROUP BY cs.id, subj.subject_code, subj.subject_name, sem.semester_name, teacher.full_name, room.room_name
+       GROUP BY cs.id, subj.subject_code, subj.subject_name, sem.semester_name, teacher.full_name, room.room_name, lesson.rooms, lesson.schedule, lesson.weekday
        ORDER BY cs.class_code ASC
       `,
       params,
@@ -353,11 +370,17 @@ export class ClassAttendanceService {
       students,
       body.snapshotImageBase64,
     );
-    const target = recognition?.student
-      ? rows.find((row) => row.studentId === recognition.student.id)
-      : direction === 'out'
-        ? rows.find((row) => row.checkInAt && !row.checkOutAt)
-        : rows.find((row) => !row.checkInAt);
+    if (!recognition?.student) {
+      return {
+        success: true,
+        data: {
+          operationSuccess: false,
+          warning: true,
+          message: 'Không nhận diện được sinh viên trong lớp. Vui lòng chụp lại ảnh hoặc điểm danh thủ công.',
+        },
+      };
+    }
+    const target = rows.find((row) => row.studentId === recognition.student.id);
 
     if (!target) {
       return {
@@ -414,9 +437,7 @@ export class ClassAttendanceService {
     } else {
       status = 'left';
     }
-    const confidence = recognition?.face
-      ? this.normalizeConfidence(recognition.face.score)
-      : 94;
+    const confidence = this.normalizeConfidence(recognition.face.score);
 
     const inserted = (await this.dataSource.manager.query(
       `
@@ -906,21 +927,19 @@ export class ClassAttendanceService {
 
   private matchStudentByFaceIdent(students: StudentRow[], faceIdent: string) {
     const normalizedFace = this.normalizeIdentity(faceIdent);
-    return students.find((student) => {
+    if (!normalizedFace) return undefined;
+    const matches = students.filter((student) => {
       const candidates = [
         student.code,
-        student.name,
-        student.email ?? '',
+        student.user_id,
+        student.email,
         `${student.code} ${student.name}`,
         `${student.name} ${student.code}`,
-      ].map((value) => this.normalizeIdentity(value));
-      return candidates.some(
-        (candidate) =>
-          candidate === normalizedFace ||
-          normalizedFace.includes(candidate) ||
-          candidate.includes(normalizedFace),
-      );
+      ].filter((value): value is string => Boolean(value))
+       .map((value) => this.normalizeIdentity(value));
+      return candidates.some((candidate) => candidate === normalizedFace);
     });
+    return matches.length === 1 ? matches[0] : undefined;
   }
 
   private normalizeIdentity(value: string) {

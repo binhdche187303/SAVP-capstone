@@ -37,7 +37,7 @@ describe('AdminBiometricReviewService', () => {
 
   const mockDataSource = {
     manager: {
-      query: jest.fn(),
+      query: jest.fn().mockResolvedValue([]),
       insert: jest.fn(),
     },
     transaction: jest.fn(),
@@ -274,6 +274,7 @@ describe('AdminBiometricReviewService', () => {
       expect(mockRepository.createQueryBuilder).toHaveBeenCalledWith('fp');
       expect(result.data).toHaveLength(1);
       expect(result.data[0]).toEqual({
+        classSections: [], roleCode: null, roleName: null, consentAt: undefined,
         faceProfileId: 'fp-1',
         userId: 'user-1',
         fullName: 'Nguyen Van A',
