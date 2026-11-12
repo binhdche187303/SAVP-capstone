@@ -15,7 +15,7 @@ const NUM_FMT: Partial<Record<CellFormat, string>> = {
 /** Excel 2 sheet: "Tổng hợp" và "Dữ liệu". Số là số, ngày giờ là ngày giờ (không phải chuỗi). */
 export async function renderReportXlsx(model: ReportModel, meta: ReportRenderMeta): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'SmartTracking System';
+  wb.creator = 'VISMA';
   wb.created = meta.generatedAt;
 
   const summary = wb.addWorksheet('Tổng hợp');

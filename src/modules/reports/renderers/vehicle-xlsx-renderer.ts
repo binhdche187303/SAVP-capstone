@@ -13,7 +13,7 @@ export async function renderVehicleXlsx(
   meta: VehicleReportMeta,
 ): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'SmartTracking System';
+  workbook.creator = 'VISMA';
   workbook.created = new Date();
 
   if (data.registrations) {

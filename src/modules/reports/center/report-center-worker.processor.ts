@@ -7,6 +7,7 @@ import type { ReportCenterExportJobData } from './report-center-export.service.j
 import { isReportType } from './report-definition.registry.js';
 import { ReportFileService } from './report-file.service.js';
 import { REPORT_PROVIDERS, type ReportProvider } from './report-model.js';
+import { ReportTemplateService } from '../templates/report-template.service.js';
 
 export const DEFAULT_EXPORT_MAX_ROWS = 50_000;
 
@@ -23,6 +24,7 @@ export class ReportCenterWorkerProcessor {
     private readonly files: ReportFileService,
     private readonly dataSource: DataSource,
     @Inject(REPORT_PROVIDERS) private readonly providers: ReportProvider[],
+    private readonly templates: ReportTemplateService,
   ) {}
 
   async maxRows(): Promise<number> {
@@ -35,7 +37,7 @@ export class ReportCenterWorkerProcessor {
   }
 
   async processExport(job: Job<ReportCenterExportJobData>): Promise<void> {
-    const { backgroundJobId, type, format, filters, scope, requestedByEmail } = job.data;
+    const { backgroundJobId, type, format, filters, scope, requestedByEmail, requestedById, standard } = job.data;
     try {
       await this.jobs.markRunning(backgroundJobId);
       const provider = isReportType(type) ? this.providers.find((p) => p.type === type) : undefined;
@@ -46,7 +48,13 @@ export class ReportCenterWorkerProcessor {
       if (model.total > cap) {
         throw new Error(`Báo cáo có ${model.total.toLocaleString('vi-VN')} dòng, vượt giới hạn ${cap.toLocaleString('vi-VN')} dòng. Vui lòng thu hẹp kỳ hoặc bộ lọc.`);
       }
-      const stored = await this.files.renderAndStore(model, format, { generatedAt: now, generatedByEmail: requestedByEmail }, { entityType: 'background_job', entityId: backgroundJobId });
+      const template = standard ? await this.templates.loadForRender(standard, { userId: requestedById ?? null, email: requestedByEmail }) : undefined;
+      const stored = await this.files.renderAndStore(
+        model, format,
+        { generatedAt: now, generatedByEmail: requestedByEmail, generatedByName: template?.exporterName || undefined },
+        { entityType: 'background_job', entityId: backgroundJobId },
+        template,
+      );
       await this.jobs.markCompleted(backgroundJobId, { fileName: stored.fileName, format, outputFileId: stored.mediaFileId });
       await this.dataSource.manager.update(BackgroundJobEntity, backgroundJobId, { outputFileId: stored.mediaFileId });
       this.logger.log(`Job ${job.id} xong — ${stored.fileName}`);

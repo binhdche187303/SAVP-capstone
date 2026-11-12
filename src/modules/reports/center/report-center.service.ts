@@ -12,6 +12,8 @@ import { ReportScopeService } from './report-scope.service.js';
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 const DAY_MS = 86_400_000;
 const COMMON_KEYS = ['from', 'to', 'q', 'page', 'limit', 'sortKey', 'sortDir', 'format'];
+/** Tuỳ chọn bản xuất (bản thường / quy chuẩn) đi chung body xuất file — không phải bộ lọc, ReportTemplateService tự kiểm. */
+const EXPORT_OPTION_KEYS = ['mode', 'templateId', 'signers', 'addressee', 'recipients'];
 
 export interface PreparedReport {
   definition: ReportDefinition;
@@ -159,6 +161,7 @@ export class ReportCenterService {
     const allowed = new Set([...COMMON_KEYS, ...definition.filters.map((f) => f.key)]);
     const filters: ReportFilters = { from, to };
     for (const [key, value] of Object.entries(raw)) {
+      if (EXPORT_OPTION_KEYS.includes(key)) continue;
       if (!allowed.has(key)) throw reportBadRequest(`Bộ lọc "${key}" không thuộc loại báo cáo này`, 'INVALID_FILTER', { key });
       if (['from', 'to', 'page', 'limit', 'sortKey', 'sortDir', 'format'].includes(key)) continue;
       if (value === undefined || value === null || value === '') continue;
