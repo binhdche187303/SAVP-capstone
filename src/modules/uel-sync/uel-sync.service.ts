@@ -33,6 +33,7 @@ import {
   staffRoleOf,
   isCohortInScope,
   toIsoDate,
+  toUelDate,
   usernameOf,
 } from './uel-sync.mapper.js';
 import type { PeriodTime } from './uel-sync.mapper.js';
@@ -51,6 +52,11 @@ export const UEL_SYNC_STEPS = [
 ] as const;
 export type UelSyncStep = (typeof UEL_SYNC_STEPS)[number];
 
+export interface UelSyncTerm {
+  namHoc: string;
+  hocKy: string;
+}
+
 export interface UelSyncOptions {
   steps?: UelSyncStep[];
   /** Bắt buộc cho sections / enrollments. */
@@ -65,6 +71,18 @@ export interface UelSyncOptions {
    */
   lecturerCodes?: string[];
   studentCodes?: string[];
+  /** Lượt "toàn bộ": cách chọn học kỳ + các học kỳ đã chạy bước sections/enrollments. */
+  termMode?: 'auto' | 'fixed';
+  terms?: UelSyncTerm[];
+}
+
+/** Tham số lượt "đồng bộ toàn bộ" (POST /uel-sync/run-all + lịch tự động). */
+export interface UelSyncAllPlan {
+  fromDate: string;
+  toDate: string;
+  termMode: 'auto' | 'fixed';
+  /** fixed: đúng 1 học kỳ; auto: để trống, tự nhận khi chạy. */
+  terms: UelSyncTerm[];
 }
 
 export interface UelSyncStepResult {
@@ -75,6 +93,8 @@ export interface UelSyncStepResult {
   deactivated: number;
   warnings: string[];
   error?: string;
+  /** sections/enrollments chạy nhiều học kỳ: học kỳ của kết quả này, vd "2026-2027 HK01". */
+  term?: string;
 }
 
 export type UelSyncTrigger = 'manual' | 'schedule';
@@ -90,6 +110,8 @@ export interface UelSyncRun {
   finishedAt: string | null;
   options: UelSyncOptions;
   results: UelSyncStepResult[];
+  /** Bước đang chạy (chỉ có khi status = running). */
+  currentStep?: UelSyncStep | null;
 }
 
 /** Lượt đọc từ lịch sử, kèm tên người bấm. */
@@ -148,6 +170,8 @@ export class UelSyncService implements OnModuleInit {
   private lastRun: UelSyncRun | null = null;
   /** ds_phong_ban của lần chạy gần nhất — dùng để gán trưởng đơn vị sau khi có cán bộ. */
   private deptRows: UelPhongBan[] = [];
+  /** TKB cả trường theo ngày đã tải lúc tự nhận học kỳ — bước sessions dùng lại, khỏi gọi 2 lần. */
+  private tkbCache = new Map<string, UelTkbLopHp1Ngay[]>();
 
   constructor(
     @Inject(UEL_API_CLIENT) private readonly client: UelApiClient,
@@ -184,6 +208,43 @@ export class UelSyncService implements OnModuleInit {
     meta: { trigger?: UelSyncTrigger; requestedBy?: string | null } = {},
   ): Promise<UelSyncRun> {
     const steps = this.validate(options);
+    return this.begin({ ...options, steps }, steps, meta);
+  }
+
+  /**
+   * Đồng bộ toàn bộ: đơn vị → cán bộ → SV → (tự nhận / học kỳ chỉ định) lớp HP + đăng ký từng
+   * học kỳ → lịch học từ plan.fromDate (hôm nay) đến plan.toDate. Không lấy ngày quá khứ.
+   */
+  startAll(
+    plan: UelSyncAllPlan,
+    meta: { trigger?: UelSyncTrigger; requestedBy?: string | null } = {},
+  ): Promise<UelSyncRun> {
+    const steps = [...UEL_SYNC_STEPS];
+    const options: UelSyncOptions = {
+      steps,
+      fromDate: plan.fromDate,
+      toDate: plan.toDate,
+      termMode: plan.termMode,
+      terms: plan.termMode === 'fixed' ? plan.terms : [],
+    };
+    if (plan.termMode === 'fixed' && plan.terms[0]) {
+      options.namHoc = plan.terms[0].namHoc;
+      options.hocKy = plan.terms[0].hocKy;
+    }
+    // validate đòi namHoc/hocKy cho sections ⇒ chế độ auto kiểm tra phần còn lại với học kỳ tạm.
+    this.validate({
+      ...options,
+      namHoc: options.namHoc ?? 'auto',
+      hocKy: options.hocKy ?? 'auto',
+    });
+    return this.begin(options, steps, meta);
+  }
+
+  private begin(
+    options: UelSyncOptions,
+    steps: UelSyncStep[],
+    meta: { trigger?: UelSyncTrigger; requestedBy?: string | null },
+  ): Promise<UelSyncRun> {
     if (this.running) {
       throw new ConflictException('Đang có một lượt đồng bộ UEL chạy.');
     }
@@ -195,8 +256,9 @@ export class UelSyncService implements OnModuleInit {
       status: 'running',
       startedAt: new Date().toISOString(),
       finishedAt: null,
-      options: { ...options, steps },
+      options,
       results: [],
+      currentStep: steps[0] ?? null,
     };
     this.lastRun = run;
     return this.persistStart(run)
@@ -204,6 +266,8 @@ export class UelSyncService implements OnModuleInit {
       .finally(async () => {
         run.finishedAt = new Date().toISOString();
         run.status = runStatusOf(run.results);
+        run.currentStep = null;
+        this.tkbCache.clear();
         await this.persistFinish(run);
         this.running = false;
       });
@@ -243,8 +307,9 @@ export class UelSyncService implements OnModuleInit {
         requestedBy: r.requested_by,
         requestedByName: r.requested_by_name,
         status: live?.status ?? r.status,
-        options: r.options,
+        options: live?.options ?? r.options,
         results: live?.results ?? r.results,
+        currentStep: live?.currentStep ?? null,
         startedAt: new Date(r.started_at).toISOString(),
         finishedAt: r.finished_at
           ? new Date(r.finished_at).toISOString()
@@ -271,8 +336,14 @@ export class UelSyncService implements OnModuleInit {
     if (!run.id) return;
     try {
       await this.db.query(
-        `UPDATE uel_sync_runs SET status = $2, results = $3::jsonb, finished_at = now() WHERE id = $1`,
-        [run.id, run.status, JSON.stringify(run.results)],
+        `UPDATE uel_sync_runs SET status = $2, results = $3::jsonb, options = $4::jsonb,
+                finished_at = now() WHERE id = $1`,
+        [
+          run.id,
+          run.status,
+          JSON.stringify(run.results),
+          JSON.stringify(run.options),
+        ],
       );
     } catch (e) {
       this.logger.warn(
@@ -337,17 +408,34 @@ export class UelSyncService implements OnModuleInit {
   ): Promise<UelSyncRun> {
     const o = run.options;
     for (const step of steps) {
-      const r: UelSyncStepResult = {
-        step,
-        fetched: 0,
-        upserted: 0,
-        skipped: 0,
-        deactivated: 0,
-        warnings: [],
-      };
-      run.results.push(r);
-      try {
-        const ctx: StepCtx = { runStart: await this.dbNow(), r };
+      run.currentStep = step;
+      if (
+        (step === 'sections' || step === 'enrollments') &&
+        o.termMode !== undefined
+      ) {
+        // Lượt "toàn bộ": lớp HP + đăng ký chạy cho từng học kỳ.
+        if (o.termMode === 'auto' && step === 'sections') {
+          o.terms = await this.detectTerms(o.fromDate!, o.toDate!);
+        }
+        const terms = o.terms ?? [];
+        if (!terms.length) {
+          run.results.push({
+            ...this.emptyResult(step),
+            error:
+              'Không nhận được học kỳ nào từ thời khóa biểu các ngày tới — chọn "Học kỳ chỉ định" trong cài đặt.',
+          });
+          continue;
+        }
+        for (const t of terms) {
+          await this.runStep(run, step, `${t.namHoc} ${t.hocKy}`, (ctx) =>
+            step === 'sections'
+              ? this.syncSections(ctx, t.namHoc, t.hocKy)
+              : this.syncEnrollments(ctx, t.namHoc, t.hocKy),
+          );
+        }
+        continue;
+      }
+      await this.runStep(run, step, undefined, async (ctx) => {
         switch (step) {
           case 'departments':
             await this.syncDepartments(ctx);
@@ -376,15 +464,93 @@ export class UelSyncService implements OnModuleInit {
             );
             break;
         }
-      } catch (e) {
-        r.error = e instanceof Error ? e.message : String(e);
-        this.logger.error(`UEL sync bước ${step} lỗi: ${r.error}`);
-      }
-      this.logger.log(
-        `UEL sync ${step}: fetched=${r.fetched} upserted=${r.upserted} skipped=${r.skipped} deactivated=${r.deactivated}`,
-      );
+      });
     }
     return run;
+  }
+
+  private emptyResult(step: UelSyncStep, term?: string): UelSyncStepResult {
+    return {
+      step,
+      fetched: 0,
+      upserted: 0,
+      skipped: 0,
+      deactivated: 0,
+      warnings: [],
+      ...(term ? { term } : {}),
+    };
+  }
+
+  /** Chạy 1 bước, ghi kết quả; lỗi của bước không dừng các bước sau. */
+  private async runStep(
+    run: UelSyncRun,
+    step: UelSyncStep,
+    term: string | undefined,
+    fn: (ctx: StepCtx) => Promise<void>,
+  ): Promise<void> {
+    const r = this.emptyResult(step, term);
+    run.results.push(r);
+    try {
+      await fn({ runStart: await this.dbNow(), r });
+    } catch (e) {
+      r.error = e instanceof Error ? e.message : String(e);
+      this.logger.error(`UEL sync bước ${step} lỗi: ${r.error}`);
+    }
+    this.logger.log(
+      `UEL sync ${step}${term ? ` (${term})` : ''}: fetched=${r.fetched} upserted=${r.upserted} skipped=${r.skipped} deactivated=${r.deactivated}`,
+    );
+  }
+
+  /**
+   * Tự nhận học kỳ: đọc TKB cả trường từng ngày trong khoảng (hôm nay → +N), lấy các cặp
+   * (nam_hoc, hoc_ky) khác nhau — 2 học kỳ chồng nhau thì chạy cả hai. TKB tải được giữ lại
+   * cho bước sessions. API không trả gì ⇒ dùng học kỳ uel_api trong DB còn hiệu lực trong khoảng.
+   */
+  private async detectTerms(
+    fromDate: string,
+    toDate: string,
+  ): Promise<UelSyncTerm[]> {
+    const found = new Map<string, UelSyncTerm>();
+    for (const date of eachDate(fromDate, toDate)) {
+      try {
+        const rows = await this.client.all<UelTkbLopHp1Ngay>(
+          UEL_API.TKB_LOPHP_1NGAY,
+          { ngay_hoc: toUelDate(date) },
+        );
+        this.tkbCache.set(date, rows);
+        for (const row of rows) {
+          const namHoc = clean(row.nam_hoc);
+          const hocKy = clean(row.hoc_ky);
+          if (!namHoc || !hocKy) continue;
+          const key = semesterCodeOf(namHoc, hocKy);
+          if (!found.has(key)) found.set(key, { namHoc, hocKy });
+        }
+      } catch (e) {
+        this.logger.warn(
+          `Tự nhận học kỳ — TKB ngày ${date} lỗi: ${(e as Error).message}`,
+        );
+      }
+    }
+    if (found.size) return [...found.values()];
+
+    const rows = await this.db.query<{ semester_code: string }[]>(
+      `SELECT semester_code FROM semesters
+        WHERE source = 'uel_api' AND deleted_at IS NULL
+          AND start_date <= $2 AND end_date >= $1
+        ORDER BY start_date`,
+      [fromDate, toDate],
+    );
+    return rows
+      .map((x) => {
+        const i = x.semester_code.lastIndexOf('_');
+        return i > 0
+          ? {
+              namHoc: x.semester_code.slice(0, i),
+              hocKy: x.semester_code.slice(i + 1),
+            }
+          : null;
+      })
+      .filter((t): t is UelSyncTerm => t !== null);
   }
 
   // ───────────────────────── 1. Đơn vị ─────────────────────────
@@ -729,22 +895,23 @@ export class UelSyncService implements OnModuleInit {
       targets.lecturerCodes.length > 0 || targets.studentCodes.length > 0;
 
     for (const date of eachDate(fromDate, toDate)) {
+      const uelDate = toUelDate(date); // UEL đòi dd/MM/yyyy
       if (targeted) {
         // Chỉ lấy TKB của các GV/SV được chọn; KHÔNG hủy buổi khác (không thấy cả trường).
         const calls: [string, Record<string, string>][] = [
           ...targets.lecturerCodes.map(
             (c) =>
-              [UEL_API.TKB_GV_1NGAY, { ma_giang_vien: c, ngay_hoc: date }] as [
-                string,
-                Record<string, string>,
-              ],
+              [
+                UEL_API.TKB_GV_1NGAY,
+                { ma_giang_vien: c, ngay_hoc: uelDate },
+              ] as [string, Record<string, string>],
           ),
           ...targets.studentCodes.map(
             (c) =>
-              [UEL_API.TKB_SV_1NGAY, { ma_sinh_vien: c, ngay_hoc: date }] as [
-                string,
-                Record<string, string>,
-              ],
+              [
+                UEL_API.TKB_SV_1NGAY,
+                { ma_sinh_vien: c, ngay_hoc: uelDate },
+              ] as [string, Record<string, string>],
           ),
         ];
         for (const [api, filter] of calls) {
@@ -763,19 +930,36 @@ export class UelSyncService implements OnModuleInit {
       }
 
       let rows: UelTkbLopHp1Ngay[];
+      const cached = this.tkbCache.get(date);
       try {
-        rows = await this.client.all<UelTkbLopHp1Ngay>(
-          UEL_API.TKB_LOPHP_1NGAY,
-          {
-            ngay_hoc: date,
-          },
-        );
+        rows =
+          cached ??
+          (await this.client.all<UelTkbLopHp1Ngay>(UEL_API.TKB_LOPHP_1NGAY, {
+            ngay_hoc: uelDate,
+          }));
       } catch (e) {
         this.warn(r, `ngày ${date}: ${(e as Error).message}`);
         continue;
       }
       r.fetched += rows.length;
       for (const row of rows) await this.upsertSessionRow(ctx, row, date);
+
+      if (!rows.length) {
+        // API trả rỗng cả ngày mà DB đang có lịch ⇒ nghi API lỗi/chưa có dữ liệu: KHÔNG hủy.
+        const existing = await this.db.query<{ n: string }[]>(
+          `SELECT count(*)::text AS n FROM class_sessions
+            WHERE source = 'uel_api' AND session_date = $1 AND status = 'scheduled'`,
+          [date],
+        );
+        const n = Number(existing[0]?.n ?? 0);
+        if (n > 0) {
+          this.warn(
+            r,
+            `ngày ${date}: API không trả buổi nào nhưng hệ thống có ${n} buổi — giữ nguyên, không hủy.`,
+          );
+        }
+        continue;
+      }
 
       // Buổi uel_api của ngày này không còn trong TKB → hủy (chỉ buổi chưa diễn ra).
       r.deactivated += await this.affected(

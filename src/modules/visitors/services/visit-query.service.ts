@@ -14,7 +14,29 @@ const UUID = /^[0-9a-f-]{36}$/i;
 
 export interface VisitFilter {
   from?: string; to?: string; departmentId?: string; hostId?: string; q?: string; purpose?: string;
+  /** Lọc chéo từ trang Thống kê khách (đã kiểm tra qua parseStatsCross). */
+  cross?: StatsCross;
 }
+export type StatsCrossDim = 'department' | 'purpose' | 'hour' | 'organization' | 'period';
+export interface StatsCross { dim: StatsCrossDim; values: string[]; unit: 'day' | 'week' | 'month' }
+const CROSS_DIMS: readonly StatsCrossDim[] = ['department', 'purpose', 'hour', 'organization', 'period'];
+const ORG_LABEL = `COALESCE(NULLIF(vis.organization, ''), 'Không rõ')`;
+
+/** Đọc tham số `cross` (JSON). Sai định dạng → 400; rỗng → không lọc. */
+export const parseStatsCross = (raw: string | undefined, unit: StatsCross['unit']): StatsCross | undefined => {
+  if (!raw) return undefined;
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { throw err(400, 'VALIDATION_ERROR', 'Tham số lọc chéo không hợp lệ'); }
+  const { dim, values } = (parsed ?? {}) as { dim?: unknown; values?: unknown };
+  if (!CROSS_DIMS.includes(dim as StatsCrossDim) || !Array.isArray(values) || values.length > 50
+    || values.some((v) => typeof v !== 'string' || v.length > 300)) {
+    throw err(400, 'VALIDATION_ERROR', 'Tham số lọc chéo không hợp lệ');
+  }
+  if (!values.length) return undefined;
+  if (dim === 'hour' && values.some((v) => !/^\d{1,2}$/.test(v))) throw err(400, 'VALIDATION_ERROR', 'Giờ lọc không hợp lệ');
+  if (dim === 'period' && values.some((v) => !/^\d{4}-\d{2}-\d{2}$/.test(v))) throw err(400, 'VALIDATION_ERROR', 'Kỳ lọc không hợp lệ');
+  return { dim: dim as StatsCrossDim, values: values as string[], unit };
+};
 export type AttentionKind = 'must_leave' | 'overstay' | 'exit_unrecorded' | 'manual_review' | 'no_photo';
 
 const round1 = (n: number): number => Math.round(n * 10) / 10;
@@ -41,6 +63,14 @@ export class VisitQueryService {
     if (filter.departmentId && UUID.test(filter.departmentId)) add('v.department_id = ?::uuid', filter.departmentId);
     if (filter.hostId && UUID.test(filter.hostId)) add('v.host_user_id = ?::uuid', filter.hostId);
     if (filter.purpose) add('v.purpose = ?', filter.purpose);
+    const c = filter.cross;
+    if (c?.dim === 'department') add(`COALESCE(v.department_id::text, '') = ANY(?::text[])`, c.values);
+    else if (c?.dim === 'purpose') add('v.purpose = ANY(?::text[])', c.values);
+    else if (c?.dim === 'hour') add(`EXTRACT(HOUR FROM v.check_in_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::int = ANY(?::int[])`, c.values.map(Number));
+    else if (c?.dim === 'organization') add(`${ORG_LABEL} = ANY(?::text[])`, c.values);
+    else if (c?.dim === 'period') {
+      add(`to_char(date_trunc('${c.unit}', v.scheduled_from AT TIME ZONE 'Asia/Ho_Chi_Minh'), 'YYYY-MM-DD') = ANY(?::text[])`, c.values);
+    }
     const q = filter.q?.trim();
     if (q) {
       params.push(`%${escapeLike(q)}%`);
@@ -230,7 +260,7 @@ export class VisitQueryService {
   // ───────────── Thống kê ─────────────
 
   /** Định nghĩa số liệu dùng chung cho màn Thống kê và báo cáo khách. */
-  async computeKpis(filter: { from: string; to: string; departmentId?: string; purpose?: string }, now: Date = new Date()) {
+  async computeKpis(filter: { from: string; to: string; departmentId?: string; purpose?: string; cross?: StatsCross }, now: Date = new Date()) {
     const params: unknown[] = [];
     const where = this.where(filter, params);
     params.push(now);
@@ -255,10 +285,12 @@ export class VisitQueryService {
     };
   }
 
-  async stats(q: { from: string; to: string; departmentId?: string; purpose?: string; groupBy?: 'day' | 'week' | 'month' }) {
-    if (!q.from || !q.to) throw err(400, 'VALIDATION_ERROR', 'Vui lòng chọn kỳ thống kê');
-    if (q.from > q.to) throw err(400, 'VALIDATION_ERROR', 'Ngày bắt đầu phải trước hoặc bằng ngày kết thúc');
-    const groupBy = q.groupBy ?? 'day';
+  async stats(input: { from: string; to: string; departmentId?: string; purpose?: string; groupBy?: 'day' | 'week' | 'month'; cross?: string }) {
+    if (!input.from || !input.to) throw err(400, 'VALIDATION_ERROR', 'Vui lòng chọn kỳ thống kê');
+    if (input.from > input.to) throw err(400, 'VALIDATION_ERROR', 'Ngày bắt đầu phải trước hoặc bằng ngày kết thúc');
+    const groupBy = input.groupBy ?? 'day';
+    const unitOf = groupBy === 'month' ? 'month' : groupBy === 'week' ? 'week' : 'day';
+    const q = { ...input, cross: parseStatsCross(input.cross, unitOf) };
     const params: unknown[] = [];
     const where = this.where(q, params);
     const arrived = `v.deleted_at IS NULL AND v.check_in_at IS NOT NULL${where}`;
@@ -282,8 +314,9 @@ export class VisitQueryService {
          FROM visitor_visits v JOIN visitors vis ON vis.id = v.visitor_id WHERE ${arrived} GROUP BY 1`,
     );
     const orgs: Array<{ organization: string; n: string }> = await rows(
-      `SELECT COALESCE(NULLIF(vis.organization, ''), 'Không rõ') AS organization, count(*) AS n
-         FROM visitor_visits v JOIN visitors vis ON vis.id = v.visitor_id WHERE ${arrived} GROUP BY 1 ORDER BY n DESC LIMIT 8`,
+      // Khi lọc chéo, trả đủ để FE ghép đúng vào top 8 của dữ liệu chưa lọc.
+      `SELECT ${ORG_LABEL} AS organization, count(*) AS n
+         FROM visitor_visits v JOIN visitors vis ON vis.id = v.visitor_id WHERE ${arrived} GROUP BY 1 ORDER BY n DESC LIMIT ${q.cross ? 200 : 8}`,
     );
 
     const label = (ymd: string): string => {
@@ -301,7 +334,7 @@ export class VisitQueryService {
     const byHourMap = new Map(byHourRows.map((r) => [r.h, Number(r.n)]));
     return {
       kpis: await this.computeKpis(q),
-      byPeriod: [...byPeriodMap.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([d, count]) => ({ bucket: label(d), count })),
+      byPeriod: [...byPeriodMap.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([d, count]) => ({ key: d, bucket: label(d), count })),
       byDepartment: byDepartment.map((r) => ({ departmentId: r.departmentId, name: r.name, count: Number(r.n) })),
       byPurpose: byPurpose.map((r) => ({ purpose: r.purpose, count: Number(r.n) })),
       byHour: Array.from({ length: 12 }, (_, i) => ({ hour: `${pad(i + 7)}h`, count: byHourMap.get(i + 7) ?? 0 })),

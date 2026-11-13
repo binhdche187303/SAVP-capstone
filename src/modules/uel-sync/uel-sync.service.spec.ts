@@ -108,6 +108,7 @@ describe('UelSyncService.start', () => {
       'run-1',
       'succeeded',
       expect.any(String),
+      expect.any(String),
     ]);
   });
 
@@ -180,9 +181,9 @@ describe('UelSyncService.start', () => {
     const apis = all.mock.calls.map(([api]) => api as string);
     expect(apis).toHaveLength(4); // 2 mã × 2 ngày (GV0001 trùng bị gộp)
     expect(apis.some((a) => a.includes('tkb_lophp_1ngay'))).toBe(false);
-    expect(all.mock.calls[0][1]).toEqual({
+    expect((all.mock.calls[0] as unknown[])[1]).toEqual({
       ma_giang_vien: 'GV0001',
-      ngay_hoc: '2026-11-12',
+      ngay_hoc: '12/11/2026', // UEL đòi dd/MM/yyyy
     });
     // Cùng ma_lich_hoc 9001 trả về 4 lần → chỉ ghi 1 lần.
     expect(run.results[0]).toMatchObject({ fetched: 4, upserted: 1 });
@@ -203,5 +204,106 @@ describe('UelSyncService.start', () => {
         lecturerCodes: Array.from({ length: 10 }, (_, i) => `GV${i}`),
       }),
     ).toThrow(BadRequestException);
+  });
+
+  describe('startAll (đồng bộ toàn bộ)', () => {
+    const plan = {
+      fromDate: '2026-11-12',
+      toDate: '2026-11-13',
+      termMode: 'auto' as const,
+      terms: [],
+    };
+
+    it('tự nhận học kỳ từ TKB, chạy lớp HP + đăng ký từng kỳ, lịch học dùng lại TKB đã tải', async () => {
+      const { svc, query } = makeService();
+      query.mockImplementation(fakeQuery(sectionMap));
+      const all = (svc as unknown as { client: { all: jest.Mock } }).client.all;
+      all.mockImplementation((api: string) =>
+        Promise.resolve(
+          api.includes('tkb_lophp_1ngay')
+            ? [tkbRow(), tkbRow({ ma_lich_hoc: 9002, hoc_ky: 'HK02' })]
+            : [],
+        ),
+      );
+      const run = await svc.startAll(plan, { trigger: 'manual' });
+
+      expect(run.options.terms).toEqual([
+        { namHoc: '2026-2027', hocKy: 'HK01' },
+        { namHoc: '2026-2027', hocKy: 'HK02' },
+      ]);
+      expect(
+        run.results.map((r) => `${r.step}${r.term ? `:${r.term}` : ''}`),
+      ).toEqual([
+        'departments',
+        'staff',
+        'students',
+        'sections:2026-2027 HK01',
+        'sections:2026-2027 HK02',
+        'enrollments:2026-2027 HK01',
+        'enrollments:2026-2027 HK02',
+        'sessions',
+      ]);
+      expect(run.currentStep).toBeNull();
+      // TKB: 2 ngày chỉ gọi 1 lần mỗi ngày (lúc tự nhận học kỳ), bước sessions không gọi lại.
+      const tkbCalls = all.mock.calls.filter(([api]) =>
+        (api as string).includes('tkb_lophp_1ngay'),
+      );
+      expect(
+        tkbCalls.map(([, f]) => (f as { ngay_hoc: string }).ngay_hoc),
+      ).toEqual(['12/11/2026', '13/11/2026']);
+      expect(run.results.at(-1)).toMatchObject({
+        step: 'sessions',
+        fetched: 4,
+      });
+    });
+
+    it('học kỳ chỉ định → không đọc TKB để nhận kỳ', async () => {
+      const { svc } = makeService();
+      const run = await svc.startAll(
+        {
+          ...plan,
+          termMode: 'fixed',
+          terms: [{ namHoc: '2026-2027', hocKy: 'HK01' }],
+        },
+        {},
+      );
+      expect(
+        run.results.filter((r) => r.step === 'sections').map((r) => r.term),
+      ).toEqual(['2026-2027 HK01']);
+    });
+
+    it('không nhận được học kỳ nào → bước lớp HP/đăng ký báo lỗi, các bước khác vẫn chạy', async () => {
+      const { svc } = makeService();
+      const run = await svc.startAll(plan, {});
+      expect(run.options.terms).toEqual([]);
+      const sec = run.results.find((r) => r.step === 'sections');
+      expect(sec?.error).toMatch(/Không nhận được học kỳ/);
+      expect(
+        run.results.find((r) => r.step === 'sessions')?.error,
+      ).toBeUndefined();
+      expect(run.status).toBe('partial');
+    });
+
+    it('API trả 0 buổi cho ngày DB đang có lịch → không hủy, chỉ cảnh báo', async () => {
+      const { svc, query } = makeService();
+      query.mockImplementation(
+        fakeQuery({ 'count(*)::text AS n': [{ n: '120' }] }),
+      );
+      const run = await svc.startAll(plan, {});
+      const ses = run.results.find((r) => r.step === 'sessions');
+      expect(ses?.warnings[0]).toMatch(/không hủy/);
+      expect(
+        query.mock.calls.some(([sql]) =>
+          sql.includes("SET status = 'cancelled'"),
+        ),
+      ).toBe(false);
+    });
+
+    it('đang chạy → 409', async () => {
+      const { svc } = makeService();
+      const p = svc.startAll(plan, {});
+      expect(() => svc.startAll(plan, {})).toThrow(ConflictException);
+      await p;
+    });
   });
 });
