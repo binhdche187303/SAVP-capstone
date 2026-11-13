@@ -12,6 +12,7 @@ import {
   sessionTimesOf,
   staffRoleOf,
   toIsoDate,
+  toUelDate,
 } from './uel-sync.mapper';
 
 describe('uel-sync.mapper', () => {
@@ -57,6 +58,12 @@ describe('uel-sync.mapper', () => {
     expect(toIsoDate('9/11/2026')).toBe('2026-11-09');
     expect(toIsoDate('abc')).toBeNull();
     expect(toIsoDate(null)).toBeNull();
+  });
+
+  it('toUelDate đổi sang dd/MM/yyyy cho API TKB UEL', () => {
+    expect(toUelDate('2026-11-09')).toBe('09/11/2026');
+    expect(toUelDate('9/11/2026')).toBe('09/11/2026');
+    expect(toUelDate('abc')).toBe('abc');
   });
 
   it('sessionTimesOf tính giờ từ tiết đầu đến tiết cuối', () => {

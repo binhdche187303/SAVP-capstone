@@ -3,6 +3,8 @@ import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -15,6 +17,40 @@ import {
 import { MAX_SESSION_DAYS_AHEAD } from './uel-sync-settings.service.js';
 
 export class UelSyncSettingsDto {
+  @ApiPropertyOptional({ example: true, description: 'Bật đồng bộ tự động' })
+  @IsOptional()
+  @IsBoolean()
+  autoEnabled?: boolean;
+
+  @ApiPropertyOptional({ enum: ['daily', 'weekly'], example: 'daily' })
+  @IsOptional()
+  @IsIn(['daily', 'weekly'])
+  frequency?: 'daily' | 'weekly';
+
+  @ApiPropertyOptional({
+    example: 0,
+    description: 'Ngày trong tuần khi weekly: 0 = CN … 6 = T7',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(6)
+  weekday?: number;
+
+  @ApiPropertyOptional({ example: '02:00', description: 'Giờ chạy (giờ VN)' })
+  @IsOptional()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'time phải có dạng HH:mm' })
+  time?: string;
+
+  @ApiPropertyOptional({
+    enum: ['auto', 'fixed'],
+    example: 'auto',
+    description: 'auto = tự nhận học kỳ từ TKB; fixed = dùng namHoc + hocKy',
+  })
+  @IsOptional()
+  @IsIn(['auto', 'fixed'])
+  termMode?: 'auto' | 'fixed';
+
   @ApiPropertyOptional({
     example: '2026-2027',
     description: 'nam_hoc hiện tại; chuỗi rỗng = chưa cài',
