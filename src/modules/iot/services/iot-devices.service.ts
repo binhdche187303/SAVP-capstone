@@ -51,9 +51,11 @@ import {
   ConfigureAiConfigDto,
 } from '../dto/configure-ai-config.dto.js';
 import { AI_CONFIGURABLE_DEVICE_TYPES } from '../constants/ai-configurable-device-types.constant.js';
+import { CAMERA_DEVICE_TYPES } from './camera-settings.service.js';
 import { IotAuditRepository } from '../repositories/iot-audit.repository.js';
 import { maskSensitiveMetadata } from '../../../common/utils/masking.util.js';
 import { IotDeviceEventsService } from './iot-device-events.service.js';
+import { WebsocketService } from '../../websocket/websocket.service.js';
 
 export interface HeartbeatInput {
   headers: Record<string, string | string[] | undefined>;
@@ -87,6 +89,12 @@ export class IotDevicesService {
   private static readonly DEFAULT_OFFLINE_FAIL_THRESHOLD = 3;
   /** Số lần probe lỗi liên tiếp theo camera (chống báo nhầm). In-memory, single-instance. */
   private readonly probeFailCount = new Map<string, number>();
+  /**
+   * Camera mà health hiện tại do lượt quét tự động đặt (warning/faulty). Lượt quét chỉ đưa về
+   * healthy những camera này (hoặc health unknown) — KHÔNG ghi đè kết quả faulty/warning của
+   * Ping thủ công (ffprobe RTSP chính xác hơn TCP probe). In-memory như probeFailCount.
+   */
+  private readonly cronHealthMarked = new Set<string>();
   /** Khóa chống chạy chồng job quét offline. */
   private detectOfflineRunning = false;
 
@@ -107,6 +115,9 @@ export class IotDevicesService {
     @Optional()
     @Inject(DEVICE_OFFLINE_ALERT_HOOK)
     private readonly deviceOfflineAlertHook?: DeviceOfflineAlertHook,
+    // Optional để unit test cũ khởi tạo service không cần gateway.
+    @Optional()
+    private readonly websocketService?: WebsocketService,
   ) {}
 
   async create(
@@ -609,7 +620,8 @@ export class IotDevicesService {
 
     const cameras = await this.dataSource.manager.find(IoTDeviceEntity, {
       where: {
-        deviceType: IoTDeviceType.IP_CAMERA,
+        // Hạng mục 1.2: theo dõi mọi loại camera (AI / vào-ra / phòng / biển số).
+        deviceType: In([...CAMERA_DEVICE_TYPES]),
         status: In([IoTDeviceStatus.ONLINE, IoTDeviceStatus.OFFLINE]),
       },
     });
@@ -618,6 +630,9 @@ export class IotDevicesService {
     const cameraIds = new Set(cameras.map((c) => c.id));
     for (const id of this.probeFailCount.keys()) {
       if (!cameraIds.has(id)) this.probeFailCount.delete(id);
+    }
+    for (const id of this.cronHealthMarked) {
+      if (!cameraIds.has(id)) this.cronHealthMarked.delete(id);
     }
 
     // Resolve địa chỉ probe; bỏ camera không có địa chỉ hợp lệ.
@@ -784,6 +799,23 @@ export class IotDevicesService {
       }
     }
 
+    const healthChanged = await this.applyProbeHealth(
+      results,
+      new Set(transitions.filter((t) => t.to === 'online').map((t) => t.id)),
+      failThreshold,
+    );
+
+    const changedIds = [
+      ...new Set([...transitions.map((t) => t.id), ...healthChanged]),
+    ];
+    if (changedIds.length > 0) {
+      // Chỉ là tín hiệu refetch (mirror visitor.visit.changed) — FE đọc lại API có phân quyền.
+      this.websocketService?.broadcast('iot.device.status_changed', {
+        deviceIds: changedIds,
+        occurredAt: new Date().toISOString(),
+      });
+    }
+
     const durationMs = Date.now() - startedAt;
     const nOff = transitions.filter((t) => t.to === 'offline').length;
     this.logger.log(
@@ -803,6 +835,85 @@ export class IotDevicesService {
   }
 
   /** UPDATE status cả lô bằng 1 câu; chỉ đổi dòng còn đúng `from` → trả id đã đổi. */
+  /**
+   * Hạng mục 1.2 — cập nhật sức khỏe theo kết quả TCP probe của lượt quét:
+   * - probe OK → healthy + last_seen_at (chỉ khi vừa online lại / health unknown / do cron đặt).
+   * - probe lỗi, chưa đủ ngưỡng (camera còn online) → warning (chỉ khi đang healthy/unknown).
+   * - đã offline → faulty.
+   * Best-effort: lỗi ghi health không ảnh hưởng kết quả status. Trả id camera đổi health.
+   */
+  private async applyProbeHealth(
+    results: Array<{
+      device: IoTDeviceEntity;
+      result: 'online' | 'offline';
+    }>,
+    cameOnline: Set<string>,
+    failThreshold: number,
+  ): Promise<string[]> {
+    const toHealth = new Map<IoTDeviceHealthStatus, string[]>();
+    const seenIds: string[] = [];
+    const push = (h: IoTDeviceHealthStatus, id: string) => {
+      if (!toHealth.has(h)) toHealth.set(h, []);
+      toHealth.get(h)!.push(id);
+    };
+    for (const r of results) {
+      const id = r.device.id;
+      const cur = r.device.healthStatus;
+      if (r.result === 'online') {
+        seenIds.push(id);
+        if (
+          cameOnline.has(id) ||
+          cur === IoTDeviceHealthStatus.UNKNOWN ||
+          this.cronHealthMarked.has(id)
+        ) {
+          push(IoTDeviceHealthStatus.HEALTHY, id);
+          this.cronHealthMarked.delete(id);
+        }
+        continue;
+      }
+      const fails = this.probeFailCount.get(id) ?? 0;
+      if (fails >= failThreshold) {
+        push(IoTDeviceHealthStatus.FAULTY, id);
+        this.cronHealthMarked.add(id);
+      } else if (
+        cur === IoTDeviceHealthStatus.HEALTHY ||
+        cur === IoTDeviceHealthStatus.UNKNOWN ||
+        this.cronHealthMarked.has(id)
+      ) {
+        push(IoTDeviceHealthStatus.WARNING, id);
+        this.cronHealthMarked.add(id);
+      }
+    }
+
+    const changed: string[] = [];
+    try {
+      if (seenIds.length > 0) {
+        await this.dataSource.manager.query(
+          `UPDATE iot_devices SET last_seen_at = NOW() WHERE id = ANY($1::uuid[])`,
+          [seenIds],
+        );
+      }
+      for (const [health, ids] of toHealth) {
+        const res: unknown = await this.dataSource.manager.query(
+          `UPDATE iot_devices SET health_status = $1, updated_at = NOW()
+            WHERE id = ANY($2::uuid[]) AND health_status IS DISTINCT FROM $1
+          RETURNING id`,
+          [health, ids],
+        );
+        const rows =
+          Array.isArray(res) && res.length === 2 && Array.isArray(res[0])
+            ? (res[0] as Array<{ id: string }>)
+            : ((res as Array<{ id: string }>) ?? []);
+        changed.push(...rows.map((x) => x.id));
+      }
+    } catch (e) {
+      this.logger.error(
+        `[CAM-OFFLINE] Ghi health lỗi: ${e instanceof Error ? e.message : 'unknown'}`,
+      );
+    }
+    return changed;
+  }
+
   private async bulkSetStatus(
     manager: EntityManager,
     ids: string[],
@@ -1412,13 +1523,10 @@ export class IotDevicesService {
       });
     }
 
-    if (
-      device.deviceType !== IoTDeviceType.IP_CAMERA &&
-      device.deviceType !== IoTDeviceType.ROOM_CAMERA
-    ) {
+    if (!CAMERA_DEVICE_TYPES.includes(device.deviceType)) {
       throw new ConflictException({
         code: 'DEVICE_TYPE_NOT_RTSP_CAMERA',
-        message: 'Only IP room cameras can be configured with RTSP.',
+        message: 'Only cameras can be configured with RTSP.',
       });
     }
 
@@ -1624,10 +1732,8 @@ export class IotDevicesService {
       });
     }
 
-    if (
-      device.deviceType !== IoTDeviceType.FACE_SERVER &&
-      device.deviceType !== IoTDeviceType.IP_CAMERA
-    ) {
+    const isCamera = CAMERA_DEVICE_TYPES.includes(device.deviceType);
+    if (device.deviceType !== IoTDeviceType.FACE_SERVER && !isCamera) {
       throw new ConflictException({
         code: 'DEVICE_TYPE_NOT_CAMERA',
         message: 'This device type is not supported for availability check.',
@@ -1669,8 +1775,9 @@ export class IotDevicesService {
         device.status = IoTDeviceStatus.OFFLINE;
         device.healthStatus = IoTDeviceHealthStatus.UNKNOWN;
       }
-    } else if (device.deviceType === IoTDeviceType.IP_CAMERA) {
+    } else if (isCamera) {
       // A5 (IOT-005): runtime RTSP probe thuần Nest (ffprobe) thay config-readiness.
+      // Áp dụng mọi loại camera (AI / vào-ra / phòng / biển số) — hạng mục 1.1.
       check_type = 'rtsp_runtime_probe';
       runtime_verified = false;
 
@@ -1683,7 +1790,8 @@ export class IotDevicesService {
         | undefined;
 
       // Config-gate (giữ pre-check): các trường hợp này KHÔNG probe, health=warning.
-      if (!device.roomId) {
+      // Camera cổng / biển số gắn theo khu vực, không theo phòng → chấp nhận room HOẶC zone.
+      if (!device.roomId && !device.zoneId) {
         is_available = false;
         reason_code = 'DEVICE_ROOM_ASSIGNMENT_REQUIRED';
         device.healthStatus = IoTDeviceHealthStatus.WARNING;

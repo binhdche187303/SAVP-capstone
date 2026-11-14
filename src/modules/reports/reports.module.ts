@@ -73,6 +73,8 @@ import { ReportCenterEnabledGuard } from './center/report-center-enabled.guard.j
 import { ReportCenterExportService } from './center/report-center-export.service.js';
 import { ReportCenterWorkerProcessor } from './center/report-center-worker.processor.js';
 import { ReportFileService } from './center/report-file.service.js';
+import { ReportTemplateController } from './templates/report-template.controller.js';
+import { ReportTemplateService } from './templates/report-template.service.js';
 import { ReportScheduleRunController } from './schedules/controllers/report-schedule-run.controller.js';
 import { ReportScheduleDispatchService } from './schedules/report-schedule-dispatch.service.js';
 import { ReportScheduleRunService } from './schedules/report-schedule-run.service.js';
@@ -148,6 +150,7 @@ import { UserExportDataService } from './services/user-export-data.service.js';
     VehicleReportController,
     SecurityAlertReportController,
     ReportCenterController,
+    ReportTemplateController,
     ReportScheduleController,
     ReportScheduleRunController,
   ],
@@ -160,6 +163,7 @@ import { UserExportDataService } from './services/user-export-data.service.js';
     ReportScheduleRunWorker,
     ReportCenterWorkerProcessor,
     ReportFileService,
+    ReportTemplateService,
     ReportScopeService,
     ReportCenterEnabledGuard,
     // Các provider của 6 loại báo cáo được thêm vào mảng này theo từng task (gate-access, vehicle, …).

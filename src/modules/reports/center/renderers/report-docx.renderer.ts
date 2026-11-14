@@ -37,7 +37,7 @@ export async function renderReportDocx(model: ReportModel, meta: ReportRenderMet
     }));
   }
   const doc = new Document({
-    creator: 'SmartTracking System',
+    creator: 'VISMA',
     sections: [{ properties: { page: { size: { orientation: PageOrientation.LANDSCAPE } } }, children }],
   });
   return Buffer.from(await Packer.toBuffer(doc));

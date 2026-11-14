@@ -21,7 +21,7 @@ export async function renderRoomUtilizationXlsx(
   const mod = await import('exceljs');
   const ExcelJSModule = (mod as unknown as { default?: typeof mod }).default ?? mod;
   const workbook = new ExcelJSModule.Workbook();
-  workbook.creator = 'SmartTracking System';
+  workbook.creator = 'VISMA';
   workbook.created = new Date();
 
   buildOverviewSheet(workbook, data);

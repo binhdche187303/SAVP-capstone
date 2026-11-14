@@ -53,6 +53,30 @@ interface AttendanceRow {
   camera_id: string | null;
 }
 
+interface SessionRow {
+  id: string;
+  session_date: string;
+  start_clock: string;
+  end_clock: string;
+  start_time: Date | string;
+  end_time: Date | string;
+  status: string;
+  source: string;
+  period_start: number | null;
+  period_count: number | null;
+  class_id: string;
+  class_code: string;
+  subject_code: string;
+  subject_name: string;
+  semester_name: string;
+  teacher: string | null;
+  room: string | null;
+  student_count: number | string | null;
+}
+
+/** Lịch GV/SV xem theo tuần/tháng ⇒ giới hạn khoảng ngày để query nhẹ. */
+const MAX_SESSION_RANGE_DAYS = 62;
+
 const DEFAULT_CLASS_START_TIME = '08:00';
 const DEFAULT_LATE_THRESHOLD_MINUTES = 10;
 const DEFAULT_AUTO_SCAN_INTERVAL_SECONDS = 4;
@@ -162,14 +186,20 @@ export class ClassAttendanceService {
     return this.getSettings(body.classId, body.administrativeClass);
   }
 
-  async listClasses(currentUserId: string, date = this.todayKey()) {
+  async listClasses(currentUserId: string, date = this.todayKey(), source = 'uel_api') {
+    source ||= 'uel_api';
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date))) {
       throw new BadRequestException('Ngày học không hợp lệ.');
+    }
+    if (source && !['manual', 'uel_api'].includes(source)) {
+      throw new BadRequestException('Nguồn lớp học không hợp lệ.');
     }
     const roles = await this.getRoleCodes(currentUserId);
     const where = this.classScopeWhere(roles);
     const params = [...where.params(currentUserId), date];
     const dateParam = `$${params.length}`;
+    if (source) params.push(source);
+    const sourceFilter = source ? `AND cs.source = $${params.length}` : '';
     const rows = (await this.dataSource.manager.query(
       `
       SELECT cs.id,
@@ -212,6 +242,7 @@ export class ClassAttendanceService {
         LEFT JOIN class_enrollments ce ON ce.class_section_id = cs.id AND ce.status = 'active'
         LEFT JOIN students st ON st.id = ce.student_id AND st.deleted_at IS NULL
         ${where.sql}
+         ${sourceFilter}
        GROUP BY cs.id, subj.subject_code, subj.subject_name, sem.semester_name, teacher.full_name, room.room_name, lesson.rooms, lesson.schedule, lesson.weekday
        ORDER BY cs.class_code ASC
       `,
@@ -230,6 +261,83 @@ export class ClassAttendanceService {
       scheduleWeekday: row.schedule_weekday,
       studentCount: Number(row.student_count ?? 0),
       administrativeClasses: row.administrative_classes ?? [],
+    }));
+  }
+
+  /**
+   * Buổi học thật (class_sessions, vd đồng bộ từ TKB UEL) trong [from, to] — dùng cho lịch tuần GV/SV.
+   * Phạm vi như listClasses: GV thấy lớp mình phụ trách, SV thấy lớp đã đăng ký, admin thấy tất cả.
+   */
+  async listSessions(currentUserId: string, from?: string, to?: string) {
+    const isDate = (v?: string) =>
+      !!v &&
+      /^\d{4}-\d{2}-\d{2}$/.test(v) &&
+      !Number.isNaN(Date.parse(`${v}T00:00:00Z`));
+    if (!isDate(from) || !isDate(to)) {
+      throw new BadRequestException('from/to phải có dạng yyyy-MM-dd');
+    }
+    const days =
+      (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) /
+      86_400_000;
+    if (days < 0 || days > MAX_SESSION_RANGE_DAYS) {
+      throw new BadRequestException(
+        `Khoảng ngày phải từ 0 đến ${MAX_SESSION_RANGE_DAYS} ngày`,
+      );
+    }
+
+    const roles = await this.getRoleCodes(currentUserId);
+    const where = this.classScopeWhere(roles);
+    const params: unknown[] = [...where.params(currentUserId), from, to];
+    const fromIdx = params.length - 1;
+    const rows = (await this.dataSource.manager.query(
+      `
+      SELECT se.id,
+             to_char(se.session_date, 'YYYY-MM-DD') AS session_date,
+             to_char(se.start_time AT TIME ZONE 'Asia/Ho_Chi_Minh', 'HH24:MI') AS start_clock,
+             to_char(se.end_time AT TIME ZONE 'Asia/Ho_Chi_Minh', 'HH24:MI') AS end_clock,
+             se.start_time, se.end_time, se.status, se.source,
+             se.period_start, se.period_count,
+             cs.id AS class_id, cs.class_code,
+             subj.subject_code, subj.subject_name,
+             sem.semester_name,
+             teacher.full_name AS teacher,
+             COALESCE(room.room_name, def_room.room_name) AS room,
+             (SELECT COUNT(*) FROM class_enrollments ce
+               WHERE ce.class_section_id = cs.id AND ce.status = 'active')::int AS student_count
+        FROM class_sessions se
+        JOIN class_sections cs ON cs.id = se.class_section_id
+        JOIN subjects subj ON subj.id = cs.subject_id
+        JOIN semesters sem ON sem.id = cs.semester_id
+        LEFT JOIN users teacher ON teacher.id = cs.lecturer_user_id
+        LEFT JOIN rooms room ON room.id = se.room_id
+        LEFT JOIN rooms def_room ON def_room.id = cs.default_room_id
+        ${where.sql}
+         AND cs.source = 'uel_api'
+         AND se.session_date BETWEEN $${fromIdx}::date AND $${fromIdx + 1}::date
+       ORDER BY se.start_time ASC, cs.class_code ASC
+      `,
+      params,
+    )) as SessionRow[];
+
+    return rows.map((row) => ({
+      id: row.id,
+      date: row.session_date,
+      startTime: row.start_clock,
+      endTime: row.end_clock,
+      startAt: row.start_time,
+      endAt: row.end_time,
+      status: row.status,
+      source: row.source,
+      periodStart: row.period_start,
+      periodCount: row.period_count,
+      classId: row.class_id,
+      classCode: row.class_code,
+      subjectCode: row.subject_code,
+      subject: row.subject_name,
+      semester: row.semester_name,
+      teacher: row.teacher ?? '',
+      room: row.room ?? '',
+      studentCount: Number(row.student_count ?? 0),
     }));
   }
 
@@ -603,6 +711,7 @@ export class ClassAttendanceService {
          AND car.student_id = ce.student_id
          AND car.attendance_date BETWEEN $2::date AND $3::date
        WHERE ce.student_id = $1
+         AND cs.source = 'uel_api'
          AND ce.status = 'active'
          AND ($4::text IS NULL OR subj.subject_code = $4)
        ORDER BY car.attendance_date DESC NULLS LAST, cs.class_code ASC
@@ -669,6 +778,7 @@ export class ClassAttendanceService {
       anchorDate?: string;
       subjectCode?: string;
       administrativeClass?: string;
+      source?: string;
     },
   ) {
     const classes = await this.getReportClasses(
@@ -676,6 +786,7 @@ export class ClassAttendanceService {
       query.classId,
       query.semester,
       query.subjectCode,
+      query.source,
     );
     const { start, end } = this.getRangeBounds(query.mode, query.anchorDate);
     const rows = await this.buildClassReportRows(
@@ -699,6 +810,7 @@ export class ClassAttendanceService {
       semester?: string;
       subjectCode?: string;
       administrativeClass?: string;
+      source?: string;
     },
   ) {
     const classes = await this.getReportClasses(
@@ -706,6 +818,7 @@ export class ClassAttendanceService {
       query.classId,
       query.semester,
       query.subjectCode,
+      query.source,
     );
     const { start, end } = this.getSemesterBounds(query.semester);
     const records = await this.getAttendanceRecords(
@@ -964,8 +1077,9 @@ export class ClassAttendanceService {
     classId?: string,
     semester?: string,
     subjectCode?: string,
+    source?: string,
   ) {
-    let classes = await this.listClasses(currentUserId);
+    let classes = await this.listClasses(currentUserId, undefined, source);
     if (semester && semester !== 'all') {
       classes = classes.filter((klass) => klass.semester === semester);
     }

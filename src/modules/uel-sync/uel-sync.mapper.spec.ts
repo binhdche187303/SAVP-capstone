@@ -1,9 +1,14 @@
 import {
+  codeListOf,
+  cohortOfClass,
   eachDate,
+  isCohortInScope,
   emailOf,
   fullNameOf,
   roomNameOf,
   semesterCodeOf,
+  semesterNameOf,
+  sessionTimesFromClock,
   sessionTimesOf,
   staffRoleOf,
   toIsoDate,
@@ -29,8 +34,21 @@ describe('uel-sync.mapper', () => {
     expect(staffRoleOf(null)).toBe('EMPLOYEE');
   });
 
-  it('semesterCodeOf', () => {
-    expect(semesterCodeOf(' 2025-2026 ', '1')).toBe('2025-2026_HK1');
+  it('staffRoleOf theo dữ liệu thật: TG → TEACHER; CH theo đơn vị', () => {
+    expect(staffRoleOf('TG')).toBe('TEACHER');
+    expect(staffRoleOf(' tg ')).toBe('TEACHER');
+    expect(staffRoleOf('CH')).toBe('EMPLOYEE');
+    expect(staffRoleOf('CH', true)).toBe('TEACHER');
+    expect(staffRoleOf('TG', false)).toBe('TEACHER');
+  });
+
+  it('semesterCodeOf chuẩn hóa về HKnn, không lặp HKHK', () => {
+    expect(semesterCodeOf(' 2025-2026 ', '1')).toBe('2025-2026_HK01');
+    expect(semesterCodeOf('2026-2027', 'HK01')).toBe('2026-2027_HK01');
+    expect(semesterCodeOf('2026-2027', ' hk3 ')).toBe('2026-2027_HK03');
+    expect(semesterNameOf('2026-2027', 'HK01')).toBe(
+      'Học kỳ 1 năm học 2026-2027',
+    );
   });
 
   it('toIsoDate nhận yyyy-MM-dd, ISO, dd/MM/yyyy', () => {
@@ -59,6 +77,34 @@ describe('uel-sync.mapper', () => {
     expect(sessionTimesOf('2026-11-09', null, 2, periods)).toBeNull();
   });
 
+  it('sessionTimesFromClock dùng giờ API, sai/thiếu → null', () => {
+    expect(sessionTimesFromClock('2026-11-12', '07:00', '11:00')).toEqual({
+      start: '2026-11-12T07:00:00+07:00',
+      end: '2026-11-12T11:00:00+07:00',
+    });
+    expect(sessionTimesFromClock('2026-11-12', '7:30', '9:15:00')).toEqual({
+      start: '2026-11-12T07:30:00+07:00',
+      end: '2026-11-12T09:15:00+07:00',
+    });
+    expect(sessionTimesFromClock('2026-11-12', null, '11:00')).toBeNull();
+    expect(sessionTimesFromClock('2026-11-12', '11:00', '07:00')).toBeNull();
+    expect(sessionTimesFromClock('2026-11-12', '25:00', '26:00')).toBeNull();
+    expect(sessionTimesFromClock('2026-11-12', 'sáng', '11:00')).toBeNull();
+  });
+
+  it('codeListOf tách mã, bỏ trống/trùng', () => {
+    expect(codeListOf(['GV0001', ' GV0001 ', '', '22.001'])).toEqual([
+      'GV0001',
+      '22.001',
+    ]);
+    expect(codeListOf('GV0001, 22.001\nK240000001')).toEqual([
+      'GV0001',
+      '22.001',
+      'K240000001',
+    ]);
+    expect(codeListOf(undefined)).toEqual([]);
+  });
+
   it('eachDate liệt kê cả 2 đầu, qua tháng', () => {
     expect(eachDate('2026-11-29', '2026-12-02')).toEqual([
       '2026-11-29',
@@ -73,5 +119,27 @@ describe('uel-sync.mapper', () => {
       'A.101 - Cơ sở chính',
     );
     expect(roomNameOf(null, 'A101', null)).toBe('A101');
+  });
+
+  it('cohortOfClass đọc khóa từ mã lớp UEL', () => {
+    expect(cohortOfClass('K22406')).toBe(22);
+    expect(cohortOfClass('C22603BT-2')).toBe(22);
+    expect(cohortOfClass('k19405T')).toBe(19);
+    expect(cohortOfClass('B17501.DKH')).toBe(17);
+    expect(cohortOfClass('K08403')).toBe(8);
+    expect(cohortOfClass('IE2026')).toBe(26);
+    expect(cohortOfClass('BSKTSDH2019')).toBe(19);
+    expect(cohortOfClass('BCU IB04')).toBeNull();
+    expect(cohortOfClass(null)).toBeNull();
+  });
+
+  it('isCohortInScope: giữ từ K22, giữ lớp không rõ khóa', () => {
+    expect(isCohortInScope('K22406', 22)).toBe(true);
+    expect(isCohortInScope('K26401', 22)).toBe(true);
+    expect(isCohortInScope('K21401', 22)).toBe(false);
+    expect(isCohortInScope('K08403', 22)).toBe(false);
+    expect(isCohortInScope('TDSVUEB2024', 22)).toBe(true);
+    expect(isCohortInScope('BSKTSDH2019', 22)).toBe(false);
+    expect(isCohortInScope('BCU IB04', 22)).toBe(true);
   });
 });

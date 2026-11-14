@@ -11,7 +11,7 @@ export async function renderGateAccessXlsx(
   meta: GateAccessReportMeta,
 ): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'SmartTracking System';
+  workbook.creator = 'VISMA';
   workbook.created = new Date();
 
   const sheet = workbook.addWorksheet('Ra vào khuôn viên');

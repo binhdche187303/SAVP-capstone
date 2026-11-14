@@ -56,7 +56,7 @@ export class UelSyncController {
     summary: 'Chạy đồng bộ UEL (chạy nền)',
     description:
       'Bước: departments → staff → students → sections → enrollments → sessions. ' +
-      'sections/enrollments cần namHoc + hocKy; sessions cần fromDate/toDate. Xem kết quả ở GET /uel-sync/status.',
+      'sections/enrollments cần namHoc + hocKy; sessions cần fromDate/toDate (thêm lecturerCodes/studentCodes ⇒ chỉ lấy lịch các người đó, không hủy buổi). Xem kết quả ở GET /uel-sync/status.',
   })
   run(@Body() dto: UelSyncRunDto, @CurrentUser() user?: { userId?: string }) {
     // Lỗi tham số / đang chạy được ném đồng bộ (400/409); phần còn lại chạy nền.

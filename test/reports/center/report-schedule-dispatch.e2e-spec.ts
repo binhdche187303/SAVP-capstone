@@ -69,7 +69,7 @@ describeDb('RPT-CENTER schedule dispatch / run', () => {
     const authz = { getEffectiveRolesAndPermissions: async () => ({ roles: ['SYSTEM_ADMIN'], permissions: ownerPerms }) };
     const notifications = { enqueueEmailNotification: async (d: unknown) => { mails.push(d); return { notification: { id: 'n' } }; } };
     const config = { get: (k: string, d?: unknown) => (k === 'API_PUBLIC_BASE_URL' ? 'http://api.test' : d) } as unknown as ConfigService;
-    const center = new ReportCenterWorkerProcessor({} as never, files, AppDataSource, [provider]);
+    const center = new ReportCenterWorkerProcessor({} as never, files, AppDataSource, [provider], {} as never);
     worker = new ReportScheduleRunWorker(AppDataSource as DataSource, scope, authz as never, files, notifications as never, center, config, [provider]);
     runs = new ReportScheduleRunService(AppDataSource, schedules, dispatcher, store as never, config);
   });

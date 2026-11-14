@@ -6,6 +6,8 @@ export const EMPTY_TEXT = 'Không có dữ liệu trong kỳ đã chọn';
 export interface ReportRenderMeta {
   generatedAt: Date;
   generatedByEmail: string;
+  /** Họ tên người xuất — bản quy chuẩn in ở mục phạm vi và ô "Người lập biểu". */
+  generatedByName?: string;
 }
 
 const ymdVn = (ymd: string): string => `${ymd.slice(8, 10)}/${ymd.slice(5, 7)}/${ymd.slice(0, 4)}`;

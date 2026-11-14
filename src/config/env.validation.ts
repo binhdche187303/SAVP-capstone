@@ -224,11 +224,7 @@ export const envValidationSchema = Joi.object({
   DEVICE_OFFLINE_DETECT_ENABLED: Joi.boolean().default(true),
   RTSP_PROBE_TIMEOUT_MS: Joi.number().integer().min(100).default(3000),
   DEVICE_OFFLINE_FAIL_THRESHOLD: Joi.number().integer().min(1).default(3),
-  DEVICE_PROBE_CONCURRENCY: Joi.number()
-    .integer()
-    .min(1)
-    .max(500)
-    .default(50),
+  DEVICE_PROBE_CONCURRENCY: Joi.number().integer().min(1).max(500).default(50),
   // A5 (IOT-005): timeout riêng cho runtime RTSP probe (chẩn đoán đơn lẻ, chờ lâu hơn batch).
   RTSP_RUNTIME_PROBE_TIMEOUT_MS: Joi.number().integer().min(100).default(10000),
 
@@ -258,6 +254,16 @@ export const envValidationSchema = Joi.object({
   UEL_API_PROJECT_CODE: Joi.string().default('uelapi'),
   UEL_API_KEY: Joi.string().allow('').default(''),
   UEL_API_TIMEOUT_MS: Joi.number().integer().min(1000).default(30000),
+  // Đăng nhập một lần UEL (PSC SSO, auth/sso). Tắt mặc định; bật cần đủ base URL + client + 2 URL callback.
+  UEL_SSO_ENABLED: Joi.boolean().default(false),
+  UEL_SSO_MODE: Joi.string().valid('auto', 'psc', 'keycloak').default('auto'),
+  UEL_SSO_BASE_URL: Joi.string().uri().allow('').default(''),
+  UEL_SSO_CLIENT_ID: Joi.string().allow('').default(''),
+  UEL_SSO_CLIENT_SECRET: Joi.string().allow('').default(''),
+  UEL_SSO_REDIRECT_URI: Joi.string().uri().allow('').default(''),
+  UEL_SSO_FE_CALLBACK_URL: Joi.string().uri().allow('').default(''),
+  UEL_SSO_SCOPES: Joi.string().default('openid profile email'),
+  UEL_SSO_TIMEOUT_MS: Joi.number().integer().min(1000).default(10000),
   // REC-005: ffprobe trích metadata media (best-effort).
   FFPROBE_PATH: Joi.string().default('ffprobe'),
   // NSC-001 (#31): token nội bộ cho POST /internal/no-show-cases (fail-closed nếu rỗng).
@@ -303,14 +309,26 @@ export const envValidationSchema = Joi.object({
   SCHEDULER_VISITOR_ENABLED: Joi.boolean().default(false),
   SCHEDULER_UEL_SYNC_ENABLED: Joi.boolean().default(false),
   VISITOR_FACEGATE_ENABLED: Joi.boolean().default(false),
-  VISITOR_VERIFICATION_TTL_SECONDS: Joi.number().integer().min(60).max(900).default(300),
-  VISITOR_VERIFICATION_MAX_ATTEMPTS: Joi.number().integer().min(1).max(10).default(5),
+  VISITOR_VERIFICATION_TTL_SECONDS: Joi.number()
+    .integer()
+    .min(60)
+    .max(900)
+    .default(300),
+  VISITOR_VERIFICATION_MAX_ATTEMPTS: Joi.number()
+    .integer()
+    .min(1)
+    .max(10)
+    .default(5),
   ZALO_ZBS_ENABLED: Joi.boolean().default(false),
   ZALO_ZBS_DEV_MODE: Joi.boolean().default(false),
-  ZALO_ZBS_DEV_OTP: Joi.string().pattern(/^\d{6}$/).default('123456'),
+  ZALO_ZBS_DEV_OTP: Joi.string()
+    .pattern(/^\d{6}$/)
+    .default('123456'),
   ZALO_ZBS_ACCESS_TOKEN: Joi.string().allow('').default(''),
   ZALO_ZBS_TEMPLATE_ID: Joi.string().allow('').default(''),
-  ZALO_ZBS_ENDPOINT: Joi.string().uri().default('https://business.openapi.zalo.me/message/template'),
+  ZALO_ZBS_ENDPOINT: Joi.string()
+    .uri()
+    .default('https://business.openapi.zalo.me/message/template'),
   REPORT_CENTER_ENABLED: Joi.boolean().default(true),
   SCHEDULER_REPORT_SCHEDULE_ENABLED: Joi.boolean().default(false),
   SCHEDULER_DEVICE_MAINTENANCE_ENABLED: Joi.boolean().default(false),

@@ -3,6 +3,44 @@ import { ClassAttendanceService } from './class-attendance.service';
 import { HgVisionService } from './hgvision.service';
 
 describe('Class attendance with live data', () => {
+  it.each(['BUSINESS_ADMIN', 'TEACHER'])('filters synchronized classes without bypassing %s scope', async role => {
+    const query = jest.fn().mockResolvedValue([]);
+    const service = new ClassAttendanceService({ manager: { query } } as unknown as DataSource, {} as HgVisionService);
+    jest.spyOn(service as any, 'getRoleCodes').mockResolvedValue([role]);
+    await service.listClasses('user-1', '2026-11-14', 'uel_api');
+    const [sql, params] = query.mock.calls[0];
+    expect(sql).toContain('AND cs.source =');
+    expect(params).toEqual(role === 'TEACHER' ? ['user-1', '2026-11-14', 'uel_api'] : ['2026-11-14', 'uel_api']);
+    if (role === 'TEACHER') expect(sql).toContain('cs.lecturer_user_id = $1');
+  });
+
+  it('defaults to UEL classes so legacy sample sections cannot enter selectors or statistics', async () => {
+    const query = jest.fn().mockResolvedValue([]);
+    const service = new ClassAttendanceService({ manager: { query } } as unknown as DataSource, {} as HgVisionService);
+    jest.spyOn(service as any, 'getRoleCodes').mockResolvedValue(['SYSTEM_ADMIN']);
+    expect(await service.listClasses('user-1', '2026-11-14')).toEqual([]);
+    expect(query.mock.calls[0][0]).toContain('AND cs.source =');
+    expect(query.mock.calls[0][1]).toContain('uel_api');
+  });
+
+  it('rejects unknown sources before querying classes', async () => {
+    const query = jest.fn();
+    const service = new ClassAttendanceService({ manager: { query } } as unknown as DataSource, {} as HgVisionService);
+    await expect(service.listClasses('user-1', '2026-11-14', 'unknown')).rejects.toThrow('Nguồn lớp học không hợp lệ');
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it('uses the same synchronized source for reports and CSV without creating fallback classes', async () => {
+    const service = new ClassAttendanceService({} as DataSource, {} as HgVisionService);
+    const classes = jest.spyOn(service, 'listClasses').mockResolvedValue([]);
+    const report = await service.getTeacherReport('user-1', { source: 'uel_api', mode: 'month', anchorDate: '2026-11-14' });
+    expect(report.rows).toEqual([]);
+    expect(report.totals.totalSessions).toBe(0);
+    await service.exportSemesterCsv('user-1', { source: 'uel_api' });
+    expect(classes).toHaveBeenCalledTimes(2);
+    expect(classes).toHaveBeenLastCalledWith('user-1', undefined, 'uel_api');
+  });
+
   it('does not assign an unmatched face to the next unmarked student', async () => {
     const query = jest.fn();
     const service = new ClassAttendanceService(

@@ -116,6 +116,13 @@ describeDb('RPT-CENTER API (preview, catalog)', () => {
     expect(res.body.error.code).toBe(code);
   });
 
+  it('tuỳ chọn bản xuất (mode/templateId/signers/...) đi chung body không bị coi là bộ lọc lạ', async () => {
+    built.length = 0;
+    const res = await call('/reports/gate-access/preview?from=2026-10-01&to=2026-10-02&mode=standard&templateId=x&addressee=y', 'admin');
+    expect(res.status).toBe(200);
+    expect(built[0].filters).toEqual({ from: '2026-10-01', to: '2026-10-02' });
+  });
+
   it('thông điệp lỗi đúng chữ FE đang so', async () => {
     expect((await call('/reports/gate-access/preview?to=2026-10-02', 'admin')).body.message).toBe('Vui lòng chọn kỳ báo cáo');
     expect((await call('/reports/gate-access/preview?from=2026-10-05&to=2026-10-02', 'admin')).body.message).toBe('Ngày bắt đầu phải trước hoặc bằng ngày kết thúc');

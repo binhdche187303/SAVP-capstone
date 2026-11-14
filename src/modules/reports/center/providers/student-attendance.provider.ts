@@ -47,7 +47,7 @@ const FACTS_CTE = `
              ELSE 'present'
            END AS status
       FROM days d
-      JOIN class_sections cs ON cs.id = d.class_section_id AND cs.deleted_at IS NULL
+      JOIN class_sections cs ON cs.id = d.class_section_id AND cs.deleted_at IS NULL AND cs.source = 'uel_api'
       JOIN subjects subj ON subj.id = cs.subject_id
       JOIN class_enrollments ce ON ce.class_section_id = cs.id AND ce.status = 'active'
                                AND (ce.enrolled_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date <= d.day

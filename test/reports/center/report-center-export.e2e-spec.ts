@@ -42,9 +42,10 @@ describeDb('RPT-CENTER export', () => {
     const center = new ReportCenterService(AppDataSource, scope, { getMaxRangeDays: async () => 366 } as never, { get: () => true } as never, [provider]);
     exporter = new ReportCenterExportService(
       center, jobs, { addJob: async (queue: string, name: string, data: unknown) => { queued.push({ queue, name, data }); } } as never,
-      { logAction: async (a: unknown) => { audits.push(a); } } as never, AppDataSource);
+      { logAction: async (a: unknown) => { audits.push(a); } } as never, AppDataSource, {} as never, {} as never,
+      { validateStandardExport: async () => null } as never); // bản thường — bản quy chuẩn có spec riêng ở src/modules/reports
     const storage = { saveFile: async (i: { buffer: Buffer; originalName: string }) => { saved.push({ originalName: i.originalName, size: i.buffer.length }); return { storageKey: `exports/${TAG}-${i.originalName}`, sizeBytes: i.buffer.length }; }, getDriver: () => 'local' };
-    worker = new ReportCenterWorkerProcessor(jobs, new ReportFileService(AppDataSource.getRepository(MediaFileEntity), storage as never), AppDataSource, [provider]);
+    worker = new ReportCenterWorkerProcessor(jobs, new ReportFileService(AppDataSource.getRepository(MediaFileEntity), storage as never), AppDataSource, [provider], {} as never);
   });
   afterAll(async () => {
     await AppDataSource.query(`DELETE FROM media_files WHERE storage_key LIKE 'exports/${TAG}-%'`);

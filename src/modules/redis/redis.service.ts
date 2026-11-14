@@ -41,6 +41,22 @@ export class RedisService {
   }
 
   /**
+   * Lấy JSON rồi xóa key trong cùng 1 transaction (MULTI) — dùng cho giá trị dùng 1 lần
+   * (state/ticket SSO). Hai request đồng thời chỉ 1 bên nhận được giá trị.
+   */
+  async takeJson<T>(key: string): Promise<T | null> {
+    const results = await this.client.multi().get(key).del(key).exec();
+    const value = results?.[0]?.[1] as string | null | undefined;
+    if (value === null || value === undefined) return null;
+    try {
+      return JSON.parse(value) as T;
+    } catch {
+      this.logger.warn(`Failed to parse Redis JSON for key: ${key}`);
+      return null;
+    }
+  }
+
+  /**
    * Set giá trị (không TTL).
    */
   async set(key: string, value: string): Promise<void> {

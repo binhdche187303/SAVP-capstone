@@ -47,17 +47,29 @@ export interface ResolvedScope {
   departmentIds: string[] | null;
 }
 
+export interface ReportTable {
+  title: string;
+  columns: { key: string; label: string; format: CellFormat }[];
+  rows: Record<string, unknown>[];
+}
+
 export interface ReportModel {
-  type: ReportType;
+  /** `document`: văn bản dựng từ dữ liệu trang khác gửi lên (POST /report-templates/render-document), không qua provider. */
+  type: ReportType | 'document';
   title: string;
   period: { from: string; to: string };
   filterLines: string[];
-  kpis: { key: string; label: string; value: number | null; format: CellFormat }[];
+  /** `unit` / `display` chỉ dùng cho bản quy chuẩn: ghi đè đơn vị tính / chữ hiển thị (chỉ tiêu dạng chữ có `value = null`). */
+  kpis: { key: string; label: string; value: number | null; format: CellFormat; unit?: string; display?: string }[];
   charts: { key: string; data: Record<string, unknown>[] }[];
   columns: { key: string; label: string; format: CellFormat }[];
   rows: Record<string, unknown>[];
   total: number;
   notes?: string[];
+  /** Ghi đè dòng "Nguồn dữ liệu" của bản quy chuẩn. */
+  dataSource?: string;
+  /** Nhiều bảng phụ lục (bản quy chuẩn). Không có = một bảng `columns` / `rows`. */
+  tables?: ReportTable[];
 }
 
 export interface ReportProvider {

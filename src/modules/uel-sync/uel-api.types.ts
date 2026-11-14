@@ -92,6 +92,15 @@ export interface UelTkbLopHp1Ngay {
   buoi_hoc: S;
   ma_giang_vien: S;
   ten_giang_vien: S;
+  /** "07:00" — có trong dữ liệu thật (chưa có trong tài liệu API). */
+  gio_bat_dau?: S;
+  /** "11:00" */
+  gio_ket_thuc?: S;
+}
+
+/** chi_tiet_tkb_gv_1ngay / chi_tiet_tkb_sv_1ngay: cùng cấu trúc + mã người tra. */
+export interface UelTkbNguoi1Ngay extends UelTkbLopHp1Ngay {
+  ma_sinh_vien?: S;
 }
 
 export interface UelDangKy {

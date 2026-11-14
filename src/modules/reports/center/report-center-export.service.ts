@@ -11,6 +11,7 @@ import { reportBadRequest, reportConflict, reportNotFound } from './report-cente
 import { ReportCenterService } from './report-center.service.js';
 import { REPORT_FORMATS, type ReportFormat } from './report-file.service.js';
 import { REPORT_DEFINITIONS, isReportType } from './report-definition.registry.js';
+import { ReportTemplateService, type StandardExportOptions } from '../templates/report-template.service.js';
 
 export interface ReportCenterExportJobData {
   backgroundJobId: string;
@@ -19,6 +20,9 @@ export interface ReportCenterExportJobData {
   filters: Record<string, string | undefined>;
   scope: { unrestricted: boolean; departmentIds: string[] | null };
   requestedByEmail: string;
+  /** Job cũ trong hàng đợi không có hai trường này → coi như bản thường. */
+  requestedById?: string;
+  standard?: StandardExportOptions | null;
 }
 
 @Injectable()
@@ -33,6 +37,7 @@ export class ReportCenterExportService {
     private readonly dataSource: DataSource,
     private readonly storage: StorageService,
     private readonly config: ConfigService,
+    private readonly templates: ReportTemplateService,
   ) {}
 
   /** POST /reports/center/:type/exports → 202. Mọi việc dựng file đi qua hàng đợi (ARCH-02). */
@@ -40,20 +45,24 @@ export class ReportCenterExportService {
     const format = String(body['format'] ?? '');
     if (!(REPORT_FORMATS as string[]).includes(format)) throw reportBadRequest('Định dạng xuất không hợp lệ', 'VALIDATION_ERROR');
     const { filters, scope } = await this.center.prepare(type, body, user.userId);
+    // Kiểm mẫu + người ký ngay lúc bấm xuất để báo lỗi tại chỗ, không đợi job chạy rồi mới hỏng.
+    const standard = await this.templates.validateStandardExport(type, body, user);
+    const mode = standard ? 'standard' : 'normal';
     const job = await this.jobs.createQueuedJob({
       jobType: BackgroundJobType.EXPORT_REPORT,
       requestedBy: user.userId,
       relatedEntityType: 'report_center',
-      inputJson: { type, format, filters, scope },
+      inputJson: { type, format, filters, scope, mode, ...(standard ? { standard } : {}) },
     });
     const data: ReportCenterExportJobData = {
       backgroundJobId: job.id, type, format: format as ReportFormat, filters, scope, requestedByEmail: user.email,
+      requestedById: user.userId, standard,
     };
     await this.queue.addJob(REPORT_EXPORT_QUEUE_NAME, REPORT_CENTER_EXPORT_JOB_NAME, data);
     this.audit
       .logAction({
         userId: user.userId, actionType: 'report_center_export', entityType: 'background_jobs', entityId: job.id,
-        metadataJson: { type, format, from: filters.from, to: filters.to, filters, scope },
+        metadataJson: { type, format, mode, templateId: standard?.templateId ?? null, from: filters.from, to: filters.to, filters, scope },
       })
       .catch((e) => this.logger.warn(`Audit xuất báo cáo lỗi: ${e instanceof Error ? e.message : String(e)}`));
     return { jobId: job.id, status: 'queued' as const, delivery: 'download' as const, outputFileId: null };
@@ -76,6 +85,9 @@ export class ReportCenterExportService {
         reportType: type,
         reportTitle: isReportType(type) ? REPORT_DEFINITIONS[type].title : type,
         format: r.input_json?.['format'] ?? null,
+        mode: r.input_json?.['mode'] === 'standard' ? 'standard' : 'normal',
+        // Lựa chọn bản quy chuẩn (mẫu, người ký…) để nút "Xuất lại" dựng đúng bản cũ.
+        standard: r.input_json?.['mode'] === 'standard' ? (r.input_json?.['standard'] ?? null) : null,
         from: filters['from'] ?? null,
         to: filters['to'] ?? null,
         fileName: r.output_json?.fileName ?? null,

@@ -22,7 +22,7 @@ export async function renderMeetingActivityXlsx(
   data: ReportData,
 ): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'SmartTracking System';
+  workbook.creator = 'VISMA';
   workbook.created = new Date();
 
   buildOverviewSheet(workbook, data.metadata, data.kpis, data.statusBreakdown);

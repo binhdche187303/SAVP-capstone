@@ -1,0 +1,2 @@
+Tinos-*.ttf — Tinos (metric-compatible Times New Roman), SIL Open Font License 1.1.
+Nguồn: https://github.com/googlefonts/tinos (google/fonts ofl/tinos). Dùng cho PDF báo cáo quy chuẩn.

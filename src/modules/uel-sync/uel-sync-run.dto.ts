@@ -1,5 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  ArrayMaxSize,
   ArrayUnique,
   IsArray,
   IsIn,
@@ -34,8 +35,8 @@ export class UelSyncRunDto {
   namHoc?: string;
 
   @ApiPropertyOptional({
-    example: '1',
-    description: 'hoc_ky (sections/enrollments)',
+    example: 'HK01',
+    description: 'hoc_ky (sections/enrollments) — "HK01" hoặc "1" đều được',
   })
   @IsOptional()
   @IsString()
@@ -57,4 +58,30 @@ export class UelSyncRunDto {
   @IsOptional()
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   toDate?: string;
+
+  @ApiPropertyOptional({
+    type: [String],
+    example: ['GV0001', '22.001'],
+    description:
+      'sessions theo người: mã giảng viên cần lấy lịch (chi_tiet_tkb_gv_1ngay). Có mã ⇒ không hủy buổi nào.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(30)
+  @IsString({ each: true })
+  @MaxLength(30, { each: true })
+  lecturerCodes?: string[];
+
+  @ApiPropertyOptional({
+    type: [String],
+    example: ['K240000001'],
+    description:
+      'sessions theo người: mã sinh viên cần lấy lịch (chi_tiet_tkb_sv_1ngay).',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(30)
+  @IsString({ each: true })
+  @MaxLength(30, { each: true })
+  studentCodes?: string[];
 }
