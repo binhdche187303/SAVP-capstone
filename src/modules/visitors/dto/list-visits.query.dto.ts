@@ -19,8 +19,12 @@ export class VisitorStatsQueryDto {
   @Matches(YMD) to!: string;
   @IsOptional() @IsString() departmentId?: string;
   @IsOptional() @IsString() groupBy?: 'day' | 'week' | 'month';
+  /** Lọc chéo khi bấm vào biểu đồ (kiểu Power BI): JSON `{"dim":"purpose","values":["..."]}`. */
+  @IsOptional() @IsString() @MaxLength(4000) cross?: string;
 }
 
 export class VisitorDeskQueryDto {
   @IsOptional() @Matches(YMD) date?: string;
+  @IsOptional() @Matches(YMD) from?: string;
+  @IsOptional() @Matches(YMD) to?: string;
 }

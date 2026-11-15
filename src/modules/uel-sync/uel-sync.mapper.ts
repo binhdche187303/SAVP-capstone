@@ -89,6 +89,17 @@ export function toIsoDate(v: string | null): string | null {
   return null;
 }
 
+/**
+ * Ngày gửi lên API TKB UEL: bắt buộc dd/MM/yyyy (vd 11/11/2026). Gửi yyyy-MM-dd thì UEL trả rỗng
+ * hoặc 502 Source.Error. Nhận yyyy-MM-dd / dd/MM/yyyy; trả nguyên chuỗi nếu không nhận dạng được.
+ */
+export function toUelDate(v: string): string {
+  const iso = toIsoDate(v);
+  if (!iso) return v;
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
 export interface PeriodTime {
   startTime: string; // HH:mm[:ss]
   endTime: string;

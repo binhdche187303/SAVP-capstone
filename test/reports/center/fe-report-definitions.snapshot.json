@@ -839,6 +839,10 @@
               "label": "Cao"
             },
             {
+              "value": "urgent",
+              "label": "Khẩn cấp"
+            },
+            {
               "value": "critical",
               "label": "Nghiêm trọng"
             }

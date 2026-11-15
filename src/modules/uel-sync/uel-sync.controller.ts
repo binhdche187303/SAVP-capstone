@@ -25,8 +25,11 @@ import {
   StudyPeriodsDto,
   UelSyncSettingsDto,
 } from './uel-sync-settings.dto.js';
-import { UelSyncSettingsService } from './uel-sync-settings.service.js';
-import { UEL_SYNC_CRON_LABEL, UelSyncScheduler } from './uel-sync.scheduler.js';
+import {
+  runAllPlanOf,
+  UelSyncSettingsService,
+} from './uel-sync-settings.service.js';
+import { scheduleLabelOf, UelSyncScheduler } from './uel-sync.scheduler.js';
 import { UelSyncService } from './uel-sync.service.js';
 
 /** Đồng bộ dữ liệu API Đào tạo UEL — chỉ quản trị cấu hình hệ thống. */
@@ -66,6 +69,22 @@ export class UelSyncController {
     return { accepted: true, run: this.sync.lastResult };
   }
 
+  @Post('run-all')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({
+    summary: 'Đồng bộ toàn bộ UEL (1 nút, chạy nền)',
+    description:
+      'Chạy đủ 6 bước. Học kỳ: tự nhận từ TKB các ngày tới (termMode=auto) hoặc học kỳ chỉ định trong cài đặt. ' +
+      'Lịch học chỉ lấy từ hôm nay đến hôm nay + sessionDaysAhead − 1 (không lấy quá khứ). 409 khi đang có lượt khác.',
+  })
+  async runAll(@CurrentUser() user?: { userId?: string }) {
+    const plan = runAllPlanOf(await this.settings.getSettings(), new Date());
+    void this.sync
+      .startAll(plan, { trigger: 'manual', requestedBy: user?.userId ?? null })
+      .catch(() => undefined);
+    return { accepted: true, run: this.sync.lastResult };
+  }
+
   @Get('status')
   @ApiOperation({
     summary:
@@ -80,7 +99,12 @@ export class UelSyncController {
     return {
       configured: this.sync.configured,
       running: this.sync.isRunning,
-      schedule: { enabled: this.scheduler.enabled, label: UEL_SYNC_CRON_LABEL },
+      schedule: {
+        enabled: this.scheduler.enabled,
+        serverAllowed: this.scheduler.serverAllowed,
+        nextRunAt: this.scheduler.nextRunAt,
+        label: scheduleLabelOf(settings),
+      },
       settings,
       periodCount: periods.length,
       lastRun: recent[0] ?? this.sync.lastResult,
@@ -95,7 +119,8 @@ export class UelSyncController {
 
   @Get('settings')
   @ApiOperation({
-    summary: 'Cài đặt đồng bộ tự động (học kỳ hiện tại, số ngày lịch học)',
+    summary:
+      'Cài đặt đồng bộ tự động (bật/tắt, tần suất, giờ, cách chọn học kỳ, số ngày lịch học)',
   })
   getSettings() {
     return this.settings.getSettings();
@@ -103,11 +128,13 @@ export class UelSyncController {
 
   @Put('settings')
   @ApiOperation({ summary: 'Cập nhật cài đặt đồng bộ tự động' })
-  updateSettings(
+  async updateSettings(
     @Body() dto: UelSyncSettingsDto,
     @CurrentUser() user?: { userId?: string },
   ) {
-    return this.settings.updateSettings(dto, user?.userId ?? null);
+    const saved = await this.settings.updateSettings(dto, user?.userId ?? null);
+    this.scheduler.apply(saved); // đổi lịch chạy có hiệu lực ngay
+    return saved;
   }
 
   @Get('periods')

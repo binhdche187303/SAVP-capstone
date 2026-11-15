@@ -9,6 +9,7 @@ import { UelApiClient, UelApiError } from './uel-api.client.js';
 import type { UelFilter } from './uel-api.client.js';
 import { UEL_API } from './uel-api.types.js';
 import { UEL_API_CLIENT } from './uel-sync.constants.js';
+import { toUelDate } from './uel-sync.mapper.js';
 
 /** Số dòng tối đa trả về cho 1 lượt tra cứu. */
 const LOOKUP_LIMIT = 500;
@@ -61,12 +62,12 @@ const SPEC: Record<
   },
   lecturerDay: {
     api: UEL_API.TKB_GV_1NGAY,
-    build: (q) => ({ ma_giang_vien: q.code, ngay_hoc: q.date! }),
+    build: (q) => ({ ma_giang_vien: q.code, ngay_hoc: toUelDate(q.date!) }),
     needsDate: true,
   },
   studentDay: {
     api: UEL_API.TKB_SV_1NGAY,
-    build: (q) => ({ ma_sinh_vien: q.code, ngay_hoc: q.date! }),
+    build: (q) => ({ ma_sinh_vien: q.code, ngay_hoc: toUelDate(q.date!) }),
     needsDate: true,
   },
   session: {

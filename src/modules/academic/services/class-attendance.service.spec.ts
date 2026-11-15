@@ -31,7 +31,7 @@ describe('Class attendance with live data', () => {
   });
 
   it('uses the same synchronized source for reports and CSV without creating fallback classes', async () => {
-    const service = new ClassAttendanceService({} as DataSource, {} as HgVisionService);
+    const service = new ClassAttendanceService({ manager: { query: jest.fn().mockResolvedValue([]) } } as unknown as DataSource, {} as HgVisionService);
     const classes = jest.spyOn(service, 'listClasses').mockResolvedValue([]);
     const report = await service.getTeacherReport('user-1', { source: 'uel_api', mode: 'month', anchorDate: '2026-11-14' });
     expect(report.rows).toEqual([]);

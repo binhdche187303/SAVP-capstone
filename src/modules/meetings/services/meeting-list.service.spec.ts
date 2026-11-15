@@ -124,6 +124,31 @@ describe('MeetingListService.list', () => {
     );
   });
 
+  it('department filter includes organizer/participants and retains manager scope', async () => {
+    const departmentId = '11111111-1111-4111-8111-111111111111';
+    const { service, qb } = setup(
+      [],
+      [],
+      0,
+      { roles: ['MANAGER'], permissions: [] },
+      ['managed-dept'],
+    );
+    await service.list(q({ departmentId }), 'manager-1');
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      expect.stringContaining('IN (:...deptIds)'),
+      { deptIds: ['managed-dept'] },
+    );
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      expect.stringContaining('organizer.department_id = :departmentId'),
+      { departmentId },
+    );
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      expect.stringContaining('selected_user.department_id = :departmentId'),
+      { departmentId },
+    );
+    expect(qb.getCount).toHaveBeenCalled();
+  });
+
   it('search filter → andWhere ILIKE title', async () => {
     const { service, qb } = setup();
     await service.list(q({ search: 'sprint' }));

@@ -1,13 +1,25 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { clean } from './uel-sync.mapper.js';
-import type { UelSyncOptions, UelSyncStep } from './uel-sync.service.js';
+import type { UelSyncAllPlan } from './uel-sync.service.js';
+
+export type UelSyncFrequency = 'daily' | 'weekly';
+export type UelSyncTermMode = 'auto' | 'fixed';
 
 export interface UelSyncSettings {
-  /** nam_hoc của học kỳ hiện tại, vd "2026-2027". Trống = lịch tự động bỏ qua lớp HP + đăng ký. */
+  /** Bật đồng bộ tự động theo lịch (còn cần env SCHEDULER_ENABLED + SCHEDULER_UEL_SYNC_ENABLED). */
+  autoEnabled: boolean;
+  frequency: UelSyncFrequency;
+  /** Chỉ dùng khi weekly: 0 = Chủ nhật … 6 = Thứ bảy. */
+  weekday: number;
+  /** Giờ chạy HH:mm (giờ Việt Nam). */
+  time: string;
+  /** auto = tự nhận học kỳ từ TKB các ngày tới; fixed = dùng namHoc + hocKy. */
+  termMode: UelSyncTermMode;
+  /** nam_hoc của học kỳ chỉ định, vd "2026-2027" (chỉ dùng khi termMode = fixed). */
   namHoc: string;
   hocKy: string;
-  /** Số ngày lịch học kéo trước tính từ hôm nay. */
+  /** Số ngày lịch học kéo trước tính từ hôm nay (không lấy quá khứ). */
   sessionDaysAhead: number;
 }
 
@@ -18,6 +30,11 @@ export interface StudyPeriod {
 }
 
 const KEYS = {
+  autoEnabled: 'uel_sync.auto_enabled',
+  frequency: 'uel_sync.frequency',
+  weekday: 'uel_sync.weekday',
+  time: 'uel_sync.time',
+  termMode: 'uel_sync.term_mode',
   namHoc: 'uel_sync.nam_hoc',
   hocKy: 'uel_sync.hoc_ky',
   sessionDaysAhead: 'uel_sync.session_days_ahead',
@@ -25,6 +42,7 @@ const KEYS = {
 
 export const DEFAULT_SESSION_DAYS_AHEAD = 14;
 export const MAX_SESSION_DAYS_AHEAD = 120;
+export const DEFAULT_SYNC_TIME = '02:00';
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -63,32 +81,32 @@ export function vnDate(d: Date, addDays = 0): string {
 }
 
 /**
- * Tham số cho lượt đồng bộ tự động: luôn chạy đơn vị, cán bộ, SV; lớp HP + đăng ký chỉ khi đã cài
- * học kỳ hiện tại; lịch học (hôm nay → +N ngày) chỉ khi đã có bảng giờ tiết.
+ * Lượt "đồng bộ toàn bộ" (nút trên trang quản trị + lịch tự động): đủ 6 bước, lịch học CHỈ từ hôm nay
+ * (giờ VN) đến hôm nay + sessionDaysAhead − 1 — không kéo lại quá khứ.
  */
-export function scheduledOptionsOf(
-  s: UelSyncSettings,
-  now: Date,
-  hasPeriods: boolean,
-): { options: UelSyncOptions; skipped: string[] } {
-  const steps: UelSyncStep[] = ['departments', 'staff', 'students'];
-  const skipped: string[] = [];
-  const options: UelSyncOptions = { steps };
-  if (s.namHoc && s.hocKy) {
-    steps.push('sections', 'enrollments');
-    options.namHoc = s.namHoc;
-    options.hocKy = s.hocKy;
-  } else {
-    skipped.push('Lớp HP và đăng ký: chưa cài học kỳ hiện tại.');
-  }
-  if (hasPeriods) {
-    steps.push('sessions');
-    options.fromDate = vnDate(now);
-    options.toDate = vnDate(now, Math.max(0, s.sessionDaysAhead - 1));
-  } else {
-    skipped.push('Lịch học: chưa nhập bảng giờ tiết.');
-  }
-  return { options, skipped };
+export function runAllPlanOf(s: UelSyncSettings, now: Date): UelSyncAllPlan {
+  const days = Math.min(
+    MAX_SESSION_DAYS_AHEAD,
+    Math.max(1, s.sessionDaysAhead || DEFAULT_SESSION_DAYS_AHEAD),
+  );
+  const fixed = s.termMode === 'fixed' && !!s.namHoc && !!s.hocKy;
+  return {
+    fromDate: vnDate(now),
+    toDate: vnDate(now, days - 1),
+    termMode: fixed ? 'fixed' : 'auto',
+    terms: fixed ? [{ namHoc: s.namHoc, hocKy: s.hocKy }] : [],
+  };
+}
+
+/** Biểu thức cron (có giây) theo cài đặt: hằng ngày / hằng tuần lúc HH:mm. */
+export function cronOf(
+  s: Pick<UelSyncSettings, 'frequency' | 'weekday' | 'time'>,
+): string {
+  const [hh, mm] = (HHMM.test(s.time) ? s.time : DEFAULT_SYNC_TIME)
+    .split(':')
+    .map(Number);
+  const dow = s.frequency === 'weekly' ? String(s.weekday) : '*';
+  return `0 ${mm} ${hh} * * ${dow}`;
 }
 
 /** Cài đặt đồng bộ UEL (system_configs nhóm uel_sync) + bảng giờ tiết (study_periods). */
@@ -106,9 +124,26 @@ export class UelSyncSettingsService {
     );
     const v = new Map(rows.map((r) => [r.config_key, r.config_value]));
     const days = Number(v.get(KEYS.sessionDaysAhead));
+    const weekday = Number(v.get(KEYS.weekday));
+    const time = clean(v.get(KEYS.time)) ?? '';
+    const namHoc = clean(v.get(KEYS.namHoc)) ?? '';
+    const hocKy = clean(v.get(KEYS.hocKy)) ?? '';
+    const termMode = clean(v.get(KEYS.termMode));
     return {
-      namHoc: clean(v.get(KEYS.namHoc)) ?? '',
-      hocKy: clean(v.get(KEYS.hocKy)) ?? '',
+      autoEnabled: v.get(KEYS.autoEnabled) === 'true',
+      frequency: v.get(KEYS.frequency) === 'weekly' ? 'weekly' : 'daily',
+      weekday:
+        Number.isInteger(weekday) && weekday >= 0 && weekday <= 6 ? weekday : 0,
+      time: HHMM.test(time) ? time : DEFAULT_SYNC_TIME,
+      // Dữ liệu cũ chưa có term_mode: đã cài học kỳ ⇒ fixed, chưa ⇒ auto.
+      termMode:
+        termMode === 'auto' || termMode === 'fixed'
+          ? termMode
+          : namHoc && hocKy
+            ? 'fixed'
+            : 'auto',
+      namHoc,
+      hocKy,
       sessionDaysAhead:
         Number.isInteger(days) && days >= 1 && days <= MAX_SESSION_DAYS_AHEAD
           ? days
@@ -128,7 +163,20 @@ export class UelSyncSettingsService {
         'Cần nhập cả năm học và học kỳ, hoặc để trống cả hai.',
       );
     }
+    if (next.termMode === 'fixed' && !next.namHoc) {
+      throw new BadRequestException(
+        'Chế độ học kỳ chỉ định cần nhập năm học và học kỳ.',
+      );
+    }
+    if (!HHMM.test(next.time)) {
+      throw new BadRequestException('Giờ chạy phải có dạng HH:mm.');
+    }
     const values: [string, string][] = [
+      [KEYS.autoEnabled, String(!!next.autoEnabled)],
+      [KEYS.frequency, next.frequency],
+      [KEYS.weekday, String(next.weekday)],
+      [KEYS.time, next.time],
+      [KEYS.termMode, next.termMode],
       [KEYS.namHoc, next.namHoc],
       [KEYS.hocKy, next.hocKy],
       [KEYS.sessionDaysAhead, String(next.sessionDaysAhead)],

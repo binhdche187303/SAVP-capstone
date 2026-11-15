@@ -10,6 +10,8 @@ import {
   IsNull,
   Not,
   Between,
+  MoreThanOrEqual,
+  LessThanOrEqual,
   type FindOptionsWhere,
 } from 'typeorm';
 import { SecurityAlertEntity } from '../entities/security-alert.entity.js';
@@ -387,11 +389,16 @@ export class AlertsService {
     const where: FindOptionsWhere<SecurityAlertEntity> = {};
     if (query.alertType) where.alertType = query.alertType;
     if (query.zoneId) where.zoneId = query.zoneId;
+    if (query.severity) where.severity = query.severity;
     // 'open' = chưa đóng (new + acknowledged) — ô "Đang mở" trên trang Cảnh báo.
     if (query.status === 'open') where.status = Not('resolved');
     else if (query.status) where.status = query.status;
     if (query.from && query.to) {
       where.triggeredAt = Between(new Date(query.from), new Date(query.to));
+    } else if (query.from) {
+      where.triggeredAt = MoreThanOrEqual(new Date(query.from));
+    } else if (query.to) {
+      where.triggeredAt = LessThanOrEqual(new Date(query.to));
     }
 
     const sortBy = query.sortBy ?? 'lastSeenAt';

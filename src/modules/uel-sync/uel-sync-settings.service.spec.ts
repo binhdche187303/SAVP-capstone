@@ -1,11 +1,16 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
+import type { SchedulerRegistry } from '@nestjs/schedule';
 import {
-  scheduledOptionsOf,
+  cronOf,
+  runAllPlanOf,
   validatePeriods,
   vnDate,
 } from './uel-sync-settings.service';
-import type { UelSyncSettingsService } from './uel-sync-settings.service';
+import type {
+  UelSyncSettings,
+  UelSyncSettingsService,
+} from './uel-sync-settings.service';
 import { UelSyncScheduler } from './uel-sync.scheduler';
 import { runStatusOf } from './uel-sync.service';
 import type { UelSyncService, UelSyncStepResult } from './uel-sync.service';
@@ -53,47 +58,66 @@ describe('validatePeriods', () => {
   });
 });
 
-describe('scheduledOptionsOf', () => {
+const SETTINGS: UelSyncSettings = {
+  autoEnabled: true,
+  frequency: 'daily',
+  weekday: 0,
+  time: '02:00',
+  termMode: 'auto',
+  namHoc: '',
+  hocKy: '',
+  sessionDaysAhead: 14,
+};
+
+describe('runAllPlanOf', () => {
   // 2026-11-08 18:30 UTC = 2026-11-09 01:30 giờ VN.
   const now = new Date('2026-11-08T18:30:00Z');
 
-  it('đủ cài đặt → chạy cả 6 bước, lịch học theo ngày VN', () => {
-    const { options, skipped } = scheduledOptionsOf(
-      { namHoc: '2026-2027', hocKy: '1', sessionDaysAhead: 14 },
-      now,
-      true,
-    );
-    expect(options.steps).toEqual([
-      'departments',
-      'staff',
-      'students',
-      'sections',
-      'enrollments',
-      'sessions',
-    ]);
-    expect(options).toMatchObject({
-      namHoc: '2026-2027',
-      hocKy: '1',
+  it('lịch học chỉ từ hôm nay (giờ VN) → +N−1 ngày, không lấy quá khứ', () => {
+    expect(runAllPlanOf(SETTINGS, now)).toEqual({
       fromDate: '2026-11-09',
       toDate: '2026-11-22',
+      termMode: 'auto',
+      terms: [],
     });
-    expect(skipped).toEqual([]);
+    expect(runAllPlanOf({ ...SETTINGS, sessionDaysAhead: 1 }, now).toDate).toBe(
+      '2026-11-09',
+    );
   });
 
-  it('thiếu học kỳ và bảng tiết → chỉ 3 bước, nêu lý do', () => {
-    const { options, skipped } = scheduledOptionsOf(
-      { namHoc: '', hocKy: '', sessionDaysAhead: 14 },
-      now,
-      false,
+  it('học kỳ chỉ định → 1 học kỳ; thiếu năm/kỳ thì quay về tự nhận', () => {
+    expect(
+      runAllPlanOf(
+        { ...SETTINGS, termMode: 'fixed', namHoc: '2026-2027', hocKy: 'HK01' },
+        now,
+      ),
+    ).toMatchObject({
+      termMode: 'fixed',
+      terms: [{ namHoc: '2026-2027', hocKy: 'HK01' }],
+    });
+    expect(runAllPlanOf({ ...SETTINGS, termMode: 'fixed' }, now)).toMatchObject(
+      { termMode: 'auto', terms: [] },
     );
-    expect(options.steps).toEqual(['departments', 'staff', 'students']);
-    expect(skipped).toHaveLength(2);
   });
 
   it('vnDate cộng ngày theo giờ VN', () => {
     expect(vnDate(new Date('2026-11-08T16:59:00Z'))).toBe('2026-11-08');
     expect(vnDate(new Date('2026-11-08T17:00:00Z'))).toBe('2026-11-09');
     expect(vnDate(new Date('2026-11-08T17:00:00Z'), 1)).toBe('2026-11-10');
+  });
+});
+
+describe('cronOf', () => {
+  it('hằng ngày / hằng tuần theo giờ HH:mm', () => {
+    expect(cronOf({ frequency: 'daily', weekday: 3, time: '02:30' })).toBe(
+      '0 30 2 * * *',
+    );
+    expect(cronOf({ frequency: 'weekly', weekday: 1, time: '23:05' })).toBe(
+      '0 5 23 * * 1',
+    );
+    expect(cronOf({ frequency: 'daily', weekday: 0, time: 'x' })).toBe(
+      '0 0 2 * * *',
+    );
   });
 });
 
@@ -107,45 +131,67 @@ describe('runStatusOf', () => {
 });
 
 describe('UelSyncScheduler', () => {
-  function make(flags: Record<string, boolean>, configured = true) {
+  function make(
+    flags: Record<string, boolean>,
+    configured = true,
+    settings: UelSyncSettings = SETTINGS,
+  ) {
     const config = {
       get: (k: string, d: boolean) => (k in flags ? flags[k] : d),
     } as unknown as ConfigService;
-    const sync = { configured, start: jest.fn().mockResolvedValue({}) };
-    const settings = {
-      getSettings: jest
-        .fn()
-        .mockResolvedValue({ namHoc: '', hocKy: '', sessionDaysAhead: 14 }),
-      getPeriods: jest.fn().mockResolvedValue([]),
+    const sync = { configured, startAll: jest.fn().mockResolvedValue({}) };
+    const settingsService = {
+      getSettings: jest.fn().mockResolvedValue(settings),
+    };
+    const registry = {
+      addCronJob: jest.fn(),
+      deleteCronJob: jest.fn(),
     };
     const s = new UelSyncScheduler(
       config,
       sync as unknown as UelSyncService,
-      settings as unknown as UelSyncSettingsService,
+      settingsService as unknown as UelSyncSettingsService,
+      registry as unknown as SchedulerRegistry,
     );
-    return { s, sync };
+    return { s, sync, registry };
   }
 
-  it('mặc định tắt → không chạy', async () => {
-    const { s, sync } = make({});
-    await s.nightly();
-    expect(sync.start).not.toHaveBeenCalled();
+  it('env mặc định tắt → không tạo job, không chạy', async () => {
+    const { s, sync, registry } = make({});
+    await s.onApplicationBootstrap();
+    expect(registry.addCronJob).not.toHaveBeenCalled();
+    expect(s.enabled).toBe(false);
+    expect(s.nextRunAt).toBeNull();
+    await s.tick();
+    expect(sync.startAll).not.toHaveBeenCalled();
+  });
+
+  it('env bật + cài đặt bật → tạo job, có lần chạy kế tiếp; tắt trong cài đặt → gỡ job', async () => {
+    const { s, registry } = make({ SCHEDULER_UEL_SYNC_ENABLED: true });
+    await s.onApplicationBootstrap();
+    expect(registry.addCronJob).toHaveBeenCalledTimes(1);
+    expect(s.enabled).toBe(true);
+    expect(s.nextRunAt).toEqual(expect.any(String));
+    s.apply({ ...SETTINGS, autoEnabled: false });
+    expect(registry.deleteCronJob).toHaveBeenCalled();
+    expect(s.enabled).toBe(false);
+    s.onModuleDestroy();
   });
 
   it('bật nhưng chưa có API key → không chạy', async () => {
     const { s, sync } = make({ SCHEDULER_UEL_SYNC_ENABLED: true }, false);
-    await s.nightly();
-    expect(sync.start).not.toHaveBeenCalled();
+    await s.tick();
+    expect(sync.startAll).not.toHaveBeenCalled();
   });
 
-  it('bật → chạy với trigger schedule; đang có lượt khác thì không ném', async () => {
+  it('tick → đồng bộ toàn bộ trigger schedule; đang có lượt khác thì không ném', async () => {
     const { s, sync } = make({ SCHEDULER_UEL_SYNC_ENABLED: true });
-    await s.nightly();
-    expect(sync.start).toHaveBeenCalledWith(
-      expect.objectContaining({ steps: ['departments', 'staff', 'students'] }),
+    await s.tick();
+    expect(sync.startAll).toHaveBeenCalledWith(
+      expect.objectContaining({ termMode: 'auto' }),
       { trigger: 'schedule' },
     );
-    sync.start.mockRejectedValueOnce(new ConflictException());
-    await expect(s.nightly()).resolves.toBeUndefined();
+    sync.startAll.mockRejectedValueOnce(new ConflictException());
+    await expect(s.tick()).resolves.toBeUndefined();
   });
 });

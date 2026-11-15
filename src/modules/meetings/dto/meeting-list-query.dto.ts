@@ -57,6 +57,10 @@ export class MeetingListQueryDto {
   organizerId?: string;
 
   @IsOptional()
+  @IsUUID()
+  departmentId?: string;
+
+  @IsOptional()
   @IsISO8601()
   from?: string;
 

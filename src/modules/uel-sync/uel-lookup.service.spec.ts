@@ -35,7 +35,7 @@ describe('UelLookupService', () => {
       ['nhansu/thong_tin_nhansu', { ma_nhan_su: 'NS003' }, 1, 500],
       [
         'thoikhoabieu/chi_tiet_tkb_sv_1ngay',
-        { ma_sinh_vien: 'K254061001', ngay_hoc: '2026-11-09' },
+        { ma_sinh_vien: 'K254061001', ngay_hoc: '09/11/2026' },
         1,
         500,
       ],

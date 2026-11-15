@@ -39,6 +39,7 @@ export class ClassAttendanceController {
       classStartTime?: string;
       lateThresholdMinutes?: number;
       autoScanIntervalSeconds?: number;
+      absenceWarningPercent?: number;
       classId?: string;
       administrativeClass?: string;
     },
@@ -86,6 +87,27 @@ export class ClassAttendanceController {
     return {
       success: true,
       message: 'Class attendance rows retrieved successfully',
+      data,
+    };
+  }
+
+  @Get('classes/:classId/report')
+  async getClassStudentReport(
+    @CurrentUser() user: { userId: string },
+    @Param('classId') classId: string,
+    @Query('mode') mode?: string,
+    @Query('anchorDate') anchorDate?: string,
+    @Query('semester') semester?: string,
+    @Query('administrativeClass') administrativeClass?: string,
+  ) {
+    const data = await this.service.getClassStudentReport(
+      user.userId,
+      classId,
+      { mode, anchorDate, semester, administrativeClass },
+    );
+    return {
+      success: true,
+      message: 'Class student attendance report retrieved successfully',
       data,
     };
   }
@@ -212,6 +234,7 @@ export class ClassAttendanceController {
     @Query('subjectCode') subjectCode?: string,
     @Query('administrativeClass') administrativeClass?: string,
     @Query('source') source?: string,
+    @Query('include') include?: string,
   ) {
     const data = await this.service.getTeacherReport(user.userId, {
       classId,
@@ -221,10 +244,32 @@ export class ClassAttendanceController {
       subjectCode,
       administrativeClass,
       source,
+      include,
     });
     return {
       success: true,
       message: 'Teacher class attendance report retrieved successfully',
+      data,
+    };
+  }
+
+  @Get('warnings')
+  async getAbsenceWarnings(
+    @CurrentUser() user: { userId: string },
+    @Query('classId') classId?: string,
+    @Query('semester') semester?: string,
+    @Query('subjectCode') subjectCode?: string,
+    @Query('administrativeClass') administrativeClass?: string,
+  ) {
+    const data = await this.service.getAbsenceWarnings(user.userId, {
+      classId,
+      semester,
+      subjectCode,
+      administrativeClass,
+    });
+    return {
+      success: true,
+      message: 'Class absence warnings retrieved successfully',
       data,
     };
   }
@@ -236,6 +281,8 @@ export class ClassAttendanceController {
     @Query('semester') semester: string | undefined,
     @Query('subjectCode') subjectCode: string | undefined,
     @Query('administrativeClass') administrativeClass: string | undefined,
+    @Query('mode') mode: string | undefined,
+    @Query('anchorDate') anchorDate: string | undefined,
     @Res() res: any,
     @Query('source') source?: string,
   ) {
@@ -245,6 +292,8 @@ export class ClassAttendanceController {
       subjectCode,
       administrativeClass,
       source,
+      mode,
+      anchorDate,
     });
     res.setHeader('Content-Type', 'application/octet-stream; charset=utf-8');
     res.setHeader(

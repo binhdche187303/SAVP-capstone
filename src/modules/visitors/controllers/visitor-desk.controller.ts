@@ -26,10 +26,10 @@ export class VisitorDeskController {
   }
 
   @Get('desk')
-  @ApiOperation({ summary: 'Chốt bảo vệ theo ngày: KPI, khách, cảnh báo cổng, hàng cần xử lý' })
+  @ApiOperation({ summary: 'Chốt bảo vệ theo khoảng ngày: KPI, khách, cảnh báo cổng, hàng cần xử lý' })
   async deskByDate(@Query() q: VisitorDeskQueryDto, @CurrentUser() user: { userId?: string } | undefined) {
     this.actors.requireAny(await this.actors.resolve(user), P.DESK_USE);
-    return ok('OK', await this.query.desk(q.date));
+    return ok('OK', await this.query.desk(q.from || q.date, undefined, q.to));
   }
 
   @Get('stats')

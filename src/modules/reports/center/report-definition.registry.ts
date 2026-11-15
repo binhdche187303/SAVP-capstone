@@ -856,6 +856,10 @@ export const REPORT_DEFINITIONS: Record<ReportType, ReportDefinition> = {
             "label": "Cao"
           },
           {
+            "value": "urgent",
+            "label": "Khẩn cấp"
+          },
+          {
             "value": "critical",
             "label": "Nghiêm trọng"
           }

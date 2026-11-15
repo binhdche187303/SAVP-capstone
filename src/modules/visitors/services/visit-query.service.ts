@@ -14,7 +14,29 @@ const UUID = /^[0-9a-f-]{36}$/i;
 
 export interface VisitFilter {
   from?: string; to?: string; departmentId?: string; hostId?: string; q?: string; purpose?: string;
+  /** Lọc chéo từ trang Thống kê khách (đã kiểm tra qua parseStatsCross). */
+  cross?: StatsCross;
 }
+export type StatsCrossDim = 'department' | 'purpose' | 'hour' | 'organization' | 'period';
+export interface StatsCross { dim: StatsCrossDim; values: string[]; unit: 'day' | 'week' | 'month' }
+const CROSS_DIMS: readonly StatsCrossDim[] = ['department', 'purpose', 'hour', 'organization', 'period'];
+const ORG_LABEL = `COALESCE(NULLIF(vis.organization, ''), 'Không rõ')`;
+
+/** Đọc tham số `cross` (JSON). Sai định dạng → 400; rỗng → không lọc. */
+export const parseStatsCross = (raw: string | undefined, unit: StatsCross['unit']): StatsCross | undefined => {
+  if (!raw) return undefined;
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { throw err(400, 'VALIDATION_ERROR', 'Tham số lọc chéo không hợp lệ'); }
+  const { dim, values } = (parsed ?? {}) as { dim?: unknown; values?: unknown };
+  if (!CROSS_DIMS.includes(dim as StatsCrossDim) || !Array.isArray(values) || values.length > 50
+    || values.some((v) => typeof v !== 'string' || v.length > 300)) {
+    throw err(400, 'VALIDATION_ERROR', 'Tham số lọc chéo không hợp lệ');
+  }
+  if (!values.length) return undefined;
+  if (dim === 'hour' && values.some((v) => !/^\d{1,2}$/.test(v))) throw err(400, 'VALIDATION_ERROR', 'Giờ lọc không hợp lệ');
+  if (dim === 'period' && values.some((v) => !/^\d{4}-\d{2}-\d{2}$/.test(v))) throw err(400, 'VALIDATION_ERROR', 'Kỳ lọc không hợp lệ');
+  return { dim: dim as StatsCrossDim, values: values as string[], unit };
+};
 export type AttentionKind = 'must_leave' | 'overstay' | 'exit_unrecorded' | 'manual_review' | 'no_photo';
 
 const round1 = (n: number): number => Math.round(n * 10) / 10;
@@ -41,6 +63,14 @@ export class VisitQueryService {
     if (filter.departmentId && UUID.test(filter.departmentId)) add('v.department_id = ?::uuid', filter.departmentId);
     if (filter.hostId && UUID.test(filter.hostId)) add('v.host_user_id = ?::uuid', filter.hostId);
     if (filter.purpose) add('v.purpose = ?', filter.purpose);
+    const c = filter.cross;
+    if (c?.dim === 'department') add(`COALESCE(v.department_id::text, '') = ANY(?::text[])`, c.values);
+    else if (c?.dim === 'purpose') add('v.purpose = ANY(?::text[])', c.values);
+    else if (c?.dim === 'hour') add(`EXTRACT(HOUR FROM v.check_in_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::int = ANY(?::int[])`, c.values.map(Number));
+    else if (c?.dim === 'organization') add(`${ORG_LABEL} = ANY(?::text[])`, c.values);
+    else if (c?.dim === 'period') {
+      add(`to_char(date_trunc('${c.unit}', v.scheduled_from AT TIME ZONE 'Asia/Ho_Chi_Minh'), 'YYYY-MM-DD') = ANY(?::text[])`, c.values);
+    }
     const q = filter.q?.trim();
     if (q) {
       params.push(`%${escapeLike(q)}%`);
@@ -134,37 +164,45 @@ export class VisitQueryService {
 
   // ───────────── Quầy lễ tân ─────────────
 
-  async desk(date?: string, now: Date = new Date()) {
+  async desk(date?: string, now: Date = new Date(), toDate?: string) {
     const cfg = await this.config.get();
     const toView = (r: VisitRow) => toVisitView(r, now, cfg.overstayEscalateMinutes);
-    const selectedDate = date || new Date(now.getTime() + 7 * 3_600_000).toISOString().slice(0, 10);
+    const from = date || new Date(now.getTime() + 7 * 3_600_000).toISOString().slice(0, 10);
+    const to = toDate || from;
+    const validDate = (value: string) => {
+      const parsed = new Date(`${value}T00:00:00Z`);
+      return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+    };
+    if (!validDate(from) || !validDate(to) || from > to) {
+      throw err(400, 'VALIDATION_ERROR', 'Khoảng ngày không hợp lệ: từ ngày phải trước hoặc bằng đến ngày');
+    }
 
     const items: VisitRow[] = await this.dataSource.query(
-      `${VISIT_VIEW_SELECT} AND (${VN_DAY} = $1::date OR v.status IN ('checked_in','must_leave')) ORDER BY v.scheduled_from`,
-      [selectedDate],
+      `${VISIT_VIEW_SELECT} AND (${VN_DAY} BETWEEN $1::date AND $2::date OR (v.check_in_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN $1::date AND $2::date OR v.status IN ('checked_in','must_leave')) ORDER BY v.scheduled_from`,
+      [from, to],
     );
     const kpiRow = (await this.dataSource.query(
-      `SELECT count(*) FILTER (WHERE ${VN_DAY} = $1::date AND v.status NOT IN ('rejected','cancelled')) AS expected,
-              count(*) FILTER (WHERE (v.check_in_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = $1::date) AS arrived,
+      `SELECT count(*) FILTER (WHERE ${VN_DAY} BETWEEN $1::date AND $2::date AND v.status NOT IN ('rejected','cancelled')) AS expected,
+              count(*) FILTER (WHERE (v.check_in_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN $1::date AND $2::date) AS arrived,
               count(*) FILTER (WHERE v.status IN ('checked_in','must_leave')) AS on_site,
-              count(*) FILTER (WHERE v.status = 'checked_in' AND v.valid_to < $2) AS overstay
+              count(*) FILTER (WHERE v.status = 'checked_in' AND v.valid_to < $3) AS overstay
          FROM visitor_visits v WHERE v.deleted_at IS NULL`,
-      [selectedDate, now],
+      [from, to, now],
     ))[0];
     const alerts: Array<Record<string, unknown>> = await this.dataSource.query(
       `SELECT e.event_time AS at, e.event_type AS type, e.note, COALESCE(z.zone_name, '') AS "zoneName",
               v.id AS "visitId", v.visit_code AS code, vis.full_name AS "visitorName"
          FROM visitor_visit_events e JOIN visitor_visits v ON v.id = e.visit_id JOIN visitors vis ON vis.id = v.visitor_id
          LEFT JOIN zones z ON z.id = e.zone_id
-        WHERE e.event_type IN ('access_denied','manual_review') AND (e.event_time AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = $1::date
+        WHERE e.event_type IN ('access_denied','manual_review') AND (e.event_time AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN $1::date AND $2::date
         ORDER BY e.event_time DESC LIMIT 100`,
-      [selectedDate],
+      [from, to],
     );
     return {
       kpis: { expected: Number(kpiRow.expected), arrived: Number(kpiRow.arrived), onSite: Number(kpiRow.on_site), overstay: Number(kpiRow.overstay) },
       items: items.map(toView),
       alerts,
-      attention: await this.attention(now, selectedDate, toView),
+      attention: await this.attention(now, from, toView, to),
     };
   }
 
@@ -173,7 +211,7 @@ export class VisitQueryService {
   }
 
   /** Hàng "Cần xử lý": chỉ ngoại lệ. Thứ tự: phải rời → quá giờ → chưa ghi nhận giờ ra → cần xác minh → chưa có ảnh. */
-  private async attention(now: Date, today: string, toView: (r: VisitRow) => VisitView) {
+  private async attention(now: Date, today: string, toView: (r: VisitRow) => VisitView, until = today) {
     const out: Array<{ kind: AttentionKind; since: string; visit: VisitView }> = [];
     const fetch = async (extra: string, params: unknown[]): Promise<VisitRow[]> =>
       this.dataSource.query(`${VISIT_VIEW_SELECT} ${extra}`, params);
@@ -187,7 +225,7 @@ export class VisitQueryService {
     for (const r of await fetch(`AND v.status = 'exit_unrecorded' AND v.valid_to >= $1 ORDER BY v.valid_to`, [new Date(now.getTime() - 7 * 86_400_000)])) {
       out.push({ kind: 'exit_unrecorded', since: new Date(r.valid_to).toISOString(), visit: toView(r) });
     }
-    const approvedToday = await fetch(`AND v.status = 'approved' AND ${VN_DAY} = $1::date ORDER BY v.scheduled_from`, [today]);
+    const approvedToday = await fetch(`AND v.status = 'approved' AND ${VN_DAY} BETWEEN $1::date AND $2::date ORDER BY v.scheduled_from`, [today, until]);
     for (const r of approvedToday) {
       const view = toView(r);
       const lastGate = [...view.events].reverse().find((e) => e.type === 'manual_review' || e.type === 'check_in');
@@ -230,7 +268,7 @@ export class VisitQueryService {
   // ───────────── Thống kê ─────────────
 
   /** Định nghĩa số liệu dùng chung cho màn Thống kê và báo cáo khách. */
-  async computeKpis(filter: { from: string; to: string; departmentId?: string; purpose?: string }, now: Date = new Date()) {
+  async computeKpis(filter: { from: string; to: string; departmentId?: string; purpose?: string; cross?: StatsCross }, now: Date = new Date()) {
     const params: unknown[] = [];
     const where = this.where(filter, params);
     params.push(now);
@@ -255,10 +293,12 @@ export class VisitQueryService {
     };
   }
 
-  async stats(q: { from: string; to: string; departmentId?: string; purpose?: string; groupBy?: 'day' | 'week' | 'month' }) {
-    if (!q.from || !q.to) throw err(400, 'VALIDATION_ERROR', 'Vui lòng chọn kỳ thống kê');
-    if (q.from > q.to) throw err(400, 'VALIDATION_ERROR', 'Ngày bắt đầu phải trước hoặc bằng ngày kết thúc');
-    const groupBy = q.groupBy ?? 'day';
+  async stats(input: { from: string; to: string; departmentId?: string; purpose?: string; groupBy?: 'day' | 'week' | 'month'; cross?: string }) {
+    if (!input.from || !input.to) throw err(400, 'VALIDATION_ERROR', 'Vui lòng chọn kỳ thống kê');
+    if (input.from > input.to) throw err(400, 'VALIDATION_ERROR', 'Ngày bắt đầu phải trước hoặc bằng ngày kết thúc');
+    const groupBy = input.groupBy ?? 'day';
+    const unitOf = groupBy === 'month' ? 'month' : groupBy === 'week' ? 'week' : 'day';
+    const q = { ...input, cross: parseStatsCross(input.cross, unitOf) };
     const params: unknown[] = [];
     const where = this.where(q, params);
     const arrived = `v.deleted_at IS NULL AND v.check_in_at IS NOT NULL${where}`;
@@ -282,8 +322,9 @@ export class VisitQueryService {
          FROM visitor_visits v JOIN visitors vis ON vis.id = v.visitor_id WHERE ${arrived} GROUP BY 1`,
     );
     const orgs: Array<{ organization: string; n: string }> = await rows(
-      `SELECT COALESCE(NULLIF(vis.organization, ''), 'Không rõ') AS organization, count(*) AS n
-         FROM visitor_visits v JOIN visitors vis ON vis.id = v.visitor_id WHERE ${arrived} GROUP BY 1 ORDER BY n DESC LIMIT 8`,
+      // Khi lọc chéo, trả đủ để FE ghép đúng vào top 8 của dữ liệu chưa lọc.
+      `SELECT ${ORG_LABEL} AS organization, count(*) AS n
+         FROM visitor_visits v JOIN visitors vis ON vis.id = v.visitor_id WHERE ${arrived} GROUP BY 1 ORDER BY n DESC LIMIT ${q.cross ? 200 : 8}`,
     );
 
     const label = (ymd: string): string => {
@@ -301,7 +342,7 @@ export class VisitQueryService {
     const byHourMap = new Map(byHourRows.map((r) => [r.h, Number(r.n)]));
     return {
       kpis: await this.computeKpis(q),
-      byPeriod: [...byPeriodMap.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([d, count]) => ({ bucket: label(d), count })),
+      byPeriod: [...byPeriodMap.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([d, count]) => ({ key: d, bucket: label(d), count })),
       byDepartment: byDepartment.map((r) => ({ departmentId: r.departmentId, name: r.name, count: Number(r.n) })),
       byPurpose: byPurpose.map((r) => ({ purpose: r.purpose, count: Number(r.n) })),
       byHour: Array.from({ length: 12 }, (_, i) => ({ hour: `${pad(i + 7)}h`, count: byHourMap.get(i + 7) ?? 0 })),

@@ -11,7 +11,7 @@ import { UelSyncService } from './uel-sync.service.js';
 
 /**
  * UelSyncModule — đồng bộ đơn vị, cán bộ, SV, lớp HP, đăng ký, lịch học từ API Đào tạo UEL.
- * Cron `uel-sync-nightly` dùng ScheduleModule.forRoot() đã đăng ký ở SchedulerModule.
+ * Cron động `uel-sync-auto` (SchedulerRegistry) dùng ScheduleModule.forRoot() đã đăng ký ở SchedulerModule.
  */
 @Module({
   // JwtAuthGuard + PermissionsGuard của controller cần JwtService/AuthConfigService từ AuthModule.

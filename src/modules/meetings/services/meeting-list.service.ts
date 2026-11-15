@@ -104,6 +104,16 @@ export class MeetingListService {
       );
     }
 
+    // Add this filter to the authorized scope; it must never replace that scope.
+    if (query.departmentId) {
+      qb.andWhere(
+        `(organizer.department_id = :departmentId OR EXISTS (
+           SELECT 1 FROM meeting_participants selected_mp JOIN users selected_user ON selected_user.id = selected_mp.user_id
+           WHERE selected_mp.meeting_id = meeting.id AND selected_user.department_id = :departmentId))`,
+        { departmentId: query.departmentId },
+      );
+    }
+
     if (query.status) {
       qb.andWhere('meeting.status = :status', { status: query.status });
     }
