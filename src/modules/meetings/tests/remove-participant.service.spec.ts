@@ -1,3 +1,8 @@
+import { CloudinaryService } from '../../storage/cloudinary.service.js';
+import { WebsocketService } from '../../websocket/websocket.service.js';
+import { GuestEmailService } from '../../guest-access/services/guest-email.service.js';
+import { GuestInviteService } from '../../guest-access/services/guest-invite.service.js';
+import { FaceProvisioningService } from '../../face-access/services/face-provisioning.service.js';
 /* eslint-disable @typescript-eslint/unbound-method, @typescript-eslint/require-await */
 import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource, EntityManager } from 'typeorm';
@@ -128,6 +133,11 @@ describe('MeetingsService.removeParticipant', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: CloudinaryService, useValue: {} },
+        { provide: WebsocketService, useValue: {} },
+        { provide: GuestEmailService, useValue: {} },
+        { provide: GuestInviteService, useValue: {} },
+        { provide: FaceProvisioningService, useValue: { provisionMeeting: jest.fn().mockResolvedValue(undefined), deprovisionMeeting: jest.fn().mockResolvedValue(undefined), provisionParticipant: jest.fn().mockResolvedValue(undefined), deprovisionParticipant: jest.fn().mockResolvedValue(undefined) } },
         MeetingsService,
         { provide: DataSource, useValue: dataSource },
         WarningTokenUtil,

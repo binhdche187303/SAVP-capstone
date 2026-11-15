@@ -115,7 +115,10 @@ export class HgvisionPollerService implements OnModuleInit, OnModuleDestroy {
 
         const faceEvt = toIvssFaceEvent(obj, cameraMap);
         if (faceEvt) {
-          if (this.config.get<string>('HGVISION_REPLAY_HISTORY_ENABLED', 'false') === 'true') {
+          if (
+            this.config.get<string>('HGVISION_REPLAY_HISTORY_ENABLED', 'false') ===
+            'true'
+          ) {
             faceEvt.allowHistorical = true;
           }
           if (obj.face_image_path || obj.object_image_path) {
@@ -173,16 +176,11 @@ export class HgvisionPollerService implements OnModuleInit, OnModuleDestroy {
           return (await readFile(path)).toString("base64");
         } catch {}
       }
-      if (path.startsWith("/")) {
-        try {
-          return (await readFile(path)).toString("base64");
-        } catch {}
-      }
       return undefined;
     }
   }
 
-  /** Biển đang active trong vehicle_control_list (blocklist/watchlist). Lỗi DB → coi như không. */
+  /** Tải ảnh khuôn mặt để IVSS ingestion lưu snapshot cho màn hình truy vết. */
   private async loadFaceImage(
     obj: HgvisionHistoryObject,
   ): Promise<string | undefined> {
@@ -191,16 +189,25 @@ export class HgvisionPollerService implements OnModuleInit, OnModuleDestroy {
     try {
       return await this.client.fetchImageBase64(imagePath);
     } catch (e) {
-      if (imagePath.startsWith("/")) {
+      // HGVision may deny /api/media/images to OAuth clients. When both services
+      // run on the same host, use the absolute path returned by its history API.
+      if (imagePath.startsWith('/')) {
         try {
-          return (await readFile(imagePath)).toString("base64");
-        } catch {}
+          return (await readFile(imagePath)).toString('base64');
+        } catch {
+          // Keep the original warning below when the local file is unavailable.
+        }
       }
-      this.logger.warn(`HGVision face image ${obj.object_id} failed: ${e instanceof Error ? e.message : "unknown"}`);
+      this.logger.warn(
+        `HGVision tải ảnh khuôn mặt ${obj.object_id} lỗi: ${
+          e instanceof Error ? e.message : 'unknown'
+        }`,
+      );
       return undefined;
     }
   }
 
+  /** Biển đang active trong vehicle_control_list (blocklist/watchlist). Lỗi DB → coi như không. */
   private async isControlListed(plateNumber: string): Promise<boolean> {
     try {
       const rows: unknown[] = await this.dataSource.manager.query(

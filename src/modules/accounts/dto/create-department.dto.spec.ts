@@ -1,3 +1,12 @@
+import { IsDepartmentCodeUniqueConstraint } from '../validators/is-department-code-unique.validator.js';
+import { IsDepartmentNameUniqueConstraint } from '../validators/is-department-name-unique.validator.js';
+
+beforeEach(() => {
+  jest.spyOn(IsDepartmentCodeUniqueConstraint.prototype, 'validate').mockResolvedValue(true);
+  jest.spyOn(IsDepartmentNameUniqueConstraint.prototype, 'validate').mockResolvedValue(true);
+});
+afterEach(() => jest.restoreAllMocks());
+
 ﻿import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { CreateDepartmentDto } from './create-department.dto.js';

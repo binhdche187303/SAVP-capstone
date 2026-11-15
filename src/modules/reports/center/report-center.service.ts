@@ -1,3 +1,4 @@
+import { ALERT_TYPES } from '../../alerts/dto/create-alert-rule.dto.js';
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
@@ -94,10 +95,13 @@ export class ReportCenterService {
     const gates = await this.dataSource.query(`SELECT id, zone_name AS name FROM zones WHERE deleted_at IS NULL AND status = 'active' AND zone_type = 'gate' ORDER BY zone_name`);
     const rooms = await this.dataSource.query(`SELECT id, room_name AS name, site_name FROM rooms WHERE deleted_at IS NULL AND is_active = true ORDER BY room_name`);
     const buildings = [...new Set(rooms.map((r: { site_name: string | null }) => r.site_name).filter(Boolean))].map((b) => ({ id: b, name: `Tòa ${b}` }));
-    const semesters = await this.dataSource.query(`SELECT id, semester_name AS name FROM semesters WHERE deleted_at IS NULL ORDER BY start_date DESC`);
-    const subjects = await this.dataSource.query(`SELECT id, subject_name AS name FROM subjects WHERE deleted_at IS NULL AND is_active = true ORDER BY subject_name`);
+    const semesters = await this.dataSource.query(`SELECT id, semester_name AS name FROM semesters WHERE deleted_at IS NULL AND source = 'uel_api' ORDER BY start_date DESC`);
+    const subjects = await this.dataSource.query(`SELECT id, subject_name AS name FROM subjects WHERE deleted_at IS NULL AND is_active = true AND source = 'uel_api' ORDER BY subject_name`);
     const classSections = await this.dataSource.query(
-      `SELECT cs.id, cs.class_code || ' – ' || subj.subject_name AS name FROM class_sections cs JOIN subjects subj ON subj.id = cs.subject_id WHERE cs.deleted_at IS NULL ORDER BY cs.class_code`,
+      `SELECT cs.id, cs.class_code || ' – ' || subj.subject_name AS name,
+              cs.semester_id AS "semesterId", cs.subject_id AS "subjectId"
+         FROM class_sections cs JOIN subjects subj ON subj.id = cs.subject_id AND subj.deleted_at IS NULL
+        WHERE cs.deleted_at IS NULL AND cs.source = 'uel_api' ORDER BY cs.class_code`,
     );
     const cfg: Array<{ config_json: unknown }> = await this.dataSource.query(`SELECT config_json FROM system_configs WHERE config_key = 'visitor.purposes' LIMIT 1`);
     const raw = cfg[0]?.config_json;
@@ -167,7 +171,7 @@ export class ReportCenterService {
       if (value === undefined || value === null || value === '') continue;
       if (typeof value !== 'string') throw reportBadRequest(`Bộ lọc "${key}" không hợp lệ`, 'INVALID_FILTER', { key });
       const options = definition.filters.find((f) => f.key === key)?.options;
-      if (options && !options.some((o) => o.value === value)) throw reportBadRequest(`Giá trị bộ lọc "${key}" không hợp lệ`, 'INVALID_FILTER', { key });
+      if (options && !options.some((o) => o.value === value) && !(definition.type === 'security-alert' && key === 'alertType' && (ALERT_TYPES as readonly string[]).includes(value))) throw reportBadRequest(`Giá trị bộ lọc "${key}" không hợp lệ`, 'INVALID_FILTER', { key });
       filters[key] = value;
     }
     return filters;

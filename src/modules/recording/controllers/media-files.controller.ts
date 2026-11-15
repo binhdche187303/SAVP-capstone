@@ -97,6 +97,7 @@ export class MediaFilesController {
       else res.end();
     };
 
+    res.setHeader('Accept-Ranges', 'bytes');
     const range: string | undefined = req.headers?.range;
     if (range) {
       const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim());

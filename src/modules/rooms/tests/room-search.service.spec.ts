@@ -66,7 +66,36 @@ describe('RoomSearchService', () => {
     const [sql, params] = queryMock.mock.calls[0];
     expect(sql).toContain('r.is_active = true');
     expect(sql).toContain('r.deleted_at IS NULL');
-    expect(params).toEqual([null, null, null, null, null, null, 50, 0]);
+    expect(params).toEqual([null, null, null, null, null, null, null, 50, 0]);
+  });
+
+  it('combines exact building/area and capacity filters before counting and paging', async () => {
+    queryMock
+      .mockResolvedValueOnce([mockRoomRow])
+      .mockResolvedValueOnce([{ count: '1' }]);
+    await service.search({
+      siteName: 'Tòa nhà A',
+      areaName: 'Tầng 1',
+      capacityMin: 1,
+      capacityMax: 10,
+      page: 2,
+      limit: 10,
+    });
+    const [sql, params] = queryMock.mock.calls[0];
+    expect(sql).toContain('r.site_name = $7');
+    expect(sql).toContain('LIMIT $8 OFFSET $9');
+    expect(params).toEqual([
+      1,
+      10,
+      'Tầng 1',
+      null,
+      null,
+      null,
+      'Tòa nhà A',
+      10,
+      10,
+    ]);
+    expect(queryMock.mock.calls[1][1]).toEqual(params.slice(0, 7));
   });
 
   // ─── [FIX 2026-08-19] computeStatus: real-time thay vi doc thang r.current_status ───
@@ -88,7 +117,11 @@ describe('RoomSearchService', () => {
   it('occupancy > 0 (khong maintenance/inactive) → currentStatus=occupied', async () => {
     queryMock
       .mockResolvedValueOnce([
-        { ...mockRoomRow, administrative_status: 'available', latest_occupancy_count: 3 },
+        {
+          ...mockRoomRow,
+          administrative_status: 'available',
+          latest_occupancy_count: 3,
+        },
       ])
       .mockResolvedValueOnce([{ count: '1' }]);
 
@@ -164,7 +197,7 @@ describe('RoomSearchService', () => {
     });
 
     const [, params] = queryMock.mock.calls[0];
-    expect(params).toEqual([8, 15, 'Tang 3', true, null, null, 50, 0]);
+    expect(params).toEqual([8, 15, 'Tang 3', true, null, null, null, 50, 0]);
   });
 
   // ─── [FIX 2026-08-19] them filter q (ten/ma phong) va status (real-time) ───
@@ -181,7 +214,17 @@ describe('RoomSearchService', () => {
     });
 
     const [sql, params] = queryMock.mock.calls[0];
-    expect(params).toEqual([null, null, null, null, 'Phong hop', 'occupied', 50, 0]);
+    expect(params).toEqual([
+      null,
+      null,
+      null,
+      null,
+      'Phong hop',
+      'occupied',
+      null,
+      50,
+      0,
+    ]);
     expect(sql).toContain('ILIKE');
     expect(result.meta.appliedFilters).toEqual({
       q: 'Phong hop',
@@ -246,7 +289,7 @@ describe('RoomSearchService', () => {
     expect(result.meta.totalPages).toBe(3);
     // offset = (page-1)*limit = 50
     const [, params] = queryMock.mock.calls[0];
-    expect(params[7]).toBe(50);
+    expect(params[8]).toBe(50);
   });
 });
 

@@ -1,3 +1,4 @@
+import { IsNull } from 'typeorm';
 ﻿import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { IsNotEmpty, IsString, Validate } from 'class-validator';
@@ -18,7 +19,7 @@ describe('IsDepartmentCodeUniqueConstraint', () => {
     const result = await constraint.validate('IT', {} as any);
     expect(result).toBe(true);
     expect(mockRepo.count).toHaveBeenCalledWith({
-      where: { departmentCode: 'IT', deletedAt: null },
+      where: { departmentCode: 'IT', deletedAt: IsNull() },
     });
   });
 

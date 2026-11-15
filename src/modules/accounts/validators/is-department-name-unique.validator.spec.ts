@@ -1,3 +1,4 @@
+import { IsNull } from 'typeorm';
 ﻿import { IsDepartmentNameUniqueConstraint } from './is-department-name-unique.validator.js';
 
 describe('IsDepartmentNameUniqueConstraint', () => {
@@ -14,7 +15,7 @@ describe('IsDepartmentNameUniqueConstraint', () => {
     const result = await constraint.validate('Phòng IT', {} as any);
     expect(result).toBe(true);
     expect(mockRepo.count).toHaveBeenCalledWith({
-      where: { departmentName: 'Phòng IT', deletedAt: null },
+      where: { departmentName: 'Phòng IT', deletedAt: IsNull() },
     });
   });
 

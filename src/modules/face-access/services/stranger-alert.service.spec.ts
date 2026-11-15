@@ -257,7 +257,7 @@ describe('StrangerAlertService (SAL-001)', () => {
       to: '2026-10-07',
       deviceId: 'dev1',
     });
-    expect(p).toEqual(['2026-10-01', '2026-10-07', 'dev1', 20, 0]);
+    expect(p).toEqual(['2026-10-01', '2026-10-07', 'dev1']);
     expect(captured).toContain("AT TIME ZONE 'Asia/Ho_Chi_Minh'");
     expect(captured).toContain('e.device_id = $3');
     expect(captured).not.toContain('now() -');

@@ -296,6 +296,7 @@ describe('LiveMeetingService — advance meeting statuses (F-A / MST-001)', () =
       expect(recordingServiceMock.stopAllActiveForMeeting).toHaveBeenCalledWith(
         'm1',
         null,
+        'meeting_ended',
       );
     });
   });

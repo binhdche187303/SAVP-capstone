@@ -53,8 +53,8 @@ export class ClassAttendanceController {
   }
 
   @Get('classes')
-  async listClasses(@CurrentUser() user: { userId: string }) {
-    const data = await this.service.listClasses(user.userId);
+  async listClasses(@CurrentUser() user: { userId: string }, @Query('date') date?: string, @Query('source') source?: string) {
+    const data = await this.service.listClasses(user.userId, date, source);
     return {
       success: true,
       message: 'Class attendance classes retrieved successfully',
@@ -233,6 +233,7 @@ export class ClassAttendanceController {
     @Query('anchorDate') anchorDate?: string,
     @Query('subjectCode') subjectCode?: string,
     @Query('administrativeClass') administrativeClass?: string,
+    @Query('source') source?: string,
     @Query('include') include?: string,
   ) {
     const data = await this.service.getTeacherReport(user.userId, {
@@ -242,6 +243,7 @@ export class ClassAttendanceController {
       anchorDate,
       subjectCode,
       administrativeClass,
+      source,
       include,
     });
     return {
@@ -282,12 +284,14 @@ export class ClassAttendanceController {
     @Query('mode') mode: string | undefined,
     @Query('anchorDate') anchorDate: string | undefined,
     @Res() res: any,
+    @Query('source') source?: string,
   ) {
     const result = await this.service.exportSemesterCsv(user.userId, {
       classId,
       semester,
       subjectCode,
       administrativeClass,
+      source,
       mode,
       anchorDate,
     });

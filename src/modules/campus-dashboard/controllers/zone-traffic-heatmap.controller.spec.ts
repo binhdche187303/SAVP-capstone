@@ -38,6 +38,7 @@ describe('ZoneTrafficHeatmapController (ZTH-001 / UC-120)', () => {
       new Date('2026-07-02T00:00:00Z'),
       'Tòa A',
       '1',
+      { bucket: undefined, groupId: undefined },
     );
     expect(result).toEqual({
       success: true,

@@ -83,16 +83,22 @@ export class ListVehicleHistoryQueryDto {
   @MaxLength(255)
   ownerName?: string;
 
+  @ApiPropertyOptional({ description: 'Lọc theo tên camera' })
   @IsOptional()
   @IsString()
   @MaxLength(255)
   cameraName?: string;
 
+  @ApiPropertyOptional({ description: 'Lọc theo ID khu vực/cổng' })
   @IsOptional()
   @IsString()
   @MaxLength(100)
   zoneId?: string;
 
+  @ApiPropertyOptional({
+    description: 'Lọc theo loại xe',
+    enum: ['car', 'motorbike', 'motorcycle', 'truck', 'bus'],
+  })
   @IsOptional()
   @IsString()
   @MaxLength(30)

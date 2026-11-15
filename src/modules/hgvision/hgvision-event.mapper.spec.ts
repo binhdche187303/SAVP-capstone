@@ -43,6 +43,27 @@ describe('hgvision-event.mapper', () => {
     expect(evt?.personUid).toBeUndefined();
   });
 
+  it('event người đi bộ chỉ có object_image_path vẫn được nhận', () => {
+    const evt = toIvssFaceEvent(
+      {
+        object_id: 'o2',
+        camera_id: 'Phong C401',
+        object_type: 'pedestrian',
+        object_image_path: 'OBJECT_IMAGE/1/o2.jpg',
+        first_timestamp: 1760090000,
+      },
+      map,
+    );
+    expect(evt).toEqual({
+      type: 'face_recognized',
+      channelId: 3,
+      personUid: undefined,
+      name: undefined,
+      similarity: undefined,
+      utc: '2025-10-10T09:53:20.000Z',
+    });
+  });
+
   it('bỏ sự kiện không có khuôn mặt / camera chưa ánh xạ / thiếu thời gian', () => {
     const base = { object_id: 'o', first_timestamp: 1760090000 };
     expect(

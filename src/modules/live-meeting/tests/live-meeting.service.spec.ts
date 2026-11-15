@@ -1,4 +1,6 @@
-﻿import { Test, type TestingModule } from '@nestjs/testing';
+import { HgVisionService } from '../../academic/services/hgvision.service.js';
+import { FaceProvisioningService } from '../../face-access/services/face-provisioning.service.js';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { DataSource, type EntityManager, type Repository } from 'typeorm';
 import {
   ConflictException,
@@ -62,7 +64,7 @@ describe('LiveMeetingService', () => {
     hostId: 'host-1',
     roomId: 'room-1',
     status: MeetingStatus.SCHEDULED,
-    startTime: new Date(now.getTime() + 30 * 60 * 1000), // 30 phút sau
+    startTime: new Date(now.getTime() - 5 * 60 * 1000), // 30 phút sau
     endTime: new Date(now.getTime() + 90 * 60 * 1000), // 90 phút sau
     actualStartTime: null,
     actualEndTime: null,
@@ -111,6 +113,8 @@ describe('LiveMeetingService', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: HgVisionService, useValue: {} },
+        { provide: FaceProvisioningService, useValue: { provisionMeeting: jest.fn().mockResolvedValue(undefined), deprovisionMeeting: jest.fn().mockResolvedValue(undefined), provisionParticipant: jest.fn().mockResolvedValue(undefined), deprovisionParticipant: jest.fn().mockResolvedValue(undefined) } },
         LiveMeetingService,
         {
           provide: DataSource,
@@ -701,7 +705,7 @@ describe('LiveMeetingService', () => {
 
       expect(
         mockRecordingSessionService.stopAllActiveForMeeting,
-      ).toHaveBeenCalledWith('m-001', null);
+      ).toHaveBeenCalledWith('m-001', null, 'meeting_ended');
     });
 
     it('[R9] should NOT fail endMeeting when stopAllActiveForMeeting throws (best-effort)', async () => {
@@ -966,6 +970,7 @@ describe('LiveMeetingService', () => {
       );
 
       expect(result.status).toBe(MeetingStatus.COMPLETED);
+    });
 
       // ========================================================
       //  UC-IMM-07: getPresentAttendees
@@ -1022,6 +1027,19 @@ describe('LiveMeetingService', () => {
             },
           },
         ];
+
+        beforeEach(() => {
+          const participantQb: any = {};
+          for (const method of ['innerJoinAndSelect', 'leftJoinAndSelect', 'where', 'andWhere', 'orderBy', 'skip', 'take']) {
+            participantQb[method] = jest.fn().mockReturnValue(participantQb);
+          }
+          participantQb.getMany = jest.fn().mockResolvedValue(mockParticipants);
+          participantQb.getCount = jest.fn().mockResolvedValue(mockParticipants.length);
+          (meetingRepo as any).create = jest.fn((data) => data);
+          (meetingRepo as any).save = jest.fn().mockResolvedValue({});
+          (meetingRepo as any).createQueryBuilder = jest.fn().mockReturnValue(participantQb);
+          (meetingRepo.findOne as jest.Mock).mockResolvedValue(null);
+        });
 
         it('T014-01: should return present attendees for host (full access)', async () => {
           jest
@@ -1144,7 +1162,6 @@ describe('LiveMeetingService', () => {
           expect(result.meta).toBeDefined();
         });
       });
-    });
     // ------------------------------------------------------------------
     //  UC-IMM-09: Create Meeting Note
     // ------------------------------------------------------------------
@@ -1187,6 +1204,9 @@ describe('LiveMeetingService', () => {
           }),
           getCount: jest.fn().mockResolvedValue(0),
         };
+
+        (mockQueryBuilder as any).andWhere = jest.fn().mockReturnValue(mockQueryBuilder);
+        (mockQueryBuilder as any).getCount = mockEm.getCount;
 
         jest
           .spyOn(dataSource, 'transaction')
@@ -1243,6 +1263,9 @@ describe('LiveMeetingService', () => {
           getCount: jest.fn().mockResolvedValue(1),
         };
 
+        (mockQueryBuilder as any).andWhere = jest.fn().mockReturnValue(mockQueryBuilder);
+        (mockQueryBuilder as any).getCount = mockEm.getCount;
+
         jest
           .spyOn(dataSource, 'transaction')
           .mockImplementation(async (cb) => cb(mockEm));
@@ -1285,6 +1308,9 @@ describe('LiveMeetingService', () => {
           getCount: jest.fn().mockResolvedValue(0),
         };
 
+        (mockQueryBuilder as any).andWhere = jest.fn().mockReturnValue(mockQueryBuilder);
+        (mockQueryBuilder as any).getCount = mockEm.getCount;
+
         jest
           .spyOn(dataSource, 'transaction')
           .mockImplementation(async (cb) => cb(mockEm));
@@ -1311,6 +1337,9 @@ describe('LiveMeetingService', () => {
         const mockEm = {
           createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder),
         };
+
+        (mockQueryBuilder as any).andWhere = jest.fn().mockReturnValue(mockQueryBuilder);
+        (mockQueryBuilder as any).getCount = mockEm.getCount;
 
         jest
           .spyOn(dataSource, 'transaction')

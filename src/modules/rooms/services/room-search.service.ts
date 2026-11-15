@@ -114,6 +114,19 @@ export interface RoomSearchResult {
 export class RoomSearchService {
   constructor(private readonly dataSource: DataSource) {}
 
+  async filterOptions(): Promise<
+    Array<{
+      siteName: string | null;
+      areaName: string | null;
+    }>
+  > {
+    return this.dataSource.manager.query(
+      `SELECT DISTINCT site_name AS "siteName", area_name AS "areaName"
+       FROM rooms WHERE is_active = true AND deleted_at IS NULL
+       ORDER BY site_name, area_name`,
+    );
+  }
+
   async search(query: SearchRoomsQueryDto): Promise<RoomSearchResult> {
     const capacityMin = query.capacityMin ?? null;
     const capacityMax = query.capacityMax ?? null;
@@ -121,6 +134,7 @@ export class RoomSearchService {
     const onlyAvailable = query.onlyAvailable ?? null;
     const q = query.q?.trim() || null;
     const status = query.status ?? null;
+    const siteName = query.siteName ?? null;
     const page = query.page ?? 1;
     const limit = query.limit ?? 50;
 
@@ -153,6 +167,7 @@ export class RoomSearchService {
         AND ($4::boolean IS NULL OR $4 = false OR ${COMPUTED_STATUS_SQL} = 'available')
         AND ($5::text IS NULL OR r.room_name ILIKE '%' || $5 || '%' OR r.room_code ILIKE '%' || $5 || '%')
         AND ($6::text IS NULL OR ${COMPUTED_STATUS_SQL} = $6)
+        AND ($7::text IS NULL OR r.site_name = $7)
     `;
     const whereParams = [
       capacityMin,
@@ -161,6 +176,7 @@ export class RoomSearchService {
       onlyAvailable,
       q,
       status,
+      siteName,
     ];
 
     const offset = (page - 1) * limit;
@@ -184,7 +200,7 @@ export class RoomSearchService {
        ) eq ON true
        ${whereClause}
        ORDER BY r.room_code ASC
-       LIMIT $7 OFFSET $8`,
+       LIMIT $8 OFFSET $9`,
       [...whereParams, limit, offset],
     );
 
@@ -198,6 +214,7 @@ export class RoomSearchService {
     if (capacityMin !== null) appliedFilters.capacityMin = capacityMin;
     if (capacityMax !== null) appliedFilters.capacityMax = capacityMax;
     if (areaName !== null) appliedFilters.areaName = areaName;
+    if (siteName !== null) appliedFilters.siteName = siteName;
     if (onlyAvailable !== null) appliedFilters.onlyAvailable = onlyAvailable;
     if (q !== null) appliedFilters.q = q;
     if (status !== null) appliedFilters.status = status;

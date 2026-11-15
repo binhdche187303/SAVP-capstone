@@ -65,6 +65,7 @@ describe('UsersService', () => {
     clearPartnerDepartmentCache();
     // Mock EntityManager
     em = {
+      query: jest.fn().mockResolvedValue([]),
       findOne: jest.fn(),
       find: jest.fn(),
       create: jest.fn(),
@@ -235,6 +236,7 @@ describe('UsersService', () => {
             return [activeRole];
           }
         }
+        if (entityClass === FaceProfileEntity) return [{ id: 'face-profile-id', userId: targetUserId, status: FaceProfileStatus.ACTIVE }];
         return [];
       });
 
@@ -333,7 +335,7 @@ describe('UsersService', () => {
       expect(result.createdAt).toBe('2026-01-15T08:00:00.000Z');
 
       const fieldCount = Object.keys(result).length;
-      expect(fieldCount).toBe(16);
+      expect(fieldCount).toBe(21);
     });
 
     it('[HP2] Business Admin xem user cùng department — HTTP 200 (AC-013)', async () => {
@@ -479,6 +481,9 @@ describe('UsersService', () => {
           return null;
         },
       );
+
+      const find = em.find.getMockImplementation()!;
+      em.find.mockImplementation((entity: any, options: any) => entity === FaceProfileEntity ? Promise.resolve([]) : find(entity, options));
 
       const result = await service.getUserDetail(targetUserId, authUserId);
       expect(result.hasFaceProfile).toBe(false);
@@ -1574,7 +1579,7 @@ describe('UsersService', () => {
           newValueJson: { phoneNumber: '0911111111' },
         }),
       );
-      expect(Object.keys(result)).toHaveLength(16);
+      expect(Object.keys(result)).toHaveLength(21);
       expect(result.id).toBe(targetUserId);
       expect(result.email).toBe('user@company.com'); // email không đổi
     });
@@ -2686,6 +2691,7 @@ describe('UsersService', () => {
 
   describe('listUsers (UC-13 search)', () => {
     let findAndCount: jest.Mock;
+    let userQb: any;
     // [FIX 2026-08-17] batch hasFaceProfile — mock riêng FaceProfileEntity.createQueryBuilder,
     // KHÔNG lẫn với findAndCount của UserEntity (getRepository trả khác nhau theo entity).
     let getRawMany: jest.Mock;
@@ -2694,6 +2700,11 @@ describe('UsersService', () => {
 
     beforeEach(() => {
       findAndCount = jest.fn().mockResolvedValue([[], 0]);
+      userQb = {};
+      for (const method of ['where', 'andWhere', 'orWhere', 'select', 'orderBy', 'skip', 'take']) {
+        userQb[method] = jest.fn().mockReturnValue(userQb);
+      }
+      userQb.getManyAndCount = findAndCount;
       getRawMany = jest.fn().mockResolvedValue([]); // mặc định: KHÔNG ai có active face profile
       const fpQb: any = {};
       fpQb.select = jest.fn().mockReturnValue(fpQb);
@@ -2708,104 +2719,37 @@ describe('UsersService', () => {
           if (entityClass === FaceProfileEntity) {
             return { createQueryBuilder: jest.fn().mockReturnValue(fpQb) };
           }
-          return { findAndCount };
+          return { createQueryBuilder: jest.fn().mockReturnValue(userQb) };
         },
       );
     });
 
-    it('[T1/T2/T3/T4] search → where là mảng OR 3 nhánh (fullName/email/employeeCode), MỖI nhánh giữ baseWhere (ACTIVE + deletedAt)', async () => {
+    it('search preserves active/deleted scope and parameterizes all three search fields', async () => {
       await service.listUsers({ search: 'abc', page: 1, limit: 20 });
-
-      const opts = findAndCount.mock.calls[0][0];
-      expect(Array.isArray(opts.where)).toBe(true);
-      expect(opts.where).toHaveLength(3);
-
-      // T4: mọi nhánh OR đều kèm baseWhere -> không lộ INACTIVE/deleted
-      for (const branch of opts.where) {
-        expect(branch.accountStatus).toBe(AccountStatus.ACTIVE);
-        expect(branch.deletedAt).toBeDefined(); // IsNull()
-      }
-
-      // T2/T3/T1: từng nhánh field
-      expect(opts.where[0].fullName).toBeDefined();
-      expect(opts.where[1].email).toBeDefined();
-      expect(opts.where[2].employeeCode).toBeDefined();
+      expect(userQb.where).toHaveBeenCalledWith('u.deletedAt IS NULL');
+      expect(userQb.andWhere).toHaveBeenCalledWith('u.accountStatus = :status', { status: AccountStatus.ACTIVE });
+      const brackets = userQb.andWhere.mock.calls.find(([arg]: any[]) => typeof arg !== 'string')[0];
+      brackets.whereFactory(userQb);
+      expect(userQb.where).toHaveBeenCalledWith('u.fullName ILIKE :s', { s: '%abc%' });
+      expect(userQb.orWhere).toHaveBeenCalledWith('u.email ILIKE :s', { s: '%abc%' });
+      expect(userQb.orWhere).toHaveBeenCalledWith('u.employeeCode ILIKE :s', { s: '%abc%' });
     });
 
-    it('[T6] nhánh employeeCode dùng ILike (null không khớp ở tầng DB — semantics ILIKE)', async () => {
-      await service.listUsers({ search: 'EMP', page: 1, limit: 20 });
-      const opts = findAndCount.mock.calls[0][0];
-      // FindOperator ILike có type 'ilike'
-      expect(opts.where[2].employeeCode?.type).toBe('ilike');
+    it('selects and returns the autocomplete fields with pagination', async () => {
+      const row = { id: 'u1', fullName: 'A', email: 'a@x.com', employeeCode: 'EMP1', avatarUrl: null };
+      findAndCount.mockResolvedValue([[row], 1]);
+      const res = await service.listUsers({ search: 'a', page: 2, limit: 10 });
+      expect(userQb.select).toHaveBeenCalledWith(['u.id', 'u.fullName', 'u.email', 'u.employeeCode', 'u.avatarUrl']);
+      expect(userQb.skip).toHaveBeenCalledWith(10);
+      expect(userQb.take).toHaveBeenCalledWith(10);
+      expect(userQb.orderBy).toHaveBeenCalledWith('u.fullName', 'ASC');
+      expect(res).toEqual({ data: [{ ...row, hasFaceProfile: false }], total: 1 });
     });
 
-    it('[T5] select có employeeCode và map output có employeeCode', async () => {
-      findAndCount.mockResolvedValue([
-        [
-          {
-            id: 'u1',
-            fullName: 'A',
-            email: 'a@x.com',
-            employeeCode: 'EMP1',
-            avatarUrl: 'https://cdn.example.com/avatars/u1.jpg',
-          },
-        ],
-        1,
-      ]);
-
-      const res = await service.listUsers({ search: 'a', page: 1, limit: 20 });
-
-      const opts = findAndCount.mock.calls[0][0];
-      expect(opts.select.employeeCode).toBe(true);
-      expect(opts.select.id).toBe(true);
-      expect(opts.select.fullName).toBe(true);
-      expect(opts.select.email).toBe(true);
-      expect(res.data[0]).toEqual({
-        id: 'u1',
-        fullName: 'A',
-        email: 'a@x.com',
-        employeeCode: 'EMP1',
-        avatarUrl: 'https://cdn.example.com/avatars/u1.jpg',
-        hasFaceProfile: false, // [FIX 2026-08-17] getRawMany() mặc định [] → không ai active
-      });
-      expect(res.total).toBe(1);
-    });
-
-    // [FIX 2026-08-09] mirror listUsersForManagement — GET /users (bare) trước đây thiếu avatarUrl.
-    it('[T9] select có avatarUrl: true, map output có avatarUrl (mirror listUsersForManagement)', async () => {
-      findAndCount.mockResolvedValue([
-        [
-          {
-            id: 'u1',
-            fullName: 'A',
-            email: 'a@x.com',
-            employeeCode: null,
-            avatarUrl: null,
-          },
-        ],
-        1,
-      ]);
-      const res = await service.listUsers({ page: 1, limit: 20 });
-      const opts = findAndCount.mock.calls[0][0];
-      expect(opts.select.avatarUrl).toBe(true);
-      expect(res.data[0].avatarUrl).toBeNull();
-      expect(res.data[0].hasFaceProfile).toBe(false); // regression: field khác không đổi
-    });
-
-    it('[T7] phân trang & sort giữ nguyên (skip/take/order)', async () => {
-      await service.listUsers({ search: 'a', page: 2, limit: 10 });
-      const opts = findAndCount.mock.calls[0][0];
-      expect(opts.skip).toBe(10);
-      expect(opts.take).toBe(10);
-      expect(opts.order).toEqual({ fullName: 'asc' });
-    });
-
-    it('[T8] không search → where = baseWhere (object, không mảng OR), giữ ACTIVE + deletedAt', async () => {
+    it('does not add an OR search group when search is absent', async () => {
       await service.listUsers({ page: 1, limit: 20 });
-      const opts = findAndCount.mock.calls[0][0];
-      expect(Array.isArray(opts.where)).toBe(false);
-      expect(opts.where.accountStatus).toBe(AccountStatus.ACTIVE);
-      expect(opts.where.deletedAt).toBeDefined();
+      expect(userQb.where).toHaveBeenCalledWith('u.deletedAt IS NULL');
+      expect(userQb.andWhere.mock.calls.every(([arg]: any[]) => typeof arg === 'string')).toBe(true);
     });
 
     // [FIX 2026-08-17] hasFaceProfile — batch query (mirror pattern "Batch roles" của

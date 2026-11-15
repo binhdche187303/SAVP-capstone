@@ -62,6 +62,16 @@ export class RoomsController {
   // permission rieng). Khai TRUOC ':roomId/status' de tranh route param nuot mat
   // (dam bao an toan du 'search' chi 1 segment, ':roomId/status' 2 segment, khong
   // thuc su xung dot — giu quy uoc khai static route truoc de nhat quan).
+  @Get('filter-options')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Danh mục vị trí và loại phòng để lọc phòng họp' })
+  async filterOptions() {
+    return {
+      success: true,
+      data: await this.roomSearchService.filterOptions(),
+    };
+  }
+
   @Get('search')
   @HttpCode(HttpStatus.OK)
   @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))

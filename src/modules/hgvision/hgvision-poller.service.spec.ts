@@ -82,8 +82,13 @@ describe('HgvisionPollerService', () => {
     );
     expect(onFaceEvent).toHaveBeenCalledTimes(1);
     expect(onFaceEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ channelId: 3, personUid: 'EMP001' }),
+      expect.objectContaining({
+        channelId: 3,
+        personUid: 'EMP001',
+        imageBase64: 'QUJD',
+      }),
     );
+    expect(fetchImageBase64).toHaveBeenCalledWith('FACE_IMAGE/x.jpg');
   });
 
   it('không xử lý lại object_id đã thấy ở lượt poll trước (cửa sổ overlap)', async () => {

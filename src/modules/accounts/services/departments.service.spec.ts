@@ -51,6 +51,7 @@ describe('DepartmentsService', () => {
 
     repo = { findAndCount: jest.fn(), findOne: jest.fn() };
     userQueryBuilder = {
+      innerJoin: jest.fn().mockReturnThis(),
       select: jest.fn().mockReturnThis(),
       addSelect: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
@@ -72,7 +73,7 @@ describe('DepartmentsService', () => {
       getRepository: jest
         .fn()
         .mockImplementation((entity: unknown) =>
-          entity === UserEntity ? userRepo : repo,
+          entity === UserEntity ? userRepo : { ...repo, createQueryBuilder: jest.fn().mockReturnValue(userQueryBuilder) },
         ),
     } as unknown as jest.Mocked<DataSource>;
 

@@ -111,6 +111,9 @@
     "testEnvironment": "node",
     "moduleNameMapper": {
       "^(\\..*)\\.js$": "$1"
-    }
+    },
+    "setupFiles": [
+      "reflect-metadata"
+    ]
   }
 }

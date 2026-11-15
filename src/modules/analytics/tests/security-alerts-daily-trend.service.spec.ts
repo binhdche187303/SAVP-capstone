@@ -62,7 +62,7 @@ describe('SecurityAlertsDailyTrendService', () => {
 
   it('maps grouped rows into byType and total, only including types with count > 0', async () => {
     mockRepo.countByDayAndType.mockImplementation(() => {
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = new Date(Date.now() + 7 * 3600000).toISOString().split('T')[0];
       return Promise.resolve([
         { alert_date: todayStr, alert_type: 'intrusion', cnt: '1' },
         { alert_date: todayStr, alert_type: 'stranger', cnt: '2' },

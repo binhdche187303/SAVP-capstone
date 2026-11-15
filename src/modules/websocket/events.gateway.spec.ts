@@ -331,7 +331,7 @@ describe('EventsGateway', () => {
       expect(authzRepo.getEffectiveRolesAndPermissions).not.toHaveBeenCalled();
     });
 
-    it('should reject an employee without meeting_request.read permission', async () => {
+    it('subscribes an employee to their own notifications without approval permissions', async () => {
       authzRepo.getEffectiveRolesAndPermissions.mockResolvedValue({
         roles: ['EMPLOYEE'],
         permissions: [],
@@ -339,8 +339,8 @@ describe('EventsGateway', () => {
       const socket = buildSocket();
       socket.data.identity = { type: 'employee', userId: 'user-1' };
       const result = await gateway.handleUserSubscribe(socket);
-      expect(result.ok).toBe(false);
-      expect(socket.join).not.toHaveBeenCalled();
+      expect(result.ok).toBe(true);
+      expect(socket.join).toHaveBeenCalledWith('user:user-1');
     });
 
     it('should join user:{userId} for an employee with meeting_request.read permission', async () => {
@@ -353,9 +353,7 @@ describe('EventsGateway', () => {
       const result = await gateway.handleUserSubscribe(socket);
       expect(result.ok).toBe(true);
       expect(socket.join).toHaveBeenCalledWith('user:user-1');
-      expect(authzRepo.getEffectiveRolesAndPermissions).toHaveBeenCalledWith(
-        'user-1',
-      );
+      expect(authzRepo.getEffectiveRolesAndPermissions).not.toHaveBeenCalled();
     });
 
     it('should always subscribe to the caller own userId, ignoring any userId in the body', async () => {
@@ -451,9 +449,7 @@ describe('EventsGateway', () => {
       );
       expect(result.ok).toBe(true);
       expect(socket.join).toHaveBeenCalledWith(`zone:${ZONE_UUID}`);
-      expect(authzRepo.getEffectiveRolesAndPermissions).toHaveBeenCalledWith(
-        'user-1',
-      );
+      expect(authzRepo.getEffectiveRolesAndPermissions).toHaveBeenCalledWith('user-1');
     });
 
     it('should reject a malformed zoneId regardless of identity', async () => {

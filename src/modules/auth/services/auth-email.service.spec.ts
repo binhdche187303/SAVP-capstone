@@ -31,7 +31,7 @@ describe('AuthEmailService', () => {
     ).resolves.toBeUndefined();
     expect(mailService.sendMail).toHaveBeenCalledWith({
       to: 'user@example.com',
-      subject: expect.stringContaining('Kh�i ph?c m?t kh?u'),
+      subject: expect.stringContaining('Khoi phuc mat khau'),
       text: expect.stringContaining('123456'),
       html: expect.stringContaining('123456'),
     });

@@ -59,7 +59,7 @@ describe('MinutesService', () => {
   let meetingRepo: { createQueryBuilder: jest.Mock };
   let minutesRepo: { findOne: jest.Mock; create: jest.Mock; save: jest.Mock };
   let participantRepo: { find: jest.Mock };
-  let em: { getRepository: jest.Mock };
+  let em: { query: jest.Mock; getRepository: jest.Mock };
   let authzRepo: { getEffectiveRolesAndPermissions: jest.Mock };
 
   const authUser = { userId: 'host-1' };
@@ -114,6 +114,7 @@ describe('MinutesService', () => {
     };
 
     em = {
+      query: jest.fn().mockResolvedValue([]),
       getRepository: jest.fn((entity: unknown) => {
         if (entity === MeetingEntity) return meetingRepo;
         if (entity === MeetingMinutesEntity) return minutesRepo;
@@ -125,6 +126,7 @@ describe('MinutesService', () => {
     };
 
     dataSource = {
+      query: jest.fn().mockResolvedValue([]),
       transaction: jest.fn((cb: (manager: unknown) => unknown) => cb(em)),
     };
 
@@ -364,7 +366,7 @@ describe('addAttachment', () => {
   let storageService: { saveFile: jest.Mock; deleteFile: jest.Mock };
   let configService: { get: jest.Mock };
   let mediaFileRepo: { findAndCount: jest.Mock };
-  let em: { getRepository: jest.Mock };
+  let em: { query: jest.Mock; getRepository: jest.Mock };
   let minutesQb: { setLock: jest.Mock; where: jest.Mock; getOne: jest.Mock };
   let minutesRepo: { createQueryBuilder: jest.Mock; findOne: jest.Mock };
   const authUser = { userId: 'host-1' };
@@ -401,6 +403,7 @@ describe('addAttachment', () => {
     const auditInsert = jest.fn().mockResolvedValue(undefined);
     const mediaCount = jest.fn().mockResolvedValue(0);
     em = {
+      query: jest.fn().mockResolvedValue([]),
       getRepository: jest.fn((entity: any) => {
         if (entity === MeetingMinutesEntity) return minutesRepo;
         if (entity === MediaFileEntity)
@@ -414,7 +417,8 @@ describe('addAttachment', () => {
         throw new Error('Unexpected: ' + String(entity));
       }),
     };
-    dataSource = { transaction: jest.fn((cb: (m: any) => any) => cb(em)) };
+    dataSource = {
+      query: jest.fn().mockResolvedValue([]), transaction: jest.fn((cb: (m: any) => any) => cb(em)) };
     auditLogsService = { logAction: jest.fn() };
     storageService = {
       saveFile: jest.fn().mockResolvedValue(mockStorageResult),
@@ -532,6 +536,7 @@ describe('listAttachments', () => {
       }),
     };
     dataSource = {
+      query: jest.fn().mockResolvedValue([]),
       transaction: jest.fn(),
       getRepository: jest.fn().mockReturnValue(minutesRepo),
     };
@@ -694,7 +699,7 @@ describe('removeAttachment', () => {
   let dataSource: { transaction: jest.Mock };
   let storageService: { saveFile: jest.Mock; deleteFile: jest.Mock };
   let configService: { get: jest.Mock };
-  let em: { getRepository: jest.Mock };
+  let em: { query: jest.Mock; getRepository: jest.Mock };
   let minutesQb: { setLock: jest.Mock; where: jest.Mock; getOne: jest.Mock };
   let minutesRepo: { createQueryBuilder: jest.Mock };
   const authUser = { userId: 'host-1' };
@@ -721,6 +726,7 @@ describe('removeAttachment', () => {
     };
     minutesRepo = { createQueryBuilder: jest.fn().mockReturnValue(minutesQb) };
     em = {
+      query: jest.fn().mockResolvedValue([]),
       getRepository: jest.fn((entity: any) => {
         if (entity === MeetingMinutesEntity) return minutesRepo;
         if (entity === MediaFileEntity)
@@ -735,7 +741,8 @@ describe('removeAttachment', () => {
         throw new Error('Unexpected: ' + String(entity));
       }),
     };
-    dataSource = { transaction: jest.fn((cb: (m: any) => any) => cb(em)) };
+    dataSource = {
+      query: jest.fn().mockResolvedValue([]), transaction: jest.fn((cb: (m: any) => any) => cb(em)) };
     storageService = {
       saveFile: jest.fn(),
       deleteFile: jest.fn().mockResolvedValue(undefined),
@@ -838,6 +845,7 @@ describe('updateDraft service logic', () => {
       }),
     };
     em = {
+      query: jest.fn().mockResolvedValue([]),
       getRepository: jest.fn((entity: any) => {
         if (entity === MeetingMinutesEntity) return minutesRepo;
         if (entity === MeetingEntity) return meetingRepo;
@@ -847,6 +855,7 @@ describe('updateDraft service logic', () => {
       }),
     };
     dataSource = {
+      query: jest.fn().mockResolvedValue([]),
       transaction: jest.fn((cb) => cb(em)),
     };
     auditLogsService = {
@@ -1058,6 +1067,7 @@ describe('toggleLiveShare service logic (MKM-LIVE-01)', () => {
       findOne: jest.fn().mockResolvedValue({ ...baseMeeting }),
     };
     em = {
+      query: jest.fn().mockResolvedValue([]),
       getRepository: jest.fn((entity: any) => {
         if (entity === MeetingMinutesEntity) return minutesRepo;
         if (entity === MeetingEntity) return meetingRepo;
@@ -1065,6 +1075,7 @@ describe('toggleLiveShare service logic (MKM-LIVE-01)', () => {
       }),
     };
     dataSource = {
+      query: jest.fn().mockResolvedValue([]),
       transaction: jest.fn((cb: any) => cb(em)),
     };
     auditLogsService = {
@@ -1274,6 +1285,7 @@ describe('linkResources service logic (UC-141)', () => {
       }),
     };
     em = {
+      query: jest.fn().mockResolvedValue([]),
       getRepository: jest.fn((entity: any) => {
         if (entity === MeetingMinutesEntity) return minutesRepo;
         if (entity === MeetingEntity) return meetingRepo;
@@ -1283,6 +1295,7 @@ describe('linkResources service logic (UC-141)', () => {
       }),
     };
     dataSource = {
+      query: jest.fn().mockResolvedValue([]),
       transaction: jest.fn((cb) => cb(em)),
     };
     auditLogsService = {
@@ -1507,6 +1520,7 @@ describe('deleteDraft service logic', () => {
       insert: jest.fn().mockResolvedValue({}),
     };
     em = {
+      query: jest.fn().mockResolvedValue([]),
       getRepository: jest.fn((entity: any) => {
         if (entity === MeetingMinutesEntity) return minutesRepo;
         if (entity === MeetingEntity)
@@ -1523,6 +1537,7 @@ describe('deleteDraft service logic', () => {
       }),
     };
     dataSource = {
+      query: jest.fn().mockResolvedValue([]),
       transaction: jest.fn((cb) => cb(em)),
       getRepository: jest.fn((entity: any) => {
         if (entity === MeetingMinutesEntity) return minutesRepo;
@@ -1615,6 +1630,7 @@ describe('searchMinutesByPerson service logic', () => {
       createQueryBuilder: jest.fn().mockReturnValue(qb),
     };
     dataSource = {
+      query: jest.fn().mockResolvedValue([]),
       getRepository: jest.fn((entity: any) => {
         if (entity === UserEntity) return userRepo;
         if (entity === MeetingMinutesEntity) return minutesRepo;
@@ -1726,6 +1742,7 @@ describe('findMinutesDetail service logic', () => {
       ]),
     };
     dataSource = {
+      query: jest.fn().mockResolvedValue([]),
       getRepository: jest.fn((entity: any) => {
         if (entity === MeetingMinutesEntity) return minutesRepo;
         if (entity === UserEntity) return userRepo;
@@ -1994,6 +2011,7 @@ describe('issueMinutes service logic', () => {
       insert: jest.fn().mockResolvedValue({}),
     };
     em = {
+      query: jest.fn().mockResolvedValue([]),
       getRepository: jest.fn((entity: any) => {
         if (entity === MeetingMinutesEntity) return minutesRepo;
         if (entity === MeetingEntity) return meetingRepo;
@@ -2003,6 +2021,7 @@ describe('issueMinutes service logic', () => {
       }),
     };
     dataSource = {
+      query: jest.fn().mockResolvedValue([]),
       transaction: jest.fn((cb: any) => cb(em)),
       getRepository: jest.fn((entity: any) => {
         if (entity === MeetingParticipantEntity) return participantRepo;
@@ -2280,6 +2299,7 @@ describe('createDraft - MKM-MANUAL-01 source handling', () => {
     participantRepo = { find: jest.fn().mockResolvedValue([]) };
     notificationRepo = { insert: jest.fn().mockResolvedValue({}) };
     em = {
+      query: jest.fn().mockResolvedValue([]),
       getRepository: jest.fn((entity: any) => {
         if (entity === MeetingMinutesEntity) return minutesRepo;
         if (entity === MeetingEntity) return meetingRepo;
@@ -2289,6 +2309,7 @@ describe('createDraft - MKM-MANUAL-01 source handling', () => {
       }),
     };
     dataSource = {
+      query: jest.fn().mockResolvedValue([]),
       transaction: jest.fn((cb: any) => cb(em)),
       getRepository: jest.fn((entity: any) => {
         if (entity === MeetingMinutesEntity) return minutesRepo;
@@ -2393,6 +2414,7 @@ describe('resolveOfficialMinutes', () => {
       findOne: jest.fn(),
     };
     dataSource = {
+      query: jest.fn().mockResolvedValue([]),
       getRepository: jest.fn((entity: any) => {
         if (entity === MeetingMinutesEntity) return minutesRepo;
         throw new Error('Unexpected entity: ' + String(entity));
@@ -2467,6 +2489,7 @@ describe('compareMinutes', () => {
       findOne: jest.fn().mockResolvedValue({ id: 'meeting-1' }),
     };
     dataSource = {
+      query: jest.fn().mockResolvedValue([]),
       getRepository: jest.fn((entity: any) => {
         if (entity === MeetingMinutesEntity) return minutesRepo;
         if (entity === MeetingEntity) return meetingRepo;

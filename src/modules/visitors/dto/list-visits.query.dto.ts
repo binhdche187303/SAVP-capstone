@@ -25,4 +25,6 @@ export class VisitorStatsQueryDto {
 
 export class VisitorDeskQueryDto {
   @IsOptional() @Matches(YMD) date?: string;
+  @IsOptional() @Matches(YMD) from?: string;
+  @IsOptional() @Matches(YMD) to?: string;
 }

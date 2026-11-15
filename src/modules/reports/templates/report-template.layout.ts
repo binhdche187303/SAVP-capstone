@@ -43,7 +43,7 @@ export interface SignatureSlot {
   defaultSigner: SignerRef | null;
 }
 
-export const LOGO_POSITIONS = ['margin', 'above'] as const;
+export const LOGO_POSITIONS = ['margin', 'above', 'top-left'] as const;
 export type LogoPosition = (typeof LOGO_POSITIONS)[number];
 
 export interface ReportTemplateLayout {

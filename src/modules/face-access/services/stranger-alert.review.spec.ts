@@ -107,7 +107,7 @@ describe('StrangerAlertService — hậu kiểm AI nhận sai (họp 20/10)', ()
       await service.list({ page: 1, limit: 20 } as any);
       await service.list({ page: 1, limit: 20, status: 'dismissed' } as any);
       await service.list({ page: 1, limit: 20, status: 'all' } as any);
-      const lists = captured.filter((c) => c.sql.includes('GROUP BY e.device_id, stranger_id'));
+      const lists = captured.filter((c) => c.sql.includes('GROUP BY') && c.sql.includes('stranger_id') && !c.sql.includes('COUNT(*)::int AS total FROM'));
       expect(lists[0].sql).toContain("NOT (e.payload_json ? 'dismissedAt')");
       expect(lists[1].sql).toContain("AND (e.payload_json ? 'dismissedAt')");
       expect(lists[2].sql).not.toContain("AND NOT (e.payload_json ? 'dismissedAt')");

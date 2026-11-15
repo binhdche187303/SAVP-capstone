@@ -93,7 +93,7 @@ function headerBlock(ctx: StandardContext): Table {
   const agencyRuns = [a1 && t(a1, { size: 12, bold: true }), t(a2, { size: 12, bold: true, u: true }), a3 && t(a3, { size: 12, bold: true })].filter(Boolean) as TextRun[];
 
   const agencyChildren: Paragraph[] = [];
-  if (ctx.logo && !inMargin) {
+  if (ctx.logo && ctx.layout.logo.position === 'above') {
     const img = imageRun(ctx.logo, logoMm * PX_PER_MM);
     if (img) agencyChildren.push(p(img, { align: C, after: 60 }));
   }
@@ -298,7 +298,10 @@ export async function renderStandardDocx(model: ReportModel, meta: ReportRenderM
   const firstHeader = new Header({ children: [p(t('')), ...watermarkPara(ctx, PORTRAIT_W)] });
   const footer = () => new Footer({ children: L.footer.provenance ? [p(t(ctx.provenance, { size: 9, italic: true }), { align: AlignmentType.LEFT })] : [p(t(''))] });
 
+  const topLeftLogo = ctx.logo && L.logo.position === 'top-left'
+    ? imageRun(ctx.logo, L.logo.widthMm * PX_PER_MM) : null;
   const s1: Array<Paragraph | Table> = [
+    ...(topLeftLogo ? [p(topLeftLogo, { align: AlignmentType.LEFT, after: 120 })] : []),
     headerBlock(ctx),
     p(t('BÁO CÁO', { size: 14, bold: true }), { align: C, before: 360 }),
     p(t(ctx.subject, { size: 14, bold: true }), { align: C }),

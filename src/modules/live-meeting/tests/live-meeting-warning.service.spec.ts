@@ -1,3 +1,5 @@
+import { HgVisionService } from '../../academic/services/hgvision.service.js';
+import { FaceProvisioningService } from '../../face-access/services/face-provisioning.service.js';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { DataSource, type Repository } from 'typeorm';
 import {
@@ -86,6 +88,8 @@ describe('LiveMeetingService - scheduleWarningJob', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: HgVisionService, useValue: {} },
+        { provide: FaceProvisioningService, useValue: { provisionMeeting: jest.fn().mockResolvedValue(undefined), deprovisionMeeting: jest.fn().mockResolvedValue(undefined), provisionParticipant: jest.fn().mockResolvedValue(undefined), deprovisionParticipant: jest.fn().mockResolvedValue(undefined) } },
         LiveMeetingService,
         { provide: DataSource, useValue: dataSourceMock },
         { provide: WebsocketService, useValue: mockWebsocketService },
@@ -262,6 +266,8 @@ describe('LiveMeetingService - cancelWarningJob', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: FaceProvisioningService, useValue: {} },
+        { provide: HgVisionService, useValue: {} },
         LiveMeetingService,
         { provide: DataSource, useValue: dataSourceMock },
         { provide: WebsocketService, useValue: mockWebsocketService },
@@ -300,7 +306,7 @@ describe('LiveMeetingService - cancelWarningJob', () => {
     await service.cancelWarningJob('m-warn-001');
 
     expect(mockQueue.getJob).toHaveBeenCalledWith(
-      'meeting-time-warning:m-warn-001',
+      'meeting-time-warning-m-warn-001',
     );
     expect(mockBgJobRepo.update).toHaveBeenCalled();
   });
@@ -419,6 +425,8 @@ describe('MeetingWarningService - processWarningJob', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: FaceProvisioningService, useValue: {} },
+        { provide: HgVisionService, useValue: {} },
         MeetingWarningService,
         { provide: DataSource, useValue: dataSourceMock },
         { provide: WebsocketService, useValue: mockWebsocketService },
@@ -1086,6 +1094,8 @@ describe('MeetingWarningService - resolveHost and readConflictBufferConfig', () 
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: FaceProvisioningService, useValue: {} },
+        { provide: HgVisionService, useValue: {} },
         MeetingWarningService,
         { provide: DataSource, useValue: dataSourceMock },
         { provide: WebsocketService, useValue: mockWebsocketService },
@@ -1138,6 +1148,8 @@ describe('MeetingWarningService - resolveHost and readConflictBufferConfig', () 
       };
       const mod: TestingModule = await Test.createTestingModule({
         providers: [
+        { provide: FaceProvisioningService, useValue: {} },
+        { provide: HgVisionService, useValue: {} },
           MeetingWarningService,
           { provide: DataSource, useValue: ds },
           { provide: WebsocketService, useValue: mockWebsocketService },
@@ -1191,6 +1203,8 @@ describe('MeetingWarningService - resolveHost and readConflictBufferConfig', () 
       };
       const mod: TestingModule = await Test.createTestingModule({
         providers: [
+        { provide: FaceProvisioningService, useValue: {} },
+        { provide: HgVisionService, useValue: {} },
           MeetingWarningService,
           { provide: DataSource, useValue: ds },
           { provide: WebsocketService, useValue: mockWebsocketService },
@@ -1226,6 +1240,8 @@ describe('MeetingWarningService - resolveHost and readConflictBufferConfig', () 
       };
       const mod: TestingModule = await Test.createTestingModule({
         providers: [
+        { provide: FaceProvisioningService, useValue: {} },
+        { provide: HgVisionService, useValue: {} },
           MeetingWarningService,
           { provide: DataSource, useValue: ds },
           { provide: WebsocketService, useValue: mockWebsocketService },
@@ -1279,6 +1295,8 @@ describe('MeetingWarningService - resolveHost and readConflictBufferConfig', () 
       };
       const mod: TestingModule = await Test.createTestingModule({
         providers: [
+        { provide: FaceProvisioningService, useValue: {} },
+        { provide: HgVisionService, useValue: {} },
           MeetingWarningService,
           { provide: DataSource, useValue: ds },
           { provide: WebsocketService, useValue: mockWebsocketService },
@@ -1328,6 +1346,8 @@ describe('MeetingWarningService - resolveHost and readConflictBufferConfig', () 
       };
       const mod: TestingModule = await Test.createTestingModule({
         providers: [
+        { provide: FaceProvisioningService, useValue: {} },
+        { provide: HgVisionService, useValue: {} },
           MeetingWarningService,
           { provide: DataSource, useValue: ds },
           { provide: WebsocketService, useValue: mockWebsocketService },
@@ -1377,6 +1397,8 @@ describe('MeetingWarningService - resolveHost and readConflictBufferConfig', () 
       };
       const mod: TestingModule = await Test.createTestingModule({
         providers: [
+        { provide: FaceProvisioningService, useValue: {} },
+        { provide: HgVisionService, useValue: {} },
           MeetingWarningService,
           { provide: DataSource, useValue: ds },
           { provide: WebsocketService, useValue: mockWebsocketService },
@@ -1426,6 +1448,8 @@ describe('MeetingWarningService - resolveHost and readConflictBufferConfig', () 
       };
       const mod: TestingModule = await Test.createTestingModule({
         providers: [
+        { provide: FaceProvisioningService, useValue: {} },
+        { provide: HgVisionService, useValue: {} },
           MeetingWarningService,
           { provide: DataSource, useValue: ds },
           { provide: WebsocketService, useValue: mockWebsocketService },

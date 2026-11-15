@@ -36,7 +36,7 @@ function make(responses: Response[]) {
 
 const page = (items: unknown[], p: number, totalPages: number) => ({
   items,
-  total: 0,
+  total: totalPages,
   page: p,
   limit: 1000,
   totalPages,
@@ -113,5 +113,20 @@ describe('UelApiClient', () => {
     );
     await expect(client.page('x/y')).rejects.toThrow('Source.Error');
     expect(calls).toHaveLength(4);
+  });
+});
+
+
+describe('UelApiClient pagination safety', () => {
+  it('rejects malformed pagination rather than applying a partial snapshot', async () => {
+    const { client } = make([json(200, { items: [1], page: 1, total: 2 })]);
+    await expect(client.all('x/y')).rejects.toThrow('phân trang không hợp lệ');
+  });
+  it('rejects a missing later page', async () => {
+    const { client } = make([
+      json(200, page([1], 1, 2)),
+      json(404, { error: { code: 'Data.NotFound' } }),
+    ]);
+    await expect(client.all('x/y')).rejects.toThrow('phân trang UEL');
   });
 });

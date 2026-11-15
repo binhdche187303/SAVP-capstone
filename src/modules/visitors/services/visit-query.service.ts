@@ -164,37 +164,45 @@ export class VisitQueryService {
 
   // ───────────── Quầy lễ tân ─────────────
 
-  async desk(date?: string, now: Date = new Date()) {
+  async desk(date?: string, now: Date = new Date(), toDate?: string) {
     const cfg = await this.config.get();
     const toView = (r: VisitRow) => toVisitView(r, now, cfg.overstayEscalateMinutes);
-    const selectedDate = date || new Date(now.getTime() + 7 * 3_600_000).toISOString().slice(0, 10);
+    const from = date || new Date(now.getTime() + 7 * 3_600_000).toISOString().slice(0, 10);
+    const to = toDate || from;
+    const validDate = (value: string) => {
+      const parsed = new Date(`${value}T00:00:00Z`);
+      return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+    };
+    if (!validDate(from) || !validDate(to) || from > to) {
+      throw err(400, 'VALIDATION_ERROR', 'Khoảng ngày không hợp lệ: từ ngày phải trước hoặc bằng đến ngày');
+    }
 
     const items: VisitRow[] = await this.dataSource.query(
-      `${VISIT_VIEW_SELECT} AND (${VN_DAY} = $1::date OR v.status IN ('checked_in','must_leave')) ORDER BY v.scheduled_from`,
-      [selectedDate],
+      `${VISIT_VIEW_SELECT} AND (${VN_DAY} BETWEEN $1::date AND $2::date OR (v.check_in_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN $1::date AND $2::date OR v.status IN ('checked_in','must_leave')) ORDER BY v.scheduled_from`,
+      [from, to],
     );
     const kpiRow = (await this.dataSource.query(
-      `SELECT count(*) FILTER (WHERE ${VN_DAY} = $1::date AND v.status NOT IN ('rejected','cancelled')) AS expected,
-              count(*) FILTER (WHERE (v.check_in_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = $1::date) AS arrived,
+      `SELECT count(*) FILTER (WHERE ${VN_DAY} BETWEEN $1::date AND $2::date AND v.status NOT IN ('rejected','cancelled')) AS expected,
+              count(*) FILTER (WHERE (v.check_in_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN $1::date AND $2::date) AS arrived,
               count(*) FILTER (WHERE v.status IN ('checked_in','must_leave')) AS on_site,
-              count(*) FILTER (WHERE v.status = 'checked_in' AND v.valid_to < $2) AS overstay
+              count(*) FILTER (WHERE v.status = 'checked_in' AND v.valid_to < $3) AS overstay
          FROM visitor_visits v WHERE v.deleted_at IS NULL`,
-      [selectedDate, now],
+      [from, to, now],
     ))[0];
     const alerts: Array<Record<string, unknown>> = await this.dataSource.query(
       `SELECT e.event_time AS at, e.event_type AS type, e.note, COALESCE(z.zone_name, '') AS "zoneName",
               v.id AS "visitId", v.visit_code AS code, vis.full_name AS "visitorName"
          FROM visitor_visit_events e JOIN visitor_visits v ON v.id = e.visit_id JOIN visitors vis ON vis.id = v.visitor_id
          LEFT JOIN zones z ON z.id = e.zone_id
-        WHERE e.event_type IN ('access_denied','manual_review') AND (e.event_time AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = $1::date
+        WHERE e.event_type IN ('access_denied','manual_review') AND (e.event_time AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN $1::date AND $2::date
         ORDER BY e.event_time DESC LIMIT 100`,
-      [selectedDate],
+      [from, to],
     );
     return {
       kpis: { expected: Number(kpiRow.expected), arrived: Number(kpiRow.arrived), onSite: Number(kpiRow.on_site), overstay: Number(kpiRow.overstay) },
       items: items.map(toView),
       alerts,
-      attention: await this.attention(now, selectedDate, toView),
+      attention: await this.attention(now, from, toView, to),
     };
   }
 
@@ -203,7 +211,7 @@ export class VisitQueryService {
   }
 
   /** Hàng "Cần xử lý": chỉ ngoại lệ. Thứ tự: phải rời → quá giờ → chưa ghi nhận giờ ra → cần xác minh → chưa có ảnh. */
-  private async attention(now: Date, today: string, toView: (r: VisitRow) => VisitView) {
+  private async attention(now: Date, today: string, toView: (r: VisitRow) => VisitView, until = today) {
     const out: Array<{ kind: AttentionKind; since: string; visit: VisitView }> = [];
     const fetch = async (extra: string, params: unknown[]): Promise<VisitRow[]> =>
       this.dataSource.query(`${VISIT_VIEW_SELECT} ${extra}`, params);
@@ -217,7 +225,7 @@ export class VisitQueryService {
     for (const r of await fetch(`AND v.status = 'exit_unrecorded' AND v.valid_to >= $1 ORDER BY v.valid_to`, [new Date(now.getTime() - 7 * 86_400_000)])) {
       out.push({ kind: 'exit_unrecorded', since: new Date(r.valid_to).toISOString(), visit: toView(r) });
     }
-    const approvedToday = await fetch(`AND v.status = 'approved' AND ${VN_DAY} = $1::date ORDER BY v.scheduled_from`, [today]);
+    const approvedToday = await fetch(`AND v.status = 'approved' AND ${VN_DAY} BETWEEN $1::date AND $2::date ORDER BY v.scheduled_from`, [today, until]);
     for (const r of approvedToday) {
       const view = toView(r);
       const lastGate = [...view.events].reverse().find((e) => e.type === 'manual_review' || e.type === 'check_in');

@@ -115,9 +115,12 @@ export class ReportTemplateController {
     if (!(REPORT_FORMATS as string[]).includes(format)) throw reportBadRequest('Định dạng xuất không hợp lệ');
     if ((body?.['mode'] ?? 'normal') !== 'standard') throw reportBadRequest('Chỉ dùng cho bản quy chuẩn');
     const model = documentModel(body?.['document']);
-    const opts = await this.templates.validateStandardExport('document', body ?? {}, user);
+    const reportType = body?.['reportType'] === undefined ? 'document' : String(body['reportType']);
+    if (reportType !== 'document' && !isReportType(reportType)) throw reportBadRequest('Loại báo cáo không tồn tại');
+    const opts = await this.templates.validateStandardExport(reportType, body ?? {}, user);
     if (!opts) throw reportBadRequest('Chỉ dùng cho bản quy chuẩn');
     const template = await this.templates.loadForRender(opts, user);
+    if (reportType !== 'document') template.layout.title.subject = model.title;
     const buffer = await this.files.render(
       model,
       format as ReportFormat,

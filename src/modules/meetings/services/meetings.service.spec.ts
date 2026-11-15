@@ -1,3 +1,7 @@
+// Keep time-dependent fixtures independent of the machine date.
+beforeEach(() => { jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'hrtime', 'performance', 'queueMicrotask'], now: new Date('2026-06-30T00:00:00Z').getTime() }); });
+afterEach(() => { jest.useRealTimers(); jest.restoreAllMocks(); });
+
 /* eslint-disable @typescript-eslint/unbound-method, @typescript-eslint/require-await */
 import { Test, TestingModule } from '@nestjs/testing';
 import {
@@ -98,7 +102,7 @@ describe('MeetingsService', () => {
       withDeleted: jest.fn().mockReturnThis(),
       getMany: jest.fn(),
       getOne: jest.fn(),
-      getRawMany: jest.fn(),
+      getRawMany: jest.fn().mockResolvedValue([]),
       getRawOne: jest.fn(),
       getCount: jest.fn(),
     };
@@ -154,13 +158,14 @@ describe('MeetingsService', () => {
       save: jest.fn(),
       update: jest.fn(),
       count: jest.fn(),
-      query: jest.fn(),
+      query: jest.fn().mockResolvedValue([]),
       getRepository: jest.fn().mockReturnValue({
         count: jest.fn().mockResolvedValue(0),
       }),
     } as unknown as jest.Mocked<EntityManager>;
 
     dataSource = {
+      query: jest.fn().mockResolvedValue([{ department_id: 'dept-uuid', is_unit_clerk: true }]),
       transaction: jest
         .fn()
         .mockImplementation((cb: (manager: EntityManager) => unknown) =>
@@ -210,6 +215,9 @@ describe('MeetingsService', () => {
     }).compile();
 
     service = module.get<MeetingsService>(MeetingsService);
+    jest.spyOn(service as any, 'getIneligibleMeetingUserIds').mockResolvedValue(new Set());
+    jest.spyOn(service as any, 'getActiveRoleCodes').mockResolvedValue(['EMPLOYEE']);
+    jest.spyOn(service as any, 'generateRequestCodeTransaction').mockResolvedValue('RQ-20260630-001');
   });
 
   it('should be defined', () => {
@@ -463,6 +471,11 @@ describe('MeetingsService', () => {
   });
 
   describe('create', () => {
+    beforeEach(() => {
+      jest.spyOn(service, 'generateMeetingCode').mockResolvedValue('MT-20260630-001');
+      jest.spyOn(service, 'generateBookingCode').mockResolvedValue('BK-20260630-001');
+      jest.spyOn(service, 'generateRequestCode').mockResolvedValue('RQ-20260630-001');
+    });
     const validDto: CreateMeetingDto = {
       title: 'Họp dự án',
       startTime: '2026-07-15T10:00:00.000Z',
@@ -1990,6 +2003,7 @@ describe('MeetingsService', () => {
       setupFindOneMocks();
       setupAttendeeCountMocks(5);
       setupTransactionMocks();
+      jest.spyOn(service as any, 'resolveApproverIds').mockResolvedValue(['approver-1']);
       mockNotificationsService.createNotification.mockRejectedValue(
         new Error('Send failed'),
       );

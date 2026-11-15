@@ -33,6 +33,11 @@ export class SearchRoomsQueryDto {
   areaName?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  siteName?: string;
+
+  @IsOptional()
   @Type(() => Boolean)
   @IsBoolean({ message: 'onlyAvailable phai la boolean' })
   onlyAvailable?: boolean;
@@ -47,7 +52,7 @@ export class SearchRoomsQueryDto {
   @IsOptional()
   @IsIn(['available', 'occupied', 'reserved', 'maintenance', 'inactive'], {
     message:
-      "status khong hop le. Gia tri: available, occupied, reserved, maintenance, inactive",
+      'status khong hop le. Gia tri: available, occupied, reserved, maintenance, inactive',
   })
   status?: string;
 

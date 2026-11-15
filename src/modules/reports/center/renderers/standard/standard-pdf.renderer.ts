@@ -155,14 +155,20 @@ class StandardPdfWriter {
   private header(): void {
     const { doc, ctx } = this;
     const h = ctx.layout.header;
-    const top = doc.page.margins.top;
+    let top = doc.page.margins.top;
+    const logoInfo = ctx.logo ? imageSize(ctx.logo) : null;
+    if (ctx.logo && logoInfo && ctx.layout.logo.position === 'top-left') {
+      const w = ctx.layout.logo.widthMm * MM;
+      doc.image(ctx.logo, this.left, top, { width: w });
+      // Reserve a separate band so the school logo cannot cover the national heading.
+      top += (w * logoInfo.height) / logoInfo.width + 6;
+    }
     const AG = 197; // 3940 dxa
     const D = 13; // 260 dxa
     const QH = this.width - AG - D;
     const leftW = AG + D;
     let ly = top;
-    const logoInfo = ctx.logo ? imageSize(ctx.logo) : null;
-    if (ctx.logo && logoInfo) {
+    if (ctx.logo && logoInfo && ctx.layout.logo.position !== 'top-left') {
       if (ctx.layout.logo.position === 'margin') {
         const w = Math.min(ctx.layout.logo.widthMm, 24) * MM;
         doc.image(ctx.logo, this.left - w - 15, top, { width: w });

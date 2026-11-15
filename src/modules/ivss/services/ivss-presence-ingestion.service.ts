@@ -163,7 +163,10 @@ export class IvssPresenceIngestionService implements IvssEventHandlerPort {
         !roomId &&
         !!(await this.getChannelPresenceZoneMap())[String(evt.channelId)];
 
-      const { eventTime, utcFallback } = this.parseUtc(evt.utc, evt.allowHistorical === true);
+      const { eventTime, utcFallback } = this.parseUtc(
+        evt.utc,
+        evt.allowHistorical === true,
+      );
       const meetingId = roomId
         ? await this.resolveMeeting(roomId, eventTime)
         : null;
@@ -558,8 +561,11 @@ export class IvssPresenceIngestionService implements IvssEventHandlerPort {
     return 'seen';
   }
 
-  /** C3: ISO + |skew|≤1h → eventTime; sai/lệch → now + fallback. */
-  private parseUtc(raw: string, allowHistorical = false): { eventTime: Date; utcFallback: boolean } {
+  /** C3: event live giới hạn lệch 1h; replay lịch sử được giữ timestamp gốc. */
+  private parseUtc(
+    raw: string,
+    allowHistorical = false,
+  ): { eventTime: Date; utcFallback: boolean } {
     const t = new Date(raw);
     if (
       !Number.isNaN(t.getTime()) &&

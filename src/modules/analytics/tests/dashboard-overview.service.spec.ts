@@ -1,3 +1,4 @@
+import { RedisService } from '../../redis/redis.service.js';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ForbiddenException, BadRequestException } from '@nestjs/common';
 import { DashboardOverviewService } from '../services/dashboard-overview.service';
@@ -43,6 +44,7 @@ describe('DashboardOverviewService', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: RedisService, useValue: { get: jest.fn().mockResolvedValue(null), set: jest.fn().mockResolvedValue(undefined), getClient: jest.fn().mockReturnValue(null) } },
         DashboardOverviewService,
         { provide: AuthzReadRepository, useValue: mockAuthzRepo },
         { provide: DashboardOverviewRepository, useValue: mockRepo },

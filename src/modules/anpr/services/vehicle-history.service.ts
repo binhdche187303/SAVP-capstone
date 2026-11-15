@@ -168,42 +168,30 @@ export class VehicleHistoryService {
       params.push(normalizePlate(query.plateNumber));
       where += ` AND iot_device_events.payload_json->>'plateNumber' = $${params.length}`;
     }
-
     if (query.vehicleType) {
       params.push(query.vehicleType);
       where += ` AND LOWER(COALESCE(NULLIF(iot_device_events.payload_json->>'vehicleType', ''), vr.vehicle_type)) = LOWER($${params.length})`;
     }
-
     if (query.cameraName) {
       params.push(query.cameraName);
-      where += ` AND COALESCE(
-        (SELECT camera.camera_name
-           FROM system_configs sc
-           CROSS JOIN LATERAL jsonb_each_text(COALESCE(sc.config_json, '{}'::jsonb))
-             camera(camera_name, mapped_channel)
-          WHERE sc.config_key = 'hgvision.camera_channel_map'
-            AND sc.is_active = true
-            AND camera.mapped_channel = iot_device_events.payload_json->>'channelId'
-          LIMIT 1),
-        NULLIF(anpr_device.device_name, '')
-      ) = $${params.length}`;
+      where += ` AND COALESCE((SELECT camera.camera_name
+          FROM system_configs sc
+          CROSS JOIN LATERAL jsonb_each_text(COALESCE(sc.config_json, '{}'::jsonb)) camera(camera_name, mapped_channel)
+         WHERE sc.config_key = 'hgvision.camera_channel_map'
+           AND sc.is_active = true
+           AND camera.mapped_channel = iot_device_events.payload_json->>'channelId'
+         LIMIT 1), NULLIF(anpr_device.device_name, '')) = $${params.length}`;
     }
-
     if (query.zoneId) {
       params.push(query.zoneId);
-      where += ` AND COALESCE(
-        iot_device_events.zone_id::text,
-        (SELECT z.id::text
-           FROM system_configs sc
-           JOIN zones z
-             ON z.id::text = sc.config_json->>(iot_device_events.payload_json->>'channelId')
-          WHERE sc.config_key = 'ivss.channel_zone_map'
-            AND sc.is_active = true
-            AND z.deleted_at IS NULL
-          LIMIT 1)
-      ) = $${params.length}`;
+      where += ` AND COALESCE(iot_device_events.zone_id::text, (SELECT z.id::text
+          FROM system_configs sc
+          JOIN zones z ON z.id::text = sc.config_json->>(iot_device_events.payload_json->>'channelId')
+         WHERE sc.config_key = 'ivss.channel_zone_map'
+           AND sc.is_active = true
+           AND z.deleted_at IS NULL
+         LIMIT 1)) = $${params.length}`;
     }
-
     return where;
   }
 
@@ -241,8 +229,7 @@ export class VehicleHistoryService {
       `SELECT COUNT(*)::int AS total
          FROM iot_device_events
          ${vehicleRegistrationJoin}
-         LEFT JOIN iot_devices anpr_device
-           ON anpr_device.id = iot_device_events.device_id
+         LEFT JOIN iot_devices anpr_device ON anpr_device.id = iot_device_events.device_id
          ${ownerJoin}
          ${departmentJoin}
         WHERE ${where}`,

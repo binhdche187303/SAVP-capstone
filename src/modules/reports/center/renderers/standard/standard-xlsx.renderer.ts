@@ -86,6 +86,13 @@ function sheetHeader(wb: ExcelJS.Workbook, ws: ExcelJS.Worksheet, ctx: StandardC
   let r = 1;
   const logo = ctx.logo ? addImage(wb, ctx.logo) : null;
   const logoPx = ctx.layout.logo.widthMm * PX_PER_MM;
+  if (logo && ctx.layout.logo.position === 'top-left') {
+    const hPx = (logoPx * logo.h) / logo.w;
+    ws.getRow(r).height = hPx * 0.75 + 6;
+    const col = 0.1;
+    ws.addImage(logo.id, { tl: { col, row: r - 1 + 0.05 }, ext: { width: logoPx, height: hPx }, editAs: 'oneCell' } as unknown as ExcelJS.ImageRange);
+    r++;
+  }
   if (logo && ctx.layout.logo.position === 'above') {
     // Logo đặt trên tên cơ quan, canh giữa vùng B:C (cột B ≈ 54 px, C ≈ 271 px).
     const hPx = (logoPx * logo.h) / logo.w;

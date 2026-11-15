@@ -122,14 +122,16 @@ describe('RoomSearchService - Equipment Fault Badges (ROOM-SEARCH-FAULT-BADGE-00
     });
 
     const [sqlQuery, params] = queryMock.mock.calls[0] as [string, unknown[]];
-    expect(params).toEqual([10, 20, 'Area 1', true, null, null, 10, 0]);
+    expect(params).toEqual([10, 20, 'Area 1', true, null, null, null, 10, 0]);
     expect(sqlQuery).toContain('r.capacity >= $1');
     expect(sqlQuery).toContain('r.capacity <= $2');
     expect(sqlQuery).toContain('r.area_name = $3');
     // [FIX 2026-08-19] onlyAvailable nay tinh theo trang thai real-time
     // (CASE administrative_status/occupancy/booking), khong con doc thang
     // r.current_status. Xem room-search.service.ts (COMPUTED_STATUS_SQL).
-    expect(sqlQuery).toContain("WHEN r.administrative_status IN ('maintenance', 'inactive')");
+    expect(sqlQuery).toContain(
+      "WHEN r.administrative_status IN ('maintenance', 'inactive')",
+    );
     expect(sqlQuery).toContain("= 'available'");
   });
 });

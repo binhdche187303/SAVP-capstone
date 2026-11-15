@@ -1,3 +1,6 @@
+import { AuthzReadRepository } from '../../auth/repositories/authz-read.repository.js';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard.js';
+import { PermissionsGuard } from '../../auth/guards/permissions.guard.js';
 ﻿import { Test, type TestingModule } from '@nestjs/testing';
 import { LiveMeetingController } from '../controllers/live-meeting.controller.js';
 import { LiveMeetingService } from '../services/live-meeting.service.js';
@@ -10,18 +13,26 @@ describe('LiveMeetingController', () => {
 
   const mockService = {
     startMeeting: jest.fn(),
+    endMeeting: jest.fn(),
+    getPresentAttendees: jest.fn(),
+    createMeetingNote: jest.fn(),
+    viewMeetingNotes: jest.fn(),
   };
+
+  const mockLiveMeetingService = mockService;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [LiveMeetingController],
       providers: [
+        { provide: AuthzReadRepository, useValue: {} },
         {
           provide: LiveMeetingService,
           useValue: mockService,
         },
       ],
-    }).compile();
+    }).overrideGuard(JwtAuthGuard).useValue({ canActivate: () => true })
+      .overrideGuard(PermissionsGuard).useValue({ canActivate: () => true }).compile();
 
     controller = module.get<LiveMeetingController>(LiveMeetingController);
     service = module.get<LiveMeetingService>(LiveMeetingService);
@@ -118,6 +129,7 @@ describe('LiveMeetingController', () => {
       expect(result.data.status).toBe('completed');
       expect(result.data.duration).toBe(85);
       expect(result.data.roomReleased).toBe(true);
+    });
 
       // ========================================================
       //  UC-IMM-07: getPresentAttendees
@@ -203,7 +215,6 @@ describe('LiveMeetingController', () => {
           expect(result.data.presentUsers[0].presenceSource).toBeNull();
         });
       });
-    });
     // ------------------------------------------------------------------
     //  UC-IMM-09: Create / List Meeting Notes
     // ------------------------------------------------------------------

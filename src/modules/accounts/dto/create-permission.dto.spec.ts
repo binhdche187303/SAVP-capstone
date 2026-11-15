@@ -42,14 +42,15 @@ describe('CreatePermissionDto Validation', () => {
       expect(fieldErrors.length).toBeGreaterThan(0);
     });
 
-    it('should reject codes with uppercase letters', async () => {
+    it('should normalize uppercase codes before validation', async () => {
       const dto = plainToInstance(CreatePermissionDto, {
         ...validDto,
         permissionCode: 'Meetings.Create',
       });
       const errors = await validate(dto);
       const fieldErrors = errors.filter((e) => e.property === 'permissionCode');
-      expect(fieldErrors.length).toBeGreaterThan(0);
+      expect(fieldErrors.length).toBe(0);
+      expect(dto.permissionCode).toBe('meetings.create');
     });
 
     it('should reject codes with spaces', async () => {

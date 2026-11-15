@@ -1,3 +1,7 @@
+// Keep time-dependent fixtures independent of the machine date.
+beforeEach(() => { jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'hrtime', 'performance', 'queueMicrotask'], now: new Date('2026-09-14T00:00:00Z').getTime() }); });
+afterEach(() => { jest.useRealTimers(); jest.restoreAllMocks(); });
+
 /* eslint-disable @typescript-eslint/require-await, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call */
 import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource, EntityManager, Repository } from 'typeorm';
@@ -127,6 +131,7 @@ describe('MeetingsService - create() Equipment Fault Warning (EW1-EW6)', () => {
     } as unknown as jest.Mocked<EntityManager>;
 
     dataSource = {
+      query: jest.fn().mockResolvedValue([{ department_id: 'dept-uuid', is_unit_clerk: true }]),
       transaction: jest
         .fn()
         .mockImplementation((cb: (manager: EntityManager) => unknown) =>

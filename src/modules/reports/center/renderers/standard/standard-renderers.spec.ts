@@ -341,3 +341,24 @@ function rawPng(w: number, h: number, depth: number, type: number, raw: Buffer, 
     ...Object.entries(extra).map(([k, v]) => chunk(k, v)), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0)),
   ]);
 }
+
+it('places the top-left logo before the official heading in Word and Excel, and renders PDF', async () => {
+  const l = layout(x => { x.logo = { enabled: true, mediaFileId: LOGO_ID, position: 'top-left', widthMm: 20 }; });
+  const docx = await renderStandardDocx(model(2), meta, input(l));
+  const zip = await JSZip.loadAsync(docx);
+  const xml = await zip.file('word/document.xml')!.async('string');
+  expect(xml.indexOf('<w:drawing>')).toBeLessThan(xml.indexOf('CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM'));
+  const imageParagraph = xml.slice(xml.lastIndexOf('<w:p>', xml.indexOf('<w:drawing>')), xml.indexOf('</w:p>', xml.indexOf('<w:drawing>')));
+  expect(imageParagraph).toContain('w:val="left"');
+  const xlsx = await renderStandardXlsx(model(2), meta, input(l));
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(xlsx as never);
+  const sheet = wb.worksheets[0];
+  expect(sheet.getImages()[0].range.tl.col).toBeLessThan(1);
+  expect(String(sheet.getCell('D2').value)).toContain('CỘNG HÒA');
+  const pdf = await renderStandardPdf(model(2), meta, input(l));
+  expect(pdf.subarray(0, 4).toString()).toBe('%PDF');
+  await dump('uel-logo-top-left.docx', docx);
+  await dump('uel-logo-top-left.xlsx', xlsx);
+  await dump('uel-logo-top-left.pdf', pdf);
+});

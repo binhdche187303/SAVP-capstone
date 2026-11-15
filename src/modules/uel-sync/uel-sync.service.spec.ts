@@ -307,3 +307,33 @@ describe('UelSyncService.start', () => {
     });
   });
 });
+
+
+describe('UEL synchronization preserves existing data on partial failure', () => {
+  it('does not cancel existing sessions when a source session cannot map periods', async () => {
+    const { svc, query } = makeService(true, [{
+      ma_lop_hoc_phan: 'LHP1', ma_hoc_phan: 'HP1', nam_hoc: '2026-2027', hoc_ky: '1',
+      ngay_hoc: '2026-11-10', tiet_bat_dau: 5, so_tiet: 3,
+    }]);
+    query.mockImplementation(fakeQuery({
+      'FROM study_periods': [{ period_no: 1, start_time: '07:00', end_time: '07:50' }],
+      "semester_code ||": [{ k: '2026-2027_HK01|HP1|LHP1', id: 'class-1' }],
+    }));
+    const run = await svc.start({ steps: ['sessions'], fromDate: '2026-11-10', toDate: '2026-11-10' });
+    expect(run.status).toBe('partial');
+    expect(run.results[0].skipped).toBe(1);
+    expect(run.results[0].warnings[0]).toMatch(/bảng tiết chưa có tiết/);
+    expect(query.mock.calls.some(([sql]) => sql.includes("SET status = 'cancelled'"))).toBe(false);
+  });
+
+  it('does not deactivate departments if an incoming department fails to save', async () => {
+    const { svc, query } = makeService(true, [{ ma_phong_ban: 'K1', ten_phong_ban: 'Khoa 1' }]);
+    query.mockImplementation((sql, params) => {
+      if (sql.includes('INSERT INTO departments')) return Promise.reject(new Error('write failure'));
+      return fakeQuery()(sql, params);
+    });
+    const run = await svc.start({ steps: ['departments'] });
+    expect(run.status).toBe('partial');
+    expect(query.mock.calls.some(([sql]) => sql.includes('SET is_active = false'))).toBe(false);
+  });
+});

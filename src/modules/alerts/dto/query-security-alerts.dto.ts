@@ -53,6 +53,14 @@ export class QuerySecurityAlertsDto {
   @IsIn(ALERT_TYPES)
   alertType?: AlertType;
 
+  @ApiPropertyOptional({
+    description: 'Lọc mức độ cảnh báo',
+    enum: ['low', 'medium', 'high', 'critical', 'urgent'],
+  })
+  @IsOptional()
+  @IsIn(['low', 'medium', 'high', 'critical', 'urgent'])
+  severity?: string;
+
   @ApiPropertyOptional({ description: 'Lọc theo khu vực' })
   @Expose({ name: 'zone_id' })
   @IsOptional()
