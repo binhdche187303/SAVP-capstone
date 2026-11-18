@@ -94,3 +94,8 @@ x.ts
 clean_demo_seed.sql
 # sinh ra khi đo coverage
 /test/.superpowers/
+
+# HGVision mock server (dev only) - generated state & media
+scripts/hgvision-mock/.state/
+scripts/hgvision-mock/.media/
+scripts/hgvision-mock/.capture/
