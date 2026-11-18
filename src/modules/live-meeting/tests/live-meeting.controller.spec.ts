@@ -124,7 +124,7 @@ describe('LiveMeetingController', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.message).toBe('Phien hop da ket thuc thanh cong');
+      expect(result.message).toBe('Phiên họp đã kết thúc thành công');
       expect(result.data.meetingId).toBe(meetingId);
       expect(result.data.status).toBe('completed');
       expect(result.data.duration).toBe(85);
@@ -169,7 +169,7 @@ describe('LiveMeetingController', () => {
           );
 
           expect(result.success).toBe(true);
-          expect(result.message).toBe('Danh sach nguoi tham du dang co mat');
+          expect(result.message).toBe('Danh sách người tham dự đang có mặt');
           expect(result.data.meetingId).toBe(meetingId);
           expect(result.data.occupancyCount).toBe(2);
           expect(result.meta.page).toBe(1);
@@ -268,7 +268,7 @@ describe('LiveMeetingController', () => {
             },
           ],
           meta: { page: 1, limit: 20, total: 1, totalPages: 1 },
-          message: 'Lay danh sach ghi chu thanh cong',
+          message: 'Lấy danh sách ghi chú thành công',
         };
         jest.spyOn(service, 'viewMeetingNotes').mockResolvedValue(mockResult);
 

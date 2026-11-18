@@ -32,7 +32,14 @@ describe('EquipmentService.listEquipments (UC-64)', () => {
 
   function setup(rows: unknown[] = [makeRow()], total = 1) {
     const qb: Record<string, jest.Mock> = {};
-    for (const m of ['where', 'andWhere', 'orderBy', 'skip', 'take']) {
+    for (const m of [
+      'where',
+      'andWhere',
+      'orderBy',
+      'addOrderBy',
+      'skip',
+      'take',
+    ]) {
       qb[m] = jest.fn(() => qb);
     }
     qb.getManyAndCount = jest.fn().mockResolvedValue([rows, total]);
@@ -88,10 +95,12 @@ describe('EquipmentService.listEquipments (UC-64)', () => {
     });
   });
 
-  it('[S2] equipmentType → andWhere e.equipmentType', async () => {
+  it('[S2] equipmentType → andWhere e.equipmentType IN', async () => {
     const { service, qb } = setup();
     await service.listEquipments(q({ equipmentType: EquipmentType.CAMERA }));
-    expect(andWhereStrings(qb)).toContain('e.equipmentType = :equipmentType');
+    expect(andWhereStrings(qb)).toContain(
+      'e.equipmentType IN (:...equipmentType)',
+    );
   });
 
   it('[S3] assetStatus → andWhere e.assetStatus', async () => {
@@ -100,10 +109,12 @@ describe('EquipmentService.listEquipments (UC-64)', () => {
     expect(andWhereStrings(qb)).toContain('e.assetStatus = :assetStatus');
   });
 
-  it('[S4] healthStatus → andWhere e.healthStatus', async () => {
+  it('[S4] healthStatus → andWhere e.healthStatus IN', async () => {
     const { service, qb } = setup();
     await service.listEquipments(q({ healthStatus: HealthStatus.FAULTY }));
-    expect(andWhereStrings(qb)).toContain('e.healthStatus = :healthStatus');
+    expect(andWhereStrings(qb)).toContain(
+      'e.healthStatus IN (:...healthStatus)',
+    );
   });
 
   it('[S5] currentRoomId → andWhere e.currentRoomId', async () => {
@@ -162,6 +173,15 @@ describe('EquipmentService.listEquipments (UC-64)', () => {
     expect(qb.orderBy).toHaveBeenCalledWith('e.createdAt', 'DESC');
   });
 
+  it('[S8b] sort theo loai thi tiep tuc sort ten thiet bi A-Z', async () => {
+    const { service, qb } = setup();
+    await service.listEquipments(
+      q({ sortBy: 'equipmentType', sortOrder: 'asc' }),
+    );
+    expect(qb.orderBy).toHaveBeenCalledWith('e.equipmentType', 'ASC');
+    expect(qb.addOrderBy).toHaveBeenCalledWith('e.equipmentName', 'ASC');
+  });
+
   it('[S9] phan trang — skip/take + total tu getManyAndCount', async () => {
     const { service, qb } = setup([makeRow(), makeRow({ id: 'eq-2' })], 25);
     const res = await service.listEquipments(q({ page: 3, limit: 5 }));
@@ -180,8 +200,8 @@ describe('EquipmentService.listEquipments (UC-64)', () => {
       }),
     );
     const strs = andWhereStrings(qb);
-    expect(strs).toContain('e.equipmentType = :equipmentType');
+    expect(strs).toContain('e.equipmentType IN (:...equipmentType)');
     expect(strs).toContain('e.assetStatus = :assetStatus');
-    expect(strs).toContain('e.healthStatus = :healthStatus');
+    expect(strs).toContain('e.healthStatus IN (:...healthStatus)');
   });
 });

@@ -1,5 +1,8 @@
+import type { FilterSelection } from '../../../common/utils/filter-selection.js';
 import {
   IsOptional,
+  IsArray,
+  ArrayMaxSize,
   IsBoolean,
   IsInt,
   Min,
@@ -8,7 +11,7 @@ import {
   MaxLength,
   IsIn,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 
 /**
  * Query cho GET /rooms/search (UC-ROOM-04).
@@ -17,19 +20,19 @@ import { Type } from 'class-transformer';
 export class SearchRoomsQueryDto {
   @IsOptional()
   @Type(() => Number)
-  @IsInt({ message: 'capacityMin phai la so nguyen' })
-  @Min(1, { message: 'capacityMin phai tu 1 tro len' })
+  @IsInt({ message: 'Sức chứa tối thiểu phải là số nguyên' })
+  @Min(1, { message: 'Sức chứa tối thiểu phải từ 1 trở lên' })
   capacityMin?: number;
 
   @IsOptional()
   @Type(() => Number)
-  @IsInt({ message: 'capacityMax phai la so nguyen' })
-  @Min(1, { message: 'capacityMax phai tu 1 tro len' })
+  @IsInt({ message: 'Sức chứa tối đa phải là số nguyên' })
+  @Min(1, { message: 'Sức chứa tối đa phải từ 1 trở lên' })
   capacityMax?: number;
 
   @IsOptional()
-  @IsString({ message: 'areaName phai la chuoi ky tu' })
-  @MaxLength(255, { message: 'areaName toi da 255 ky tu' })
+  @IsString({ message: 'Tên khu vực phải là chuỗi ký tự' })
+  @MaxLength(255, { message: 'Tên khu vực tối đa 255 ký tự' })
   areaName?: string;
 
   @IsOptional()
@@ -37,35 +40,44 @@ export class SearchRoomsQueryDto {
   @MaxLength(150)
   siteName?: string;
 
+  /** Exact site/area pairs, serialized by the location filter. */
+  @IsOptional()
+  @Transform(({ value }) => value === undefined ? undefined : Array.isArray(value) ? value : [value])
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsString({ each: true })
+  @MaxLength(600, { each: true })
+  locations?: string[];
+
   @IsOptional()
   @Type(() => Boolean)
-  @IsBoolean({ message: 'onlyAvailable phai la boolean' })
+  @IsBoolean({ message: 'onlyAvailable phải là boolean' })
   onlyAvailable?: boolean;
 
   /** Tim theo roomName/roomCode (ILIKE, khong phan biet hoa/thuong). */
   @IsOptional()
-  @IsString({ message: 'q phai la chuoi ky tu' })
-  @MaxLength(255, { message: 'q toi da 255 ky tu' })
+  @IsString({ message: 'Từ khóa tìm kiếm phải là chuỗi ký tự' })
+  @MaxLength(255, { message: 'Từ khóa tìm kiếm tối đa 255 ký tự' })
   q?: string;
 
   /** Loc theo trang thai TINH REAL-TIME (xem RoomSearchService.computeStatus). */
   @IsOptional()
-  @IsIn(['available', 'occupied', 'reserved', 'maintenance', 'inactive'], {
+  @IsIn(['available', 'occupied', 'reserved', 'maintenance', 'inactive'], { each: true,
     message:
-      'status khong hop le. Gia tri: available, occupied, reserved, maintenance, inactive',
+      'Trạng thái không hợp lệ. Giá trị: available, occupied, reserved, maintenance, inactive',
   })
-  status?: string;
+  status?: FilterSelection<string>;
 
   @IsOptional()
   @Type(() => Number)
-  @IsInt({ message: 'page phai la so nguyen' })
-  @Min(1, { message: 'page phai tu 1 tro len' })
+  @IsInt({ message: 'page phải là số nguyên' })
+  @Min(1, { message: 'page phải từ 1 trở lên' })
   page?: number = 1;
 
   @IsOptional()
   @Type(() => Number)
-  @IsInt({ message: 'limit phai la so nguyen' })
-  @Min(1, { message: 'limit phai tu 1 tro len' })
-  @Max(100, { message: 'limit khong duoc vuot qua 100' })
+  @IsInt({ message: 'limit phải là số nguyên' })
+  @Min(1, { message: 'limit phải từ 1 trở lên' })
+  @Max(100, { message: 'limit không được vượt quá 100' })
   limit?: number = 50;
 }

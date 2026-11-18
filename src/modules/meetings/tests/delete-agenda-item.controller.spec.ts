@@ -81,7 +81,7 @@ describe('MeetingsController.deleteAgendaItem', () => {
     );
     expect(result).toEqual({
       success: true,
-      message: 'Xoa muc agenda thanh cong',
+      message: 'Xóa mục chương trình họp thành công',
       data: mockResponse,
     });
   });

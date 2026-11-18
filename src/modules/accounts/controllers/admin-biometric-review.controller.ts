@@ -101,7 +101,7 @@ export class AdminBiometricReviewController {
     );
     return {
       success: true,
-      message: 'Anh sinh trac hoc da duoc duyet thanh cong',
+      message: 'Ảnh sinh trắc học đã được duyệt thành công',
       data,
     };
   }
@@ -121,7 +121,7 @@ export class AdminBiometricReviewController {
       dto.reason,
       request.user.userId,
     );
-    return { success: true, message: 'Anh sinh trac hoc da bi tu choi', data };
+    return { success: true, message: 'Ảnh sinh trắc học đã bị từ chối', data };
   }
 
   @Delete(':faceProfileId')
@@ -136,6 +136,6 @@ export class AdminBiometricReviewController {
       faceProfileId,
       request.user.userId,
     );
-    return { success: true, message: 'Anh sinh trac hoc da duoc xoa', data };
+    return { success: true, message: 'Ảnh sinh trắc học đã được xóa', data };
   }
 }

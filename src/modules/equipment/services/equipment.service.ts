@@ -1,3 +1,4 @@
+import { filterValues } from '../../../common/utils/filter-selection.js';
 import {
   Injectable,
   Logger,
@@ -83,7 +84,7 @@ export class EquipmentService {
     if (existing) {
       throw new ConflictException({
         success: false,
-        message: 'Serial number da ton tai',
+        message: 'Số serial đã tồn tại',
         error: {
           code: 'EQUIPMENT_SERIAL_ALREADY_EXISTS',
           details: { serialNumber: serial },
@@ -105,7 +106,7 @@ export class EquipmentService {
     if (existing) {
       throw new ConflictException({
         success: false,
-        message: 'Ma thiet bi da ton tai',
+        message: 'Mã thiết bị đã tồn tại',
         error: {
           code: 'EQUIPMENT_CODE_ALREADY_EXISTS',
           details: { equipmentCode: code },
@@ -197,7 +198,7 @@ export class EquipmentService {
       if (purchase.getTime() > now.getTime()) {
         throw new UnprocessableEntityException({
           success: false,
-          message: 'purchaseDate khong duoc o tuong lai',
+          message: 'Ngày mua không được ở tương lai',
           error: {
             code: 'INVALID_PURCHASE_DATE',
             details: { purchaseDate: dto.purchaseDate },
@@ -226,7 +227,7 @@ export class EquipmentService {
       if (!assignedRoom) {
         throw new NotFoundException({
           success: false,
-          message: 'Khong tim thay phong hop',
+          message: 'Không tìm thấy phòng họp',
           error: { code: 'ROOM_NOT_FOUND', details: { roomId: dto.roomId } },
           timestamp: new Date().toISOString(),
           path: EQUIPMENTS_PATH,
@@ -240,7 +241,7 @@ export class EquipmentService {
       ) {
         throw new ConflictException({
           success: false,
-          message: 'Phong khong o trang thai nhan duoc thiet bi',
+          message: 'Phòng không ở trạng thái nhận được thiết bị',
           error: {
             code: 'ROOM_NOT_ASSIGNABLE',
             details: {
@@ -374,7 +375,7 @@ export class EquipmentService {
     if (!dto.healthStatus && !dto.assetStatus) {
       throw new UnprocessableEntityException({
         success: false,
-        message: 'Phai cung cap it nhat healthStatus hoac assetStatus',
+        message: 'Phải cung cấp ít nhất tình trạng hoặc trạng thái tài sản',
         error: { code: 'FAULT_NO_CHANGE', details: {} },
         timestamp: new Date().toISOString(),
         path: `${EQUIPMENTS_PATH}/${equipmentId}/fault`,
@@ -388,7 +389,7 @@ export class EquipmentService {
     if (!equipment) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay thiet bi',
+        message: 'Không tìm thấy thiết bị',
         error: {
           code: 'EQUIPMENT_NOT_FOUND',
           details: { equipmentId },
@@ -405,7 +406,7 @@ export class EquipmentService {
     ) {
       throw new ConflictException({
         success: false,
-        message: 'Thiet bi da thanh ly / mat, khong the bao loi',
+        message: 'Thiết bị đã thanh lý hoặc bị mất, không thể báo lỗi',
         error: {
           code: 'EQUIPMENT_NOT_REPORTABLE',
           details: { assetStatus: equipment.assetStatus },
@@ -611,7 +612,7 @@ export class EquipmentService {
     if (!equipment) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay thiet bi',
+        message: 'Không tìm thấy thiết bị',
         error: {
           code: 'EQUIPMENT_NOT_FOUND',
           details: { equipmentId },
@@ -628,7 +629,7 @@ export class EquipmentService {
       throw new ConflictException({
         success: false,
         message:
-          'Thiet bi dang o trang thai binh thuong, khong co loi active de xac nhan',
+          'Thiết bị đang ở trạng thái bình thường, không có lỗi đang mở để xác nhận',
         error: {
           code: 'EQUIPMENT_NO_ACTIVE_FAULT',
           details: { healthStatus: equipment.healthStatus },
@@ -725,7 +726,7 @@ export class EquipmentService {
     if (!equipment) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay thiet bi',
+        message: 'Không tìm thấy thiết bị',
         error: {
           code: 'EQUIPMENT_NOT_FOUND',
           details: { equipmentId },
@@ -742,7 +743,7 @@ export class EquipmentService {
       throw new ConflictException({
         success: false,
         message:
-          'Thiet bi dang o trang thai binh thuong, khong co loi active de khac phuc',
+          'Thiết bị đang ở trạng thái bình thường, không có lỗi đang mở để khắc phục',
         error: {
           code: 'EQUIPMENT_NO_ACTIVE_FAULT',
           details: { healthStatus: equipment.healthStatus },
@@ -869,7 +870,7 @@ export class EquipmentService {
     if (!equipment) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay thiet bi',
+        message: 'Không tìm thấy thiết bị',
         error: { code: 'EQUIPMENT_NOT_FOUND', details: { equipmentId } },
         timestamp: new Date().toISOString(),
         path: `${EQUIPMENTS_PATH}/${equipmentId}/fault-history`,
@@ -951,7 +952,7 @@ export class EquipmentService {
     if (!equipment) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay thiet bi',
+        message: 'Không tìm thấy thiết bị',
         error: {
           code: 'EQUIPMENT_NOT_FOUND',
           details: { equipmentId },
@@ -1023,8 +1024,8 @@ export class EquipmentService {
 
     // Filter optional, kết hợp AND — bind param
     if (query.equipmentType) {
-      qb.andWhere('e.equipmentType = :equipmentType', {
-        equipmentType: query.equipmentType,
+      qb.andWhere('e.equipmentType IN (:...equipmentType)', {
+        equipmentType: filterValues(query.equipmentType),
       });
     }
     if (query.assetStatus) {
@@ -1033,8 +1034,8 @@ export class EquipmentService {
       });
     }
     if (query.healthStatus) {
-      qb.andWhere('e.healthStatus = :healthStatus', {
-        healthStatus: query.healthStatus,
+      qb.andWhere('e.healthStatus IN (:...healthStatus)', {
+        healthStatus: filterValues(query.healthStatus),
       });
     }
     if (query.currentRoomId) {
@@ -1068,9 +1069,15 @@ export class EquipmentService {
       | 'ASC'
       | 'DESC';
 
-    qb.orderBy(sortColumn, sortDirection)
-      .skip((page - 1) * limit)
-      .take(limit);
+    qb.orderBy(sortColumn, sortDirection);
+
+    // Khi nhóm theo loại, tiếp tục xếp tên A-Z trong từng nhóm để danh sách
+    // ổn định và dễ quét (Camera cùng nhau, sau đó tên thiết bị theo alphabet).
+    if (query.sortBy === 'equipmentType') {
+      qb.addOrderBy('e.equipmentName', 'ASC');
+    }
+
+    qb.skip((page - 1) * limit).take(limit);
 
     const [rows, total] = await qb.getManyAndCount();
 
@@ -1115,7 +1122,7 @@ export class EquipmentService {
     if (!equipment) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay thiet bi',
+        message: 'Không tìm thấy thiết bị',
         error: {
           code: 'EQUIPMENT_NOT_FOUND',
           details: { equipmentId },
@@ -1133,7 +1140,7 @@ export class EquipmentService {
       throw new ConflictException({
         success: false,
         message:
-          'Thiet bi khong o trang thai co the gan (retired/lost/maintenance)',
+          'Thiết bị không ở trạng thái có thể gán (đã thanh lý, bị mất hoặc đang bảo trì)',
         error: {
           code: 'EQUIPMENT_NOT_ASSIGNABLE',
           details: { assetStatus: equipment.assetStatus },
@@ -1150,7 +1157,7 @@ export class EquipmentService {
     if (!room) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay phong hop',
+        message: 'Không tìm thấy phòng họp',
         error: {
           code: 'ROOM_NOT_FOUND',
           details: { roomId: dto.roomId },
@@ -1166,7 +1173,7 @@ export class EquipmentService {
     ) {
       throw new ConflictException({
         success: false,
-        message: 'Phong khong o trang thai nhan duoc thiet bi',
+        message: 'Phòng không ở trạng thái nhận được thiết bị',
         error: {
           code: 'ROOM_NOT_ASSIGNABLE',
           details: {
@@ -1272,7 +1279,7 @@ export class EquipmentService {
     if (!equipment) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay thiet bi',
+        message: 'Không tìm thấy thiết bị',
         error: {
           code: 'EQUIPMENT_NOT_FOUND',
           details: { equipmentId },
@@ -1285,7 +1292,7 @@ export class EquipmentService {
     if (!equipment.currentRoomId) {
       throw new ConflictException({
         success: false,
-        message: 'Thiet bi hien khong duoc gan vao phong nao',
+        message: 'Thiết bị hiện không được gán vào phòng nào',
         error: {
           code: 'EQUIPMENT_NOT_ASSIGNED',
           details: { equipmentId },

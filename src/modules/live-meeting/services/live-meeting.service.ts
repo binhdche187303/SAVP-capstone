@@ -723,7 +723,7 @@ export class LiveMeetingService {
     if (!meeting || meeting.deletedAt) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay cuoc hop',
+        message: 'Không tìm thấy cuộc họp',
         error: {
           code: MEETING_EXTENSION_ERRORS.MEETING_NOT_FOUND,
           details: { meetingId },
@@ -735,7 +735,7 @@ export class LiveMeetingService {
     if (meeting.hostId !== authUser.userId) {
       throw new ForbiddenException({
         success: false,
-        message: 'Ban khong co quyen yeu cau gia han phien hop nay',
+        message: 'Bạn không có quyền yêu cầu gia hạn phiên họp này',
         error: {
           code: MEETING_EXTENSION_ERRORS.MEETING_EXTENSION_NOT_HOST,
           details: { required: 'must be host of the meeting' },
@@ -747,7 +747,7 @@ export class LiveMeetingService {
     if (meeting.status !== MeetingStatus.IN_PROGRESS) {
       throw new ConflictException({
         success: false,
-        message: 'Cuoc hop khong o trang thai in_progress',
+        message: 'Cuộc họp không ở trạng thái đang diễn ra',
         error: {
           code: MEETING_EXTENSION_ERRORS.MEETING_EXTENSION_NOT_IN_PROGRESS,
           details: { currentStatus: meeting.status },
@@ -759,7 +759,7 @@ export class LiveMeetingService {
     if (!meeting.roomId) {
       throw new ConflictException({
         success: false,
-        message: 'Cuoc hop khong co phong hop',
+        message: 'Cuộc họp không có phòng họp',
         error: { code: 'MEETING_HAS_NO_ROOM', details: { meetingId } },
       });
     }
@@ -782,7 +782,7 @@ export class LiveMeetingService {
     if (appliedRequests.length >= policy.maxExtensionCountPerMeeting) {
       throw new ConflictException({
         success: false,
-        message: 'Da vuot qua gioi han so lan gia han',
+        message: 'Đã vượt quá giới hạn số lần gia hạn',
         error: {
           code: MEETING_EXTENSION_ERRORS.MEETING_EXTENSION_LIMIT_EXCEEDED,
           details: {
@@ -813,7 +813,7 @@ export class LiveMeetingService {
     ) {
       throw new ConflictException({
         success: false,
-        message: 'Da vuot qua gioi han tong thoi gian gia han',
+        message: 'Đã vượt quá giới hạn tổng thời gian gia hạn',
         error: {
           code: MEETING_EXTENSION_ERRORS.MEETING_EXTENSION_LIMIT_EXCEEDED,
           details: {
@@ -845,7 +845,7 @@ export class LiveMeetingService {
     if (!activeBooking) {
       throw new ConflictException({
         success: false,
-        message: 'Khong tim thay phong dat active cho cuoc hop',
+        message: 'Không tìm thấy lượt đặt phòng đang hiệu lực cho cuộc họp',
         error: {
           code: MEETING_EXTENSION_ERRORS.MEETING_EXTENSION_NO_ACTIVE_BOOKING,
           details: { meetingId },
@@ -937,7 +937,7 @@ export class LiveMeetingService {
         if (!lockedMeeting || lockedMeeting.deletedAt) {
           throw new NotFoundException({
             success: false,
-            message: 'Khong tim thay cuoc hop',
+            message: 'Không tìm thấy cuộc họp',
             error: {
               code: MEETING_EXTENSION_ERRORS.MEETING_NOT_FOUND,
               details: { meetingId: meeting.id },
@@ -949,7 +949,7 @@ export class LiveMeetingService {
         if (lockedMeeting.status !== MeetingStatus.IN_PROGRESS) {
           throw new ConflictException({
             success: false,
-            message: 'Cuoc hop khong con o trang thai in_progress',
+            message: 'Cuộc họp không còn ở trạng thái đang diễn ra',
             error: {
               code: MEETING_EXTENSION_ERRORS.MEETING_EXTENSION_NOT_IN_PROGRESS,
               details: {},
@@ -982,7 +982,7 @@ export class LiveMeetingService {
           throw new ConflictException({
             success: false,
             message:
-              'Phong vua co lich ke tiep, khong the gia han den gio yeu cau',
+              'Phòng vừa có lịch kế tiếp, không thể gia hạn đến giờ yêu cầu',
             error: {
               code: MEETING_EXTENSION_ERRORS.ROOM_CONFLICT,
               details: {
@@ -1069,7 +1069,7 @@ export class LiveMeetingService {
           eventTime: now,
           actorUserId: authUser.userId,
           sourceType: MeetingEventSourceType.MANUAL,
-          description: 'Gia han phien hop',
+          description: 'Gia hạn phiên họp',
           oldValueJson: oldValue,
           newValueJson: newValue,
           metadataJson: {
@@ -1169,11 +1169,11 @@ export class LiveMeetingService {
       : null;
 
     const rejectionReason =
-      `Khong the gia han: thoi gian yeu cau ket thuc luc ${requestedNewEndTime.toISOString()} ` +
+      `Không thể gia hạn: thời gian yêu cầu kết thúc lúc ${requestedNewEndTime.toISOString()} ` +
       `vi pham khoang dem ${bufferMinutes} phut truoc cuoc hop ke tiep` +
       (nextMeeting ? ` "${nextMeeting.title}"` : '') +
       ` (bat dau luc ${nextBooking.reservedStartTime.toISOString()}). ` +
-      `Vui long lien he truc tiep Host cuoc hop sau de thong nhat thoi gian gia han.`;
+      `Vui lòng liên hệ trực tiếp Host cuộc họp sau để thống nhất thời gian gia hạn.`;
 
     let requestId: string;
 
@@ -1364,7 +1364,7 @@ export class LiveMeetingService {
     throw new ConflictException({
       success: false,
       message:
-        'Khong tim thay Manager/Approver hop le de xu ly yeu cau gia han bi xung dot',
+        'Không tìm thấy người duyệt hợp lệ để xử lý yêu cầu gia hạn bị xung đột',
       error: {
         code: MEETING_EXTENSION_ERRORS.MEETING_EXTENSION_NO_APPROVER,
         details: { hostId },
@@ -1566,7 +1566,7 @@ export class LiveMeetingService {
       );
       throw new ConflictException({
         success: false,
-        message: 'Loi gui thong bao den Manager',
+        message: 'Lỗi gửi thông báo đến Manager',
         error: {
           code: MEETING_EXTENSION_ERRORS.MEETING_EXTENSION_MANAGER_NOTIFICATION_FAILED,
           details: { requestId, meetingId: meeting.id },
@@ -1612,7 +1612,7 @@ export class LiveMeetingService {
     if (!request) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay yeu cau gia han',
+        message: 'Không tìm thấy yêu cầu gia hạn',
         error: {
           code: MEETING_EXTENSION_ERRORS.RESOURCE_NOT_FOUND,
           details: { requestId, meetingId },
@@ -1623,7 +1623,7 @@ export class LiveMeetingService {
     if (request.approvalStatus !== ApprovalStatus.PENDING) {
       throw new ConflictException({
         success: false,
-        message: 'Yeu cau gia han da duoc xu ly truoc do',
+        message: 'Yêu cầu gia hạn đã được xử lý trước đó',
         error: {
           code: MEETING_EXTENSION_ERRORS.REQUEST_ALREADY_PROCESSED,
           details: {
@@ -1663,7 +1663,7 @@ export class LiveMeetingService {
 
     throw new ForbiddenException({
       success: false,
-      message: 'Ban khong co quyen xu ly yeu cau gia han nay',
+      message: 'Bạn không có quyền xử lý yêu cầu gia hạn này',
       error: {
         code: 'PERMISSION_DENIED',
         details: {
@@ -1749,11 +1749,11 @@ export class LiveMeetingService {
           : NotificationType.MEETING_REQUEST_REJECTED,
         channel: NotificationChannel.IN_APP,
         subject: isApproved
-          ? 'Yeu cau gia han da duoc phe duyet'
-          : 'Yeu cau gia han da bi tu choi',
+          ? 'Yêu cầu gia hạn đã được phê duyệt'
+          : 'Yêu cầu gia hạn đã bị từ chối',
         content: isApproved
-          ? 'Yeu cau gia han phien hop cua ban da duoc phe duyet.'
-          : 'Yeu cau gia han phien hop cua ban da bi tu choi.',
+          ? 'Yêu cầu gia hạn phiên họp của bạn đã được phê duyệt.'
+          : 'Yêu cầu gia hạn phiên họp của bạn đã bị từ chối.',
         relatedEntityType: 'meeting_request',
         relatedEntityId: requestId,
         recipientScope: 'user_list',
@@ -1831,7 +1831,7 @@ export class LiveMeetingService {
     if (!meeting || meeting.deletedAt) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay cuoc hop',
+        message: 'Không tìm thấy cuộc họp',
         error: {
           code: MEETING_EXTENSION_ERRORS.MEETING_NOT_FOUND,
           details: { meetingId },
@@ -1869,7 +1869,7 @@ export class LiveMeetingService {
         ) {
           throw new ConflictException({
             success: false,
-            message: 'Yeu cau gia han da duoc xu ly truoc do',
+            message: 'Yêu cầu gia hạn đã được xử lý trước đó',
             error: {
               code: MEETING_EXTENSION_ERRORS.REQUEST_ALREADY_PROCESSED,
               details: {
@@ -1890,7 +1890,7 @@ export class LiveMeetingService {
           if (!lockedMeeting || lockedMeeting.deletedAt) {
             throw new NotFoundException({
               success: false,
-              message: 'Khong tim thay cuoc hop',
+              message: 'Không tìm thấy cuộc họp',
               error: {
                 code: MEETING_EXTENSION_ERRORS.MEETING_NOT_FOUND,
                 details: { meetingId },
@@ -1901,7 +1901,7 @@ export class LiveMeetingService {
           if (lockedMeeting.status !== MeetingStatus.IN_PROGRESS) {
             effectiveDecision = 'rejected';
             rejectionReason =
-              'Cuoc hop khong con o trang thai dien ra (in_progress)';
+              'Cuộc họp không còn ở trạng thái đang diễn ra';
           } else {
             const currentBooking = await em
               .createQueryBuilder(RoomBookingEntity, 'rb')
@@ -1925,7 +1925,7 @@ export class LiveMeetingService {
               if (conflictResult.hasConflict) {
                 effectiveDecision = 'rejected';
                 rejectionReason =
-                  'Phong da co lich dat trong khoang thoi gian gia han';
+                  'Phòng đã có lịch đặt trong khoảng thời gian gia hạn';
                 conflictDetails = {
                   conflicts: conflictResult.conflicts,
                   checkedAt: now.toISOString(),
@@ -1972,7 +1972,7 @@ export class LiveMeetingService {
                   eventTime: now,
                   actorUserId: authUser.userId,
                   sourceType: MeetingEventSourceType.MANUAL,
-                  description: 'Yeu cau gia han da duoc phe duyet',
+                  description: 'Yêu cầu gia hạn đã được phê duyệt',
                   oldValueJson: { endTime: oldEndTime.toISOString() },
                   newValueJson: {
                     endTime: requestedNewEndTime.toISOString(),
@@ -2016,7 +2016,7 @@ export class LiveMeetingService {
               }
             } else {
               effectiveDecision = 'rejected';
-              rejectionReason = 'Khong tim thay phong dat active cho cuoc hop';
+              rejectionReason = 'Không tìm thấy lượt đặt phòng đang hiệu lực cho cuộc họp';
             }
           }
         }
@@ -2038,7 +2038,7 @@ export class LiveMeetingService {
             eventTime: now,
             actorUserId: authUser.userId,
             sourceType: MeetingEventSourceType.MANUAL,
-            description: rejectionReason ?? 'Yeu cau gia han da bi tu choi',
+            description: rejectionReason ?? 'Yêu cầu gia hạn đã bị từ chối',
             oldValueJson: { endTime: oldEndTime.toISOString() },
             newValueJson: {
               rejectionReason: rejectionReason ?? null,
@@ -2125,8 +2125,8 @@ export class LiveMeetingService {
       decisionAt: now.toISOString(),
       message:
         effectiveDecision === 'approved'
-          ? 'Yeu cau gia han da duoc phe duyet.'
-          : 'Yeu cau gia han da bi tu choi.' +
+          ? 'Yêu cầu gia hạn đã được phê duyệt.'
+          : 'Yêu cầu gia hạn đã bị từ chối.' +
             (rejectionReason ? ' Ly do: ' + rejectionReason : ''),
     });
     if (effectiveDecision === 'approved') {
@@ -2159,7 +2159,7 @@ export class LiveMeetingService {
     if (!meeting || meeting.deletedAt) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay cuoc hop',
+        message: 'Không tìm thấy cuộc họp',
         error: {
           code: MEETING_END_ERRORS.MEETING_NOT_FOUND,
           details: { meetingId },
@@ -2176,7 +2176,7 @@ export class LiveMeetingService {
       // (permission check is done at controller guard; here we verify ownership only)
       throw new ForbiddenException({
         success: false,
-        message: 'Ban khong co quyen ket thuc phien hop nay',
+        message: 'Bạn không có quyền kết thúc phiên họp này',
         error: {
           code: MEETING_END_ERRORS.PERMISSION_DENIED,
           details: {
@@ -2194,7 +2194,7 @@ export class LiveMeetingService {
     if (meeting.actualEndTime) {
       throw new ConflictException({
         success: false,
-        message: 'Cuoc hop da ket thuc truoc do',
+        message: 'Cuộc họp đã kết thúc trước đó',
         error: {
           code: MEETING_END_ERRORS.MEETING_ALREADY_COMPLETED,
           details: {
@@ -2501,7 +2501,7 @@ export class LiveMeetingService {
         if (!lockedMeeting || lockedMeeting.deletedAt) {
           throw new NotFoundException({
             success: false,
-            message: 'Khong tim thay cuoc hop',
+            message: 'Không tìm thấy cuộc họp',
             error: {
               code: MEETING_END_ERRORS.MEETING_NOT_FOUND,
               details: { meetingId },
@@ -2513,7 +2513,7 @@ export class LiveMeetingService {
         if (lockedMeeting.actualEndTime) {
           throw new ConflictException({
             success: false,
-            message: 'Cuoc hop da duoc ket thuc boi mot yeu cau khac',
+            message: 'Cuộc họp đã được kết thúc bởi một yêu cầu khác',
             error: {
               code: MEETING_END_ERRORS.MEETING_ALREADY_COMPLETED,
               details: { meetingId },
@@ -2555,7 +2555,7 @@ export class LiveMeetingService {
           eventTime: now,
           actorUserId,
           sourceType,
-          description: 'Phien hop ket thuc',
+          description: 'Phiên họp kết thúc',
           oldValueJson: oldValue,
           newValueJson: newValue,
         });
@@ -2611,8 +2611,8 @@ export class LiveMeetingService {
             oldStatus: bookingToRelease.status,
             newStatus: RoomBookingStatus.COMPLETED,
             description: isEarlyEnd
-              ? 'Phong duoc giai phong som do cuoc hop ket thuc truoc gio'
-              : 'Phong duoc giai phong khi cuoc hop ket thuc',
+              ? 'Phòng được giải phóng sớm do cuộc họp kết thúc trước giờ'
+              : 'Phòng được giải phóng khi cuộc họp kết thúc',
           });
           await em.save(RoomEventEntity, roomEvent);
         }
@@ -2661,7 +2661,7 @@ export class LiveMeetingService {
       case MeetingStatus.COMPLETED:
         throw new ConflictException({
           success: false,
-          message: 'Cuoc hop da ket thuc',
+          message: 'Cuộc họp đã kết thúc',
           error: {
             code: MEETING_END_ERRORS.MEETING_ALREADY_COMPLETED,
             details: {},
@@ -2670,13 +2670,13 @@ export class LiveMeetingService {
       case MeetingStatus.CANCELLED:
         throw new ConflictException({
           success: false,
-          message: 'Cuoc hop da bi huy',
+          message: 'Cuộc họp đã bị hủy',
           error: { code: MEETING_END_ERRORS.MEETING_CANCELLED, details: {} },
         });
       case MeetingStatus.SCHEDULED:
         throw new ConflictException({
           success: false,
-          message: 'Cuoc hop chua duoc bat dau',
+          message: 'Cuộc họp chưa được bắt đầu',
           error: { code: MEETING_END_ERRORS.MEETING_NOT_STARTED, details: {} },
         });
       case MeetingStatus.IN_PROGRESS:
@@ -2685,7 +2685,7 @@ export class LiveMeetingService {
       default:
         throw new ConflictException({
           success: false,
-          message: 'Trang thai cuoc hop khong hop le de ket thuc',
+          message: 'Trạng thái cuộc họp không hợp lệ để kết thúc',
           error: {
             code: MEETING_END_ERRORS.MEETING_NOT_IN_PROGRESS,
             details: { currentStatus: meeting.status },
@@ -2762,7 +2762,7 @@ export class LiveMeetingService {
     if (!meeting || meeting.deletedAt) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay cuoc hop',
+        message: 'Không tìm thấy cuộc họp',
         error: {
           code: PRESENT_ATTENDEES_ERRORS.MEETING_NOT_FOUND,
           details: { meetingId },
@@ -2780,7 +2780,7 @@ export class LiveMeetingService {
     if (!isInProgress && !isScheduledAndInWindow) {
       throw new ConflictException({
         success: false,
-        message: 'Cuoc hop chua dien ra hoac da ket thuc',
+        message: 'Cuộc họp chưa diễn ra hoặc đã kết thúc',
         error: {
           code: PRESENT_ATTENDEES_ERRORS.MEETING_NOT_IN_PROGRESS,
           details: {
@@ -3038,7 +3038,7 @@ export class LiveMeetingService {
     if (!meeting || meeting.deletedAt) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay cuoc hop',
+        message: 'Không tìm thấy cuộc họp',
         error: {
           code: MEETING_ATTENDANCE_ERRORS.MEETING_NOT_FOUND,
           details: { meetingId },
@@ -3051,7 +3051,7 @@ export class LiveMeetingService {
     if (!allowedStatuses.includes(meeting.status)) {
       throw new ConflictException({
         success: false,
-        message: 'Cuoc hop khong o trang thai hoat dong hoac da ket thuc',
+        message: 'Cuộc họp không ở trạng thái hoạt động hoặc đã kết thúc',
         error: {
           code: MEETING_ATTENDANCE_ERRORS.MEETING_NOT_ACTIVE_OR_COMPLETED,
           details: {
@@ -3342,7 +3342,7 @@ export class LiveMeetingService {
     if (!meeting || meeting.deletedAt) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay cuoc hop',
+        message: 'Không tìm thấy cuộc họp',
         error: {
           code: MEETING_ATTENDANCE_ERRORS.MEETING_NOT_FOUND,
           details: { meetingId },
@@ -3353,7 +3353,7 @@ export class LiveMeetingService {
     if ((meeting.status as string) !== 'in_progress') {
       throw new ConflictException({
         success: false,
-        message: 'Cuoc hop chua o trang thai dang dien ra',
+        message: 'Cuộc họp chưa ở trạng thái đang diễn ra',
         error: {
           code: MEETING_ATTENDANCE_ERRORS.MEETING_NOT_ACTIVE_OR_COMPLETED,
           details: { meetingId, currentStatus: meeting.status },
@@ -3734,7 +3734,7 @@ export class LiveMeetingService {
     if (!sanitized || sanitized.trim().length === 0) {
       throw new BadRequestException({
         success: false,
-        message: 'Noi dung ghi chu khong duoc de trong',
+        message: 'Nội dung ghi chú không được để trống',
         error: {
           code: MEETING_NOTE_ERRORS.VALIDATION_ERROR,
           details: { field: 'content', reason: 'empty_after_sanitize' },
@@ -3746,7 +3746,7 @@ export class LiveMeetingService {
     if (dto.noteType === 'system_note') {
       throw new UnprocessableEntityException({
         success: false,
-        message: 'Loai ghi chu system_note khong duoc phep tu nguoi dung',
+        message: 'Người dùng không được tạo ghi chú hệ thống (system_note)',
         error: {
           code: MEETING_NOTE_ERRORS.NOTE_SYSTEM_TYPE_FORBIDDEN,
           details: { noteType: dto.noteType },
@@ -3766,7 +3766,7 @@ export class LiveMeetingService {
       if (!meeting || meeting.deletedAt) {
         throw new NotFoundException({
           success: false,
-          message: 'Khong tim thay cuoc hop',
+          message: 'Không tìm thấy cuộc họp',
           error: {
             code: MEETING_NOTE_ERRORS.MEETING_NOT_FOUND,
             details: { meetingId },
@@ -3778,7 +3778,7 @@ export class LiveMeetingService {
       if (meeting.status !== MeetingStatus.IN_PROGRESS) {
         throw new ConflictException({
           success: false,
-          message: 'Cuoc hop khong o trang thai dang dien ra',
+          message: 'Cuộc họp không ở trạng thái đang diễn ra',
           error: {
             code: MEETING_NOTE_ERRORS.MEETING_NOT_IN_PROGRESS,
             details: { currentStatus: meeting.status },
@@ -3793,7 +3793,7 @@ export class LiveMeetingService {
       if (dto.noteType === 'host_note' && !isHost) {
         throw new ForbiddenException({
           success: false,
-          message: 'Chi Host moi duoc tao ghi chu host_note',
+          message: 'Chỉ Host mới được tạo ghi chú dành cho chủ trì (host_note)',
           error: { code: MEETING_NOTE_ERRORS.NOTE_HOST_ONLY, details: {} },
         });
       }
@@ -3966,7 +3966,7 @@ export class LiveMeetingService {
     if (!meeting || meeting.deletedAt) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay cuoc hop',
+        message: 'Không tìm thấy cuộc họp',
         error: {
           code: MEETING_NOTE_ERRORS.MEETING_NOT_FOUND,
           details: { meetingId },
@@ -4067,7 +4067,7 @@ export class LiveMeetingService {
     if (from && to && from.getTime() > to.getTime()) {
       throw new BadRequestException({
         success: false,
-        message: 'Khoang thoi gian khong hop le (from > to)',
+        message: 'Khoảng thời gian không hợp lệ (from > to)',
         error: { code: 'INVALID_DATE_RANGE', details: {} },
       });
     }
@@ -4079,7 +4079,7 @@ export class LiveMeetingService {
     if (!meeting || meeting.deletedAt) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay cuoc hop',
+        message: 'Không tìm thấy cuộc họp',
         error: { code: 'MEETING_NOT_FOUND', details: { meetingId } },
       });
     }
@@ -4092,7 +4092,7 @@ export class LiveMeetingService {
     if (!role.isHost && !role.isParticipant) {
       throw new ForbiddenException({
         success: false,
-        message: 'Ban khong phai host/participant cua cuoc hop nay',
+        message: 'Bạn không phải chủ trì hoặc thành viên của cuộc họp này',
         error: { code: 'NOT_A_MEETING_PARTICIPANT', details: {} },
       });
     }
@@ -4435,7 +4435,7 @@ export class LiveMeetingService {
         keyword: null,
         error: {
           success: false,
-          message: 'Tu khoa tim kiem khong duoc vuot qua 255 ky tu',
+          message: 'Từ khóa tìm kiếm không được vượt quá 255 ký tự',
           error: { code: 'VALIDATION_ERROR', details: { maxLength: 255 } },
         },
       };
@@ -4580,7 +4580,7 @@ export class LiveMeetingService {
       if (fromDate > toDate) {
         throw new BadRequestException({
           success: false,
-          message: "Gia tri 'from' phai nho hon hoac bang 'to'",
+          message: "Giá trị 'from' phải nhỏ hơn hoặc bằng 'to'",
           error: {
             code: MEETING_NOTE_ERRORS.INVALID_DATE_RANGE,
             details: { from: query.from, to: query.to },
@@ -4608,7 +4608,7 @@ export class LiveMeetingService {
     if (!meeting || meeting.deletedAt) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay cuoc hop',
+        message: 'Không tìm thấy cuộc họp',
         error: {
           code: MEETING_NOTE_ERRORS.MEETING_NOT_FOUND,
           details: { meetingId },
@@ -4620,7 +4620,7 @@ export class LiveMeetingService {
     if (!validStatuses.includes(meeting.status)) {
       throw new UnprocessableEntityException({
         success: false,
-        message: 'Cuoc hop khong o trang thai cho phep xem ghi chu',
+        message: 'Cuộc họp không ở trạng thái cho phép xem ghi chú',
         error: {
           code: MEETING_NOTE_ERRORS.MEETING_STATUS_NOT_VIEWABLE,
           details: { currentStatus: meeting.status },
@@ -4654,7 +4654,7 @@ export class LiveMeetingService {
     if (!isHost && !isCoHost && !isParticipant) {
       throw new ForbiddenException({
         success: false,
-        message: 'Ban khong co quyen xem ghi chu cua cuoc hop nay.',
+        message: 'Bạn không có quyền xem ghi chú của cuộc họp này.',
         error: {
           code: MEETING_NOTE_ERRORS.NOT_A_MEETING_PARTICIPANT,
           details: {},
@@ -4820,11 +4820,11 @@ export class LiveMeetingService {
     const message =
       total === 0
         ? isSearchMode
-          ? 'Khong tim thay ghi chu nao khop voi dieu kien tim kiem cua ban.'
-          : 'Cuoc hop nay khong co ghi chu nao duoc luu lai.'
+          ? 'Không tìm thấy ghi chú nào khớp với điều kiện tìm kiếm của bạn.'
+          : 'Cuộc họp này không có ghi chú nào được lưu lại.'
         : isSearchMode
-          ? 'Tim kiem ghi chu thanh cong'
-          : 'Lay danh sach ghi chu thanh cong';
+          ? 'Tìm kiếm ghi chú thành công'
+          : 'Lấy danh sách ghi chú thành công';
 
     return { data, meta: { page, limit, total, totalPages }, message };
   }

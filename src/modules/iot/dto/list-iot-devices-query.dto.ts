@@ -1,3 +1,4 @@
+import type { FilterSelection } from '../../../common/utils/filter-selection.js';
 import {
   IsOptional,
   IsEnum,
@@ -35,18 +36,18 @@ export class ListIotDevicesQueryDto {
   limit: number = 20;
 
   @IsOptional()
-  @IsEnum(IoTDeviceStatus)
-  status?: IoTDeviceStatus;
+  @IsEnum(IoTDeviceStatus, { each: true })
+  status?: FilterSelection<IoTDeviceStatus>;
 
   @Expose({ name: 'device_type' })
   @IsOptional()
-  @IsEnum(IoTDeviceType)
-  deviceType?: IoTDeviceType;
+  @IsEnum(IoTDeviceType, { each: true })
+  deviceType?: FilterSelection<IoTDeviceType>;
 
   @Expose({ name: 'room_id' })
   @IsOptional()
-  @IsUUID('4')
-  roomId?: string;
+  @IsUUID('4', { each: true })
+  roomId?: FilterSelection<string>;
 
   @IsOptional()
   @MaxLength(200)

@@ -100,7 +100,7 @@ describe('MeetingsController — Agenda Attachment endpoints', () => {
       );
       expect(result).toEqual({
         success: true,
-        message: 'Da dinh kem tai lieu thanh cong',
+        message: 'Đã đính kèm tài liệu thành công',
         data: mockUploadResponse,
       });
     });
@@ -139,7 +139,7 @@ describe('MeetingsController — Agenda Attachment endpoints', () => {
       );
       expect(result).toEqual({
         success: true,
-        message: 'Da go tai lieu dinh kem',
+        message: 'Đã gỡ tài liệu đính kèm',
         data: mockDeleteResponse,
       });
     });

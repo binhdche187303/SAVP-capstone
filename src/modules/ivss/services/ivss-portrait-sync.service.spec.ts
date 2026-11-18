@@ -162,7 +162,7 @@ describe('IvssPortraitSyncService (PORTRAIT-001 / UC-109+110)', () => {
     expect(bridgeMock.enrollFace).not.toHaveBeenCalled();
   });
 
-  it('idempotent (Nợ #2): xoá person cũ trước khi enroll khi mapping lệch', async () => {
+  it('idempotent (Nợ #2): xóa person cũ trước khi enroll khi mapping lệch', async () => {
     wire({ stale: [{ device_person_id: 'OLD_SZ' }] });
     await service.enrollPortrait('u1');
     expect(bridgeMock.deleteFace).toHaveBeenCalledWith({

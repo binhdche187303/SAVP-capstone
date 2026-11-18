@@ -1,3 +1,4 @@
+import { filterValues, type FilterSelection } from '../../../common/utils/filter-selection.js';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -7,9 +8,10 @@ export interface SecurityAlertExportParams {
   from: string;
   to: string;
   filters: {
-    alertType: string | null;
-    zoneId: string | null;
-    status: string | null;
+    alertType: FilterSelection<string> | null;
+    zoneId: FilterSelection<string> | null;
+    status: FilterSelection<string> | null;
+    severity?: FilterSelection<string> | null;
   };
 }
 
@@ -71,17 +73,18 @@ export class SecurityAlertReportDataService {
       .orderBy('sa.triggeredAt', 'DESC');
 
     if (params.filters.alertType) {
-      qb.andWhere('sa.alertType = :alertType', {
-        alertType: params.filters.alertType,
+      qb.andWhere('sa.alertType IN (:...alertType)', {
+        alertType: filterValues(params.filters.alertType),
       });
     }
     if (params.filters.zoneId) {
-      qb.andWhere('sa.zoneId = :zoneId', { zoneId: params.filters.zoneId });
+      qb.andWhere('sa.zoneId IN (:...zoneId)', { zoneId: filterValues(params.filters.zoneId) });
     }
     if (params.filters.status) {
-      qb.andWhere('sa.status = :status', { status: params.filters.status });
+      qb.andWhere('sa.status IN (:...status)', { status: filterValues(params.filters.status).flatMap(value => value === 'open' ? ['new', 'acknowledged'] : [value]) });
     }
 
+    if (params.filters.severity) qb.andWhere('sa.severity IN (:...severity)', { severity: filterValues(params.filters.severity) });
     return qb.getMany();
   }
 

@@ -137,19 +137,19 @@ export class MinutesAiDraftProcessor extends WorkerHost {
     if (!transcript || transcript.meetingId !== meetingId) {
       throw new NonRetryableAiJobError(
         AI_MINUTES_ERROR_CODES.TRANSCRIPT_NOT_FOUND,
-        'Transcript khong ton tai hoac khong thuoc meeting',
+        'Transcript không tồn tại hoặc không thuộc cuộc họp',
       );
     }
     if (!TRANSCRIPT_READY_STATUSES.includes(transcript.status)) {
       throw new NonRetryableAiJobError(
         AI_MINUTES_ERROR_CODES.TRANSCRIPT_NOT_READY,
-        `Transcript status=${transcript.status} khong hop le`,
+        `Trạng thái transcript ${transcript.status} không hợp lệ`,
       );
     }
     if (TRANSCRIPT_BLOCKED_SECURITY.includes(transcript.securityStatus)) {
       throw new NonRetryableAiJobError(
         AI_MINUTES_ERROR_CODES.TRANSCRIPT_RESTRICTED,
-        'Transcript bi han che sau khi job duoc queue',
+        'Transcript bị hạn chế sau khi tác vụ được đưa vào hàng đợi',
       );
     }
 
@@ -231,7 +231,7 @@ export class MinutesAiDraftProcessor extends WorkerHost {
       if (!meeting || meeting.deletedAt) {
         throw new NonRetryableAiJobError(
           AI_MINUTES_ERROR_CODES.MEETING_NOT_FOUND,
-          'Meeting da bi xoa sau khi job duoc queue',
+          'Cuộc họp đã bị xóa sau khi tác vụ được đưa vào hàng đợi',
         );
       }
 
@@ -269,7 +269,7 @@ export class MinutesAiDraftProcessor extends WorkerHost {
         if (!overwritable) {
           throw new NonRetryableAiJobError(
             AI_MINUTES_ERROR_CODES.MINUTES_ALREADY_EXISTS,
-            'Minutes da ton tai (tao tay/publish trong luc job chay) — khong ghi de',
+            'Biên bản đã tồn tại (được tạo tay hoặc ban hành trong lúc tác vụ chạy), không ghi đè',
           );
         }
         existing.minutesContent = output.summary;

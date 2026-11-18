@@ -1,3 +1,4 @@
+import { filterValues } from '../../../common/utils/filter-selection.js';
 import {
   Injectable,
   NotFoundException,
@@ -569,8 +570,8 @@ export class MinutesService {
 
       // status filter (client) â€” AND thÃªm vÃ o scope, khÃ´ng thay tháº¿
       if (queryDto.status && queryDto.status !== 'all') {
-        qb.andWhere('minutes.status = :clientStatus', {
-          clientStatus: queryDto.status,
+        qb.andWhere('minutes.status IN (:...clientStatus)', {
+          clientStatus: filterValues(queryDto.status),
         });
       }
 
@@ -785,7 +786,7 @@ export class MinutesService {
     if (!minutes || minutes.deletedAt) {
       throw new NotFoundException({
         success: false,
-        message: 'Bien ban hop khong ton tai hoac da bi xoa',
+        message: 'Biên bản họp không tồn tại hoặc đã bị xóa',
         error: { code: 'MINUTES_NOT_FOUND', details: { minutesId } },
       });
     }
@@ -793,7 +794,7 @@ export class MinutesService {
     if (minutes.preparedBy !== authUserId) {
       throw new ForbiddenException({
         success: false,
-        message: 'Ban khong phai la nguoi soan thao bien ban hop nay',
+        message: 'Bạn không phải là người soạn thảo biên bản họp này',
         error: { code: 'NOT_MINUTES_OWNER', details: { minutesId } },
       });
     }
@@ -823,7 +824,7 @@ export class MinutesService {
     if (!minutes) {
       throw new NotFoundException({
         success: false,
-        message: 'Bien ban hop khong ton tai hoac da bi xoa',
+        message: 'Biên bản họp không tồn tại hoặc đã bị xóa',
         error: { code: 'MINUTES_NOT_FOUND', details: { minutesId } },
       });
     }
@@ -853,7 +854,7 @@ export class MinutesService {
       ) {
         throw new ForbiddenException({
           success: false,
-          message: 'Ban khong co quyen xem bien ban hop nay',
+          message: 'Bạn không có quyền xem biên bản họp này',
           error: { code: 'MEETING_MINUTES_ACCESS_DENIED', details: {} },
         });
       }
@@ -870,7 +871,7 @@ export class MinutesService {
     if (!file || !file.buffer || file.buffer.length === 0) {
       throw new BadRequestException({
         success: false,
-        message: 'Vui long dinh kem file',
+        message: 'Vui lòng đính kèm file',
         error: { code: 'ATTACHMENT_FILE_REQUIRED', details: {} },
       });
     }
@@ -883,7 +884,7 @@ export class MinutesService {
     if (file.size > maxBytes) {
       throw new BadRequestException({
         success: false,
-        message: 'File vuot qua gioi han ' + maxBytes + ' bytes',
+        message: 'File vượt quá giới hạn ' + maxBytes + ' bytes',
         error: { code: 'ATTACHMENT_FILE_TOO_LARGE', details: { maxBytes } },
       });
     }
@@ -897,7 +898,7 @@ export class MinutesService {
     if (!allowedMimeTypes.includes(file.mimetype)) {
       throw new BadRequestException({
         success: false,
-        message: 'Dinh dang file khong duoc ho tro',
+        message: 'Định dạng file không được hỗ trợ',
         error: {
           code: 'ATTACHMENT_FILE_TYPE_INVALID',
           details: { allowedMimeTypes },
@@ -926,7 +927,7 @@ export class MinutesService {
     if (!allowedExtensions || !allowedExtensions.includes(ext)) {
       throw new BadRequestException({
         success: false,
-        message: 'Duoi file khong khop voi MIME type',
+        message: 'Đuôi file không khớp với loại MIME',
         error: {
           code: 'ATTACHMENT_FILE_TYPE_INVALID',
           details: { expectedExtensions: allowedExtensions },
@@ -953,7 +954,7 @@ export class MinutesService {
       );
       throw new BadGatewayException({
         success: false,
-        message: 'Khong the luu file len kho luu tru',
+        message: 'Không thể lưu file lên kho lưu trữ',
         error: { code: 'ATTACHMENT_STORAGE_FAILED', details: {} },
       });
     }
@@ -976,7 +977,7 @@ export class MinutesService {
         if (!minutes || minutes.deletedAt) {
           throw new NotFoundException({
             success: false,
-            message: 'Bien ban hop khong ton tai hoac da bi xoa',
+            message: 'Biên bản họp không tồn tại hoặc đã bị xóa',
             error: { code: 'MINUTES_NOT_FOUND', details: { minutesId } },
           });
         }
@@ -984,7 +985,7 @@ export class MinutesService {
         if (minutes.preparedBy !== authUser.userId) {
           throw new ForbiddenException({
             success: false,
-            message: 'Ban khong phai la nguoi soan thao bien ban hop nay',
+            message: 'Bạn không phải là người soạn thảo biên bản họp này',
             error: { code: 'NOT_MINUTES_OWNER', details: { minutesId } },
           });
         }
@@ -992,7 +993,7 @@ export class MinutesService {
         if (minutes.status !== MeetingMinutesStatus.DRAFT) {
           throw new ConflictException({
             success: false,
-            message: 'Chi co the dinh kem file khi bien ban o trang thai nhap',
+            message: 'Chỉ có thể đính kèm file khi biên bản ở trạng thái nháp',
             error: {
               code: 'MINUTES_NOT_DRAFT',
               details: { minutesId, currentStatus: minutes.status },
@@ -1013,7 +1014,7 @@ export class MinutesService {
         if (currentCount >= maxCount) {
           throw new ConflictException({
             success: false,
-            message: 'Da dat so luong file dinh kem toi da',
+            message: 'Đã đạt số lượng file đính kèm tối đa',
             error: {
               code: 'ATTACHMENT_LIMIT_EXCEEDED',
               details: { maxCount, currentCount },
@@ -1132,7 +1133,7 @@ export class MinutesService {
       if (!minutes || minutes.deletedAt) {
         throw new NotFoundException({
           success: false,
-          message: 'Bien ban hop khong ton tai hoac da bi xoa',
+          message: 'Biên bản họp không tồn tại hoặc đã bị xóa',
           error: { code: 'MINUTES_NOT_FOUND', details: { minutesId } },
         });
       }
@@ -1140,7 +1141,7 @@ export class MinutesService {
       if (minutes.preparedBy !== authUser.userId) {
         throw new ForbiddenException({
           success: false,
-          message: 'Ban khong phai la nguoi soan thao bien ban hop nay',
+          message: 'Bạn không phải là người soạn thảo biên bản họp này',
           error: { code: 'NOT_MINUTES_OWNER', details: { minutesId } },
         });
       }
@@ -1148,7 +1149,7 @@ export class MinutesService {
       if (minutes.status !== MeetingMinutesStatus.DRAFT) {
         throw new ConflictException({
           success: false,
-          message: 'Chi co the go file khi bien ban o trang thai nhap',
+          message: 'Chỉ có thể gỡ file khi biên bản ở trạng thái nháp',
           error: {
             code: 'MINUTES_NOT_DRAFT',
             details: { minutesId, currentStatus: minutes.status },
@@ -1168,7 +1169,7 @@ export class MinutesService {
       if (!mediaFile) {
         throw new NotFoundException({
           success: false,
-          message: 'File dinh kem khong ton tai hoac da bi xoa',
+          message: 'File đính kèm không tồn tại hoặc đã bị xóa',
           error: { code: 'ATTACHMENT_NOT_FOUND', details: { fileId } },
         });
       }
@@ -1266,7 +1267,7 @@ export class MinutesService {
     if (!minutes) {
       throw new NotFoundException({
         success: false,
-        message: 'Bien ban hop khong ton tai hoac da bi xoa',
+        message: 'Biên bản họp không tồn tại hoặc đã bị xóa',
         error: { code: 'MEETING_MINUTES_NOT_FOUND', details: { id } },
       });
     }
@@ -1298,7 +1299,7 @@ export class MinutesService {
       ) {
         throw new ForbiddenException({
           success: false,
-          message: 'Ban khong co quyen xem bien ban hop nay',
+          message: 'Bạn không có quyền xem biên bản họp này',
           error: { code: 'MEETING_MINUTES_ACCESS_DENIED', details: {} },
         });
       }
@@ -1483,7 +1484,7 @@ export class MinutesService {
 
     const isDraft = minutes.status === MeetingMinutesStatus.DRAFT;
     const isMeetingHost = meeting.hostId === authUser.userId;
-    // Đang chờ ký / đã ký duyệt: khoá sửa & xoá, chỉ còn ban hành
+    // Đang chờ ký / đã ký duyệt: khoá sửa & xóa, chỉ còn ban hành
     const [signoff] = await this.dataSource.query(
       `SELECT signoff_required, signoff_status, signoff_minutes_id, signoff_at FROM meetings WHERE id = $1`,
       [meeting.id],
@@ -1608,7 +1609,7 @@ export class MinutesService {
     if (!updatableFields.some((f) => dto[f] !== undefined)) {
       throw new BadRequestException({
         success: false,
-        message: 'Khong co truong nao duoc cap nhat',
+        message: 'Không có trường nào được cập nhật',
         error: { code: 'NO_UPDATE_FIELD', details: {} },
       });
     }
@@ -1623,7 +1624,7 @@ export class MinutesService {
         if (!minutes || minutes.deletedAt) {
           throw new NotFoundException({
             success: false,
-            message: 'Bien ban hop khong ton tai hoac da bi xoa',
+            message: 'Biên bản họp không tồn tại hoặc đã bị xóa',
             error: { code: 'MINUTES_NOT_FOUND', details: { minutesId } },
           });
         }
@@ -1637,7 +1638,7 @@ export class MinutesService {
         if (!isOwner) {
           throw new ForbiddenException({
             success: false,
-            message: 'Ban khong phai la nguoi soan thao hoac host',
+            message: 'Bạn không phải là người soạn thảo hoặc chủ trì',
             error: { code: 'NOT_MINUTES_OWNER', details: { minutesId } },
           });
         }
@@ -1645,7 +1646,7 @@ export class MinutesService {
         if (minutes.status !== MeetingMinutesStatus.DRAFT) {
           throw new ConflictException({
             success: false,
-            message: 'Chi co the cap nhat bien ban o trang thai nhap',
+            message: 'Chỉ có thể cập nhật biên bản ở trạng thái nháp',
             error: {
               code: 'MINUTES_NOT_DRAFT',
               details: { minutesId, currentStatus: minutes.status },
@@ -1655,7 +1656,7 @@ export class MinutesService {
         if (dto.versionNo !== minutes.versionNo) {
           throw new ConflictException({
             success: false,
-            message: 'Phien ban khong khop, vui long tai lai du lieu',
+            message: 'Phiên bản không khớp, vui lòng tải lại dữ liệu',
             error: {
               code: 'MINUTES_VERSION_CONFLICT',
               details: {
@@ -1799,7 +1800,7 @@ export class MinutesService {
         if (!minutes || minutes.deletedAt) {
           throw new NotFoundException({
             success: false,
-            message: 'Bien ban hop khong ton tai hoac da bi xoa',
+            message: 'Biên bản họp không tồn tại hoặc đã bị xóa',
             error: {
               code: 'MEETING_MINUTES_NOT_FOUND',
               details: { minutesId },
@@ -1826,7 +1827,7 @@ export class MinutesService {
           throw new ConflictException({
             success: false,
             message:
-              'Chi co the bat/tat chia se truc tiep khi bien ban o trang thai nhap',
+              'Chỉ có thể bật/tắt chia sẻ trực tiếp khi biên bản ở trạng thái nháp',
             error: {
               code: 'MINUTES_NOT_DRAFT',
               details: { minutesId, currentStatus: minutes.status },
@@ -1844,7 +1845,7 @@ export class MinutesService {
             throw new ConflictException({
               success: false,
               message:
-                'Cuoc hop khong o trang thai dang dien ra, khong the bat chia se truc tiep',
+                'Cuộc họp không ở trạng thái đang diễn ra, không thể bật chia sẻ trực tiếp',
               error: {
                 code: 'MEETING_NOT_IN_PROGRESS',
                 details: {
@@ -1945,7 +1946,7 @@ export class MinutesService {
     if (dto.recordingFileId === undefined && dto.transcriptId === undefined) {
       throw new BadRequestException({
         success: false,
-        message: 'Khong co truong nao duoc lien ket',
+        message: 'Không có trường nào được liên kết',
         error: { code: 'NO_LINK_FIELD', details: {} },
       });
     }
@@ -1960,7 +1961,7 @@ export class MinutesService {
       if (!minutes || minutes.deletedAt) {
         throw new NotFoundException({
           success: false,
-          message: 'Bien ban hop khong ton tai hoac da bi xoa',
+          message: 'Biên bản họp không tồn tại hoặc đã bị xóa',
           error: { code: 'MINUTES_NOT_FOUND', details: { minutesId } },
         });
       }
@@ -1975,7 +1976,7 @@ export class MinutesService {
       if (!isOwner) {
         throw new ForbiddenException({
           success: false,
-          message: 'Ban khong phai la nguoi soan thao hoac host',
+          message: 'Bạn không phải là người soạn thảo hoặc chủ trì',
           error: { code: 'NOT_MINUTES_OWNER', details: { minutesId } },
         });
       }
@@ -1984,7 +1985,7 @@ export class MinutesService {
         throw new ConflictException({
           success: false,
           message:
-            'Chi co the lien ket tai nguyen khi bien ban o trang thai nhap',
+            'Chỉ có thể liên kết tài nguyên khi biên bản ở trạng thái nháp',
           error: {
             code: 'MINUTES_NOT_DRAFT',
             details: { minutesId, currentStatus: minutes.status },
@@ -1995,7 +1996,7 @@ export class MinutesService {
       if (meeting?.status !== MeetingStatus.COMPLETED) {
         throw new ConflictException({
           success: false,
-          message: 'Cuoc hop chua ket thuc, chua the lien ket tai nguyen',
+          message: 'Cuộc họp chưa kết thúc, chưa thể liên kết tài nguyên',
           error: {
             code: 'MEETING_NOT_COMPLETED',
             details: {
@@ -2013,7 +2014,7 @@ export class MinutesService {
         if (!file) {
           throw new NotFoundException({
             success: false,
-            message: 'File recording khong ton tai hoac da bi xoa',
+            message: 'File ghi hình không tồn tại hoặc đã bị xóa',
             error: {
               code: 'RECORDING_FILE_NOT_FOUND',
               details: { recordingFileId: dto.recordingFileId },
@@ -2026,7 +2027,7 @@ export class MinutesService {
         ) {
           throw new BadRequestException({
             success: false,
-            message: 'File duoc chon khong phai file recording (audio/video)',
+            message: 'File được chọn không phải file ghi hình (audio/video)',
             error: {
               code: 'INVALID_RECORDING_FILE_TYPE',
               details: {
@@ -2039,7 +2040,7 @@ export class MinutesService {
         if (file.meetingId !== minutes.meetingId) {
           throw new ConflictException({
             success: false,
-            message: 'File recording khong thuoc cuoc hop cua bien ban nay',
+            message: 'File ghi hình không thuộc cuộc họp của biên bản này',
             error: {
               code: 'RESOURCE_NOT_SAME_MEETING',
               details: { recordingFileId: dto.recordingFileId },
@@ -2057,7 +2058,7 @@ export class MinutesService {
         if (!transcript) {
           throw new NotFoundException({
             success: false,
-            message: 'Transcript khong ton tai',
+            message: 'Transcript không tồn tại',
             error: {
               code: 'TRANSCRIPT_NOT_FOUND',
               details: { transcriptId: dto.transcriptId },
@@ -2067,7 +2068,7 @@ export class MinutesService {
         if (transcript.meetingId !== minutes.meetingId) {
           throw new ConflictException({
             success: false,
-            message: 'Transcript khong thuoc cuoc hop cua bien ban nay',
+            message: 'Transcript không thuộc cuộc họp của biên bản này',
             error: {
               code: 'RESOURCE_NOT_SAME_MEETING',
               details: { transcriptId: dto.transcriptId },
@@ -2114,7 +2115,7 @@ export class MinutesService {
     });
   }
 
-  /** Biên bản đang chờ ký / đã ký duyệt thì không được sửa, xoá. */
+  /** Biên bản đang chờ ký / đã ký duyệt thì không được sửa, xóa. */
   private async assertNotSignoffLocked(
     manager: EntityManager,
     meetingId: string,
@@ -2130,7 +2131,7 @@ export class MinutesService {
         success: false,
         message:
           st === 'pending'
-            ? 'Biên bản đang chờ ký duyệt, không thể sửa hoặc xoá'
+            ? 'Biên bản đang chờ ký duyệt, không thể sửa hoặc xóa'
             : 'Biên bản đã được ký duyệt, chỉ còn ban hành',
         error: { code: 'MINUTES_SIGNOFF_LOCKED', details: { minutesId } },
       });
@@ -2163,7 +2164,7 @@ export class MinutesService {
       if (!minutes || minutes.deletedAt) {
         throw new NotFoundException({
           success: false,
-          message: 'Bien ban hop khong ton tai hoac da bi xoa',
+          message: 'Biên bản họp không tồn tại hoặc đã bị xóa',
           error: { code: 'MINUTES_NOT_FOUND', details: { minutesId } },
         });
       }
@@ -2178,7 +2179,7 @@ export class MinutesService {
         if (!isOwner) {
           throw new ForbiddenException({
             success: false,
-            message: 'Ban khong co quyen xoa bien ban nay',
+            message: 'Bạn không có quyền xóa biên bản này',
             error: { code: 'NOT_MINUTES_OWNER', details: { minutesId } },
           });
         }
@@ -2187,7 +2188,7 @@ export class MinutesService {
       if (minutes.status !== MeetingMinutesStatus.DRAFT) {
         throw new ConflictException({
           success: false,
-          message: 'Chi co the xoa bien ban o trang thai nhap',
+          message: 'Chỉ có thể xóa biên bản ở trạng thái nháp',
           error: {
             code: 'MINUTES_NOT_DRAFT',
             details: { minutesId, currentStatus: minutes.status },
@@ -2295,7 +2296,7 @@ export class MinutesService {
       if (!minutes || minutes.deletedAt) {
         throw new NotFoundException({
           success: false,
-          message: 'Bien ban hop khong ton tai hoac da bi xoa',
+          message: 'Biên bản họp không tồn tại hoặc đã bị xóa',
           error: { code: 'MINUTES_NOT_FOUND', details: { minutesId } },
         });
       }
@@ -2322,7 +2323,7 @@ export class MinutesService {
       if (minutes.status !== MeetingMinutesStatus.DRAFT) {
         throw new ConflictException({
           success: false,
-          message: 'Chi co the ban hanh bien ban o trang thai nhap',
+          message: 'Chỉ có thể ban hành biên bản ở trạng thái nháp',
           error: {
             code: 'MINUTES_NOT_DRAFT',
             details: { minutesId, currentStatus: minutes.status },
@@ -2334,7 +2335,7 @@ export class MinutesService {
       if (meeting?.status !== MeetingStatus.COMPLETED) {
         throw new ConflictException({
           success: false,
-          message: 'Cuoc hop chua ket thuc, khong the ban hanh bien ban',
+          message: 'Cuộc họp chưa kết thúc, không thể ban hành biên bản',
           error: {
             code: 'MEETING_NOT_COMPLETED',
             details: {
@@ -2494,7 +2495,7 @@ export class MinutesService {
     if (!minutes || minutes.deletedAt) {
       throw new NotFoundException({
         success: false,
-        message: 'Bien ban hop khong ton tai hoac da bi xoa',
+        message: 'Biên bản họp không tồn tại hoặc đã bị xóa',
         error: { code: 'MINUTES_NOT_FOUND', details: { minutesId } },
       });
     }
@@ -2514,7 +2515,7 @@ export class MinutesService {
       if (!isOwner) {
         throw new ForbiddenException({
           success: false,
-          message: 'Ban khong co quyen quan ly chia se bien ban nay',
+          message: 'Bạn không có quyền quản lý chia sẻ biên bản này',
           error: { code: 'NOT_MINUTES_OWNER', details: { minutesId } },
         });
       }
@@ -2541,7 +2542,7 @@ export class MinutesService {
     if (minutes.status !== MeetingMinutesStatus.PUBLISHED) {
       throw new ConflictException({
         success: false,
-        message: 'Chi co the chia se bien ban da duoc ban hanh (published)',
+        message: 'Chỉ có thể chia sẻ biên bản đã được ban hành',
         error: {
           code: 'MINUTES_NOT_PUBLISHED',
           details: { minutesId, currentStatus: minutes.status },
@@ -2556,14 +2557,14 @@ export class MinutesService {
     if (!targetUser || targetUser.deletedAt) {
       throw new NotFoundException({
         success: false,
-        message: 'Nguoi dung duoc chia se khong ton tai',
+        message: 'Người dùng được chia sẻ không tồn tại',
         error: { code: 'USER_NOT_FOUND', details: { userId: dto.userId } },
       });
     }
     if (targetUser.accountStatus !== AccountStatus.ACTIVE) {
       throw new UnprocessableEntityException({
         success: false,
-        message: 'Nguoi dung duoc chia se khong o trang thai hoat dong',
+        message: 'Người dùng được chia sẻ không ở trạng thái hoạt động',
         error: {
           code: 'USER_INACTIVE',
           details: {
@@ -2589,7 +2590,7 @@ export class MinutesService {
       if (this.isUniqueViolation(e)) {
         throw new ConflictException({
           success: false,
-          message: 'Bien ban da duoc chia se cho nguoi dung nay',
+          message: 'Biên bản đã được chia sẻ cho người dùng này',
           error: {
             code: 'ALREADY_SHARED',
             details: { minutesId, userId: dto.userId },
@@ -2633,7 +2634,7 @@ export class MinutesService {
     if (minutes.status !== MeetingMinutesStatus.PUBLISHED) {
       throw new ConflictException({
         success: false,
-        message: 'Chi co the thu hoi chia se khi bien ban dang published',
+        message: 'Chỉ có thể thu hồi chia sẻ khi biên bản đã được ban hành',
         error: {
           code: 'MINUTES_NOT_PUBLISHED',
           details: { minutesId, currentStatus: minutes.status },
@@ -2648,7 +2649,7 @@ export class MinutesService {
     if (!result.affected) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay ban ghi chia se cho nguoi dung nay',
+        message: 'Không tìm thấy bản ghi chia sẻ cho người dùng này',
         error: {
           code: 'SHARE_NOT_FOUND',
           details: { minutesId, userId: targetUserId },
@@ -2745,7 +2746,7 @@ export class MinutesService {
     if (!targetUser) {
       throw new NotFoundException({
         success: false,
-        message: 'Nhan su khong ton tai hoac da bi xoa',
+        message: 'Nhân sự không tồn tại hoặc đã bị xóa',
         error: { code: 'USER_NOT_FOUND', details: { userId: dto.userId } },
       });
     }

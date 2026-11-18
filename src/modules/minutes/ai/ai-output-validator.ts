@@ -62,7 +62,7 @@ export function validateAiOutput(raw: string): AiOutputValidation {
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return { ok: false, error: 'Output khong parse duoc thanh JSON hop le' };
+    return { ok: false, error: 'Không parse được kết quả AI thành JSON hợp lệ' };
   }
 
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
@@ -80,12 +80,12 @@ export function validateAiOutput(raw: string): AiOutputValidation {
 
   for (const key of TOP_LEVEL_KEYS) {
     if (!(key in obj)) {
-      return { ok: false, error: `Thieu field bat buoc: "${key}"` };
+      return { ok: false, error: `Thiếu trường bắt buộc: "${key}"` };
     }
   }
 
   if (typeof obj.summary !== 'string' || obj.summary.trim() === '') {
-    return { ok: false, error: '"summary" phai la string khong rong' };
+    return { ok: false, error: '"summary" phải là chuỗi không rỗng' };
   }
 
   for (const key of STRING_ARRAY_KEYS) {

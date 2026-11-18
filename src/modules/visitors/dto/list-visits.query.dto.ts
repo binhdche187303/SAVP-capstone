@@ -1,13 +1,14 @@
+import type { FilterSelection } from '../../../common/utils/filter-selection.js';
 import { Type } from 'class-transformer';
 import { IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 
 export class ListVisitsQueryDto {
-  @IsOptional() @IsString() status?: string;
+  @IsOptional() @IsString({ each: true }) status?: FilterSelection<string>;
   @IsOptional() @Matches(YMD) from?: string;
   @IsOptional() @Matches(YMD) to?: string;
-  @IsOptional() @IsString() departmentId?: string;
+  @IsOptional() @IsString({ each: true }) departmentId?: FilterSelection<string>;
   @IsOptional() @IsString() hostId?: string;
   @IsOptional() @IsString() @MaxLength(100) q?: string;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) page?: number = 1;
@@ -17,7 +18,7 @@ export class ListVisitsQueryDto {
 export class VisitorStatsQueryDto {
   @Matches(YMD) from!: string;
   @Matches(YMD) to!: string;
-  @IsOptional() @IsString() departmentId?: string;
+  @IsOptional() @IsString({ each: true }) departmentId?: FilterSelection<string>;
   @IsOptional() @IsString() groupBy?: 'day' | 'week' | 'month';
   /** Lọc chéo khi bấm vào biểu đồ (kiểu Power BI): JSON `{"dim":"purpose","values":["..."]}`. */
   @IsOptional() @IsString() @MaxLength(4000) cross?: string;

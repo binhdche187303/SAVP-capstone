@@ -67,7 +67,7 @@ describe('LiveMeetingController.getMeetingTimeline (UC-99)', () => {
     );
     expect(result).toEqual({
       success: true,
-      message: 'Lay timeline cuoc hop thanh cong',
+      message: 'Lấy dòng thời gian cuộc họp thành công',
       data,
       meta: { page: 2, limit: 5, total: 12, totalPages: 3 },
     });

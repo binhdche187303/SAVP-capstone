@@ -8,7 +8,7 @@ const ZONE_ENTITY_TYPE = 'zones';
  * ZonesAuditRepository (ZND-001 / UC-92) — ghi vết thao tác trên `zones` vào `audit_logs`.
  *
  * Mỗi method nhận `EntityManager` của caller để chạy TRONG transaction của service — thao tác
- * và audit phải cùng sống hoặc cùng chết ("đã xoá nhưng không có audit" là mất dấu vết vĩnh viễn).
+ * và audit phải cùng sống hoặc cùng chết ("đã xóa nhưng không có audit" là mất dấu vết vĩnh viễn).
  *
  * Mirror `IotAuditRepository` nhưng KHÔNG tái dùng được nó: repo đó hard-code
  * `entity_type = 'iot_devices'` trong từng câu SQL.

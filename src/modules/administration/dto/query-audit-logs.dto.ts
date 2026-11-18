@@ -1,3 +1,4 @@
+import type { FilterSelection } from '../../../common/utils/filter-selection.js';
 import {
   IsOptional,
   IsInt,
@@ -179,9 +180,9 @@ export class QueryAuditLogsDto extends AuditLogSearchFields {
     maxLength: 80,
   })
   @IsOptional()
-  @IsString()
-  @MaxLength(80)
-  actionType?: string;
+  @IsString({ each: true })
+  @MaxLength(80, { each: true })
+  actionType?: FilterSelection<string>;
 
   @ApiPropertyOptional({
     description: 'Lọc theo loại entity (entityType)',
@@ -197,6 +198,6 @@ export class QueryAuditLogsDto extends AuditLogSearchFields {
     enum: AuditLogSeverityFilter,
   })
   @IsOptional()
-  @IsEnum(AuditLogSeverityFilter)
-  severity?: AuditLogSeverityFilter;
+  @IsEnum(AuditLogSeverityFilter, { each: true })
+  severity?: FilterSelection<AuditLogSeverityFilter>;
 }

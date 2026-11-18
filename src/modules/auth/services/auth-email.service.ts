@@ -20,13 +20,13 @@ export class AuthEmailService {
 
     const subject = 'Khoi phuc mat khau - Smart Meeting Management';
     const text = [
-      'Kinh gui nguoi dung,',
+      'Kính gửi người dùng,',
       '',
-      'Ban da gui yeu cau dat lai mat khau tren he thong Smart Meeting Management.',
-      `Ma OTP xac thuc cua ban la: ${otp}`,
+      'Bạn đã gửi yêu cầu đặt lại mật khẩu trên hệ thống Smart Meeting Management.',
+      `Mã OTP xác thực của bạn là: ${otp}`,
       '',
       'Ma OTP nay co hieu luc trong vong 10 phut. De bao mat, vui long khong chia se ma nay cho bat ky ai.',
-      'Neu ban khong gui yeu cau nay, vui long bo qua email nay va bao mat tai khoan.',
+      'Nếu bạn không gửi yêu cầu này, vui lòng bỏ qua email này và bảo mật tài khoản.',
       '',
       'Tran trong,',
       'He thong Smart Meeting Management',

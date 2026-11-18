@@ -140,7 +140,7 @@ describe('NotificationsService — inbox + BE-07 mark-read', () => {
       expect(result.data[0].noShowSnoozeUntil).toBe('2026-08-21T11:00:00Z');
     });
 
-    it('no_show_alert nhưng case đã bị xoá/không tìm thấy → noShowLiveStatus null (fail-safe, không throw)', async () => {
+    it('no_show_alert nhưng case đã bị xóa/không tìm thấy → noShowLiveStatus null (fail-safe, không throw)', async () => {
       const items = [
         {
           id: 'n1',
@@ -447,10 +447,10 @@ describe('NotificationsService — nhắc lịch hẹn giờ', () => {
   });
 
   it('markCancelled: chuyển trạng thái cancelled kèm lý do', async () => {
-    await service.markCancelled('n-1', 'Cuộc họp đã huỷ');
+    await service.markCancelled('n-1', 'Cuộc họp đã hủy');
     expect(repo.update).toHaveBeenCalledWith('n-1', {
       deliveryStatus: NotificationDeliveryStatus.CANCELLED,
-      failureReason: 'Cuộc họp đã huỷ',
+      failureReason: 'Cuộc họp đã hủy',
     });
   });
 });

@@ -53,7 +53,7 @@ describe('EquipmentController.reportFault (UC-62)', () => {
     );
     expect(result).toEqual({
       success: true,
-      message: 'Cap nhat trang thai loi thiet bi thanh cong',
+      message: 'Cập nhật trạng thái lỗi thiết bị thành công',
       data,
     });
   });

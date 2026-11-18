@@ -612,7 +612,7 @@ export class IvssPresenceIngestionService implements IvssEventHandlerPort {
    * - 'ivss'     — person-sync group "1", vòng đời theo cuộc họp.
    * - 'portrait' — portrait-sync group "USERS", thường trực theo account/ảnh.
    * - 'hgvision' — device_person_id = face_ident trên HGVision (HgvisionModule).
-   * Nguồn ghi giữ nguyên source riêng (khác vòng đời xoá); chỉ mở đường đọc.
+   * Nguồn ghi giữ nguyên source riêng (khác vòng đời xóa); chỉ mở đường đọc.
    * ORDER BY để mapping mới nhất thắng khi 1 người có cả 2 nguồn (tránh phụ
    * thuộc thứ tự vật lý của bảng).
    */

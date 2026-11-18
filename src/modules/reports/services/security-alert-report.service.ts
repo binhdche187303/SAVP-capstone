@@ -1,3 +1,4 @@
+import type { FilterSelection } from '../../../common/utils/filter-selection.js';
 import {
   Injectable,
   Logger,
@@ -46,6 +47,7 @@ export class SecurityAlertReportService {
         alertType: dto.filters?.alertType ?? null,
         zoneId: dto.filters?.zoneId ?? null,
         status: dto.filters?.status ?? null,
+        severity: dto.filters?.severity ?? null,
       };
 
       const backgroundJob = await this.backgroundJobsService.createQueuedJob({
@@ -143,9 +145,9 @@ export class SecurityAlertReportService {
     to: string,
     format: string,
     filters: {
-      alertType: string | null;
-      zoneId: string | null;
-      status: string | null;
+      alertType: FilterSelection<string> | null;
+      zoneId: FilterSelection<string> | null;
+      status: FilterSelection<string> | null;
     },
   ): Promise<void> {
     await this.auditLogsService.logAction({

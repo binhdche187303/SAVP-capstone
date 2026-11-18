@@ -1,3 +1,4 @@
+import { filterValues, type FilterSelection } from '../../../common/utils/filter-selection.js';
 import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
@@ -5,7 +6,7 @@ export interface OnTimeRateQueryParams {
   from: string;
   to: string;
   scopeDepartmentIds: string[] | null;
-  departmentId?: string;
+  departmentId?: FilterSelection<string>;
   meetingId?: string;
   search?: string;
   graceMinutes: number;
@@ -75,8 +76,8 @@ export class OnTimeRateRepository {
 
     // Filter departmentId
     if (params.departmentId) {
-      conditions.push(`u.department_id = $${idx}`);
-      values.push(params.departmentId);
+      conditions.push(`u.department_id = ANY($${idx}::uuid[])`);
+      values.push(filterValues(params.departmentId));
       idx++;
     }
 

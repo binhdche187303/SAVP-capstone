@@ -173,7 +173,7 @@ export class IvssPersonSyncService {
 
     const personUid = this.personUidOf(userId);
 
-    // Nợ #2: enroll idempotent — xoá person cũ trên IVSS trước khi enroll mới,
+    // Nợ #2: enroll idempotent — xóa person cũ trên IVSS trước khi enroll mới,
     // tránh 1 user nhiều szUID khi mapping cũ ở trạng thái failed hoặc DB lệch IVSS.
     // Chỉ chạy khi đã qua dedupe ở trên (mapping KHÔNG phải synced-sạch).
     // deleteFace theo device_person_id (UID thiết bị tự sinh) — đối chiếu

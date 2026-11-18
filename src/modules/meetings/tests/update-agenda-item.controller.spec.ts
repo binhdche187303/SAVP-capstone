@@ -86,7 +86,7 @@ describe('MeetingsController.updateAgendaItem', () => {
     );
     expect(result).toEqual({
       success: true,
-      message: 'Cap nhat chuong trinh hop thanh cong',
+      message: 'Cập nhật chương trình họp thành công',
       data: mockResponse,
     });
   });

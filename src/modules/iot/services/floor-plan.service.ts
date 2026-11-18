@@ -239,7 +239,7 @@ export class FloorPlanService {
       await this.storageService.deleteFile(storageKey);
     } catch (e) {
       this.logger.warn(
-        `Không xoá được ảnh mặt bằng cũ ${storageKey}: ${
+        `Không xóa được ảnh mặt bằng cũ ${storageKey}: ${
           e instanceof Error ? e.message : 'unknown'
         }`,
       );

@@ -1,3 +1,4 @@
+import type { FilterSelection } from '../../../common/utils/filter-selection.js';
 import { Job } from 'bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -23,9 +24,10 @@ interface SecurityAlertExportJobData {
   to: string;
   format: 'pdf' | 'xlsx';
   filters: {
-    alertType: string | null;
-    zoneId: string | null;
-    status: string | null;
+    alertType: FilterSelection<string> | null;
+    zoneId: FilterSelection<string> | null;
+    status: FilterSelection<string> | null;
+    severity?: FilterSelection<string> | null;
   };
   requestedByEmail: string;
 }

@@ -80,7 +80,7 @@ export class DepartmentsService {
         }
         throw new ConflictException({
           success: false,
-          message: 'Idempotency-Key da duoc su dung voi payload khac.',
+          message: 'Idempotency-Key đã được sử dụng với dữ liệu khác.',
           error: { code: 'IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD' },
         });
       }
@@ -96,7 +96,7 @@ export class DepartmentsService {
       if (existingCode) {
         throw new ConflictException({
           success: false,
-          message: 'Ma phong ban nay da duoc su dung.',
+          message: 'Mã phòng ban này đã được sử dụng.',
           error: {
             code: 'DEPARTMENT_ALREADY_EXISTS',
             details: { field: 'departmentCode' },
@@ -111,7 +111,7 @@ export class DepartmentsService {
       if (existingName) {
         throw new ConflictException({
           success: false,
-          message: 'Ten phong ban nay da duoc su dung.',
+          message: 'Tên phòng ban này đã được sử dụng.',
           error: {
             code: 'DEPARTMENT_ALREADY_EXISTS',
             details: { field: 'departmentName' },
@@ -127,7 +127,7 @@ export class DepartmentsService {
         if (!parent || !parent.isActive) {
           throw new NotFoundException({
             success: false,
-            message: 'Phong ban cha khong ton tai hoac khong hoat dong.',
+            message: 'Phòng ban cha không tồn tại hoặc không hoạt động.',
             error: {
               code: 'RESOURCE_NOT_FOUND',
               details: { field: 'parentDepartmentId' },
@@ -139,7 +139,7 @@ export class DepartmentsService {
         if (depth + 1 > MAX_DEPTH) {
           throw new UnprocessableEntityException({
             success: false,
-            message: 'Cay phan cap phong ban khong duoc vuot qua 5 cap.',
+            message: 'Cây phân cấp phòng ban không được vượt quá 5 cấp.',
             error: {
               code: 'VALIDATION_ERROR',
               details: { field: 'parentDepartmentId' },
@@ -156,7 +156,7 @@ export class DepartmentsService {
         if (!manager || manager.accountStatus !== 'active') {
           throw new NotFoundException({
             success: false,
-            message: 'Nguoi quan ly khong ton tai hoac khong hoat dong.',
+            message: 'Người quản lý không tồn tại hoặc không hoạt động.',
             error: {
               code: 'RESOURCE_NOT_FOUND',
               details: { field: 'managerUserId' },

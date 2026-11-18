@@ -43,7 +43,7 @@ describe('MeetingMinutesListController — share routes', () => {
     );
     expect(res).toEqual({
       success: true,
-      message: 'Da chia se bien ban thanh cong',
+      message: 'Đã chia sẻ biên bản thành công',
       data: expect.objectContaining({ userId: 'target-1' }),
     });
   });
@@ -70,7 +70,7 @@ describe('MeetingMinutesListController — share routes', () => {
     );
     expect(res).toEqual({
       success: true,
-      message: 'Da thu hoi quyen xem bien ban',
+      message: 'Đã thu hồi quyền xem biên bản',
       data: { minutesId, userId: 'target-1', revoked: true },
     });
   });

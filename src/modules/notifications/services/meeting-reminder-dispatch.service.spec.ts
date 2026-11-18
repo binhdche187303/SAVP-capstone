@@ -138,7 +138,7 @@ describe('MeetingReminderDispatchService', () => {
       expect(r.sent).toBe(0);
     });
 
-    it('cuộc họp đã huỷ hoặc đã bắt đầu → huỷ nhắc lịch, không gửi', async () => {
+    it('cuộc họp đã hủy hoặc đã bắt đầu → hủy nhắc lịch, không gửi', async () => {
       notificationRepo.find.mockResolvedValue([
         scheduledRow({ id: 'n-1', relatedEntityId: 'm-cancelled' }),
         scheduledRow({ id: 'n-2', relatedEntityId: 'm-started' }),

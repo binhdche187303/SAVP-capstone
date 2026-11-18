@@ -28,7 +28,7 @@ export class LlmProviderFactory {
     // Provider lạ trong config là lỗi cấu hình — fail ngay không retry.
     throw new NonRetryableAiJobError(
       'AI_SUMMARY_DISABLED',
-      `Provider "${provider}" chua duoc ho tro`,
+      `Nhà cung cấp "${provider}" chưa được hỗ trợ`,
     );
   }
 }

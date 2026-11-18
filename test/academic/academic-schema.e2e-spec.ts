@@ -336,14 +336,14 @@ describeDb('ACD-001 academic schema constraints', () => {
   });
 
   describe('R9 — FK', () => {
-    it('xoá cứng học kỳ đang có lớp → 23503', async () => {
+    it('xóa cứng học kỳ đang có lớp → 23503', async () => {
       const f = await fixture();
       expect(
         await pgError(`DELETE FROM semesters WHERE id = $1`, [f.semesterId]),
       ).toBe('23503');
     });
 
-    it('xoá cứng khoa → subjects.department_id và students.department_id = NULL', async () => {
+    it('xóa cứng khoa → subjects.department_id và students.department_id = NULL', async () => {
       const f = await fixture();
       await qr.query(`DELETE FROM departments WHERE id = $1`, [f.deptId]);
       const [subj] = (await qr.query(

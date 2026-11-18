@@ -90,7 +90,7 @@ describe('UserExportService (BE-04 — 2026-07-27, render đồng bộ)', () => 
     expect(result.fileName).toMatch(/\.xlsx$/);
   });
 
-  // ─── T-5.2: bù cho 5 test đã xoá cùng user-export-worker.processor.spec.ts ─
+  // ─── T-5.2: bù cho 5 test đã xóa cùng user-export-worker.processor.spec.ts ─
 
   it('[T-5.2] filter rỗng {} vẫn render ra file hợp lệ, không throw', async () => {
     await expect(service.exportUsersXlsx(currentUser, {})).resolves.toEqual(

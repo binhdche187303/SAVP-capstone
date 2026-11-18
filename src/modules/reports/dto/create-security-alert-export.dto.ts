@@ -1,3 +1,4 @@
+import type { FilterSelection } from '../../../common/utils/filter-selection.js';
 import {
   IsDateString,
   IsIn,
@@ -12,6 +13,7 @@ export const SECURITY_ALERT_STATUS_VALUES = [
   'new',
   'acknowledged',
   'resolved',
+  'open',
 ] as const;
 
 /**
@@ -19,16 +21,20 @@ export const SECURITY_ALERT_STATUS_VALUES = [
  */
 export class SecurityAlertExportFiltersDto {
   @IsOptional()
-  @IsString()
-  alertType?: string;
+  @IsString({ each: true })
+  alertType?: FilterSelection<string>;
 
   @IsOptional()
-  @IsUUID()
-  zoneId?: string;
+  @IsUUID('all', { each: true })
+  zoneId?: FilterSelection<string>;
 
   @IsOptional()
-  @IsIn(SECURITY_ALERT_STATUS_VALUES)
-  status?: string;
+  @IsIn(SECURITY_ALERT_STATUS_VALUES, { each: true })
+  status?: FilterSelection<string>;
+
+  @IsOptional()
+  @IsIn(['low', 'medium', 'high', 'critical', 'urgent'], { each: true })
+  severity?: FilterSelection<string>;
 }
 
 /**

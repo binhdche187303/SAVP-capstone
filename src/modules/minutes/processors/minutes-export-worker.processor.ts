@@ -88,7 +88,7 @@ export class MinutesExportWorkerProcessor extends WorkerHost {
         .getRepository(MeetingMinutesEntity)
         .findOne({ where: { id: minutesId } });
       if (!minutes || minutes.deletedAt) {
-        throw new Error(`Minutes ${minutesId} khong ton tai/da bi xoa`);
+        throw new Error(`Biên bản ${minutesId} không tồn tại hoặc đã bị xóa`);
       }
 
       const meeting = await this.dataSource

@@ -183,7 +183,7 @@ export class BackgroundJobsService {
       if (!isAdmin) {
         throw new ForbiddenException({
           success: false,
-          message: 'Ban khong co quyen xem job nay.',
+          message: 'Bạn không có quyền xem tác vụ này.',
           error: { code: 'PERMISSION_DENIED', details: {} },
         });
       }

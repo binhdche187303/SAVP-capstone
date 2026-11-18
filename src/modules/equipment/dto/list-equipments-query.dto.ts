@@ -1,3 +1,4 @@
+import type { FilterSelection } from '../../../common/utils/filter-selection.js';
 import {
   IsOptional,
   IsEnum,
@@ -22,32 +23,32 @@ import {
  */
 export class ListEquipmentsQueryDto {
   @IsOptional()
-  @IsEnum(EquipmentType, {
+  @IsEnum(EquipmentType, { each: true,
     message:
-      'equipmentType khong hop le. Gia tri: camera, microphone, display, speaker, capture_agent, sensor, other',
+      'Loại thiết bị không hợp lệ. Giá trị: camera, microphone, display, speaker, capture_agent, sensor, other',
   })
-  equipmentType?: EquipmentType;
+  equipmentType?: FilterSelection<EquipmentType>;
 
   @IsOptional()
   @IsEnum(AssetStatus, {
     message:
-      'assetStatus khong hop le. Gia tri: available, assigned, retired, lost, maintenance',
+      'Trạng thái tài sản không hợp lệ. Giá trị: available, assigned, retired, lost, maintenance',
   })
   assetStatus?: AssetStatus;
 
   @IsOptional()
-  @IsEnum(HealthStatus, {
+  @IsEnum(HealthStatus, { each: true,
     message:
-      'healthStatus khong hop le. Gia tri: healthy, warning, faulty, offline, unknown',
+      'Tình trạng không hợp lệ. Giá trị: healthy, warning, faulty, offline, unknown',
   })
-  healthStatus?: HealthStatus;
+  healthStatus?: FilterSelection<HealthStatus>;
 
   @IsOptional()
-  @IsUUID('4', { message: 'currentRoomId phai la dinh dang UUID' })
+  @IsUUID('4', { message: 'currentRoomId phải là định dạng UUID' })
   currentRoomId?: string;
 
   @IsOptional()
-  @IsString({ message: 'search phai la chuoi ky tu' })
+  @IsString({ message: 'Từ khóa tìm kiếm phải là chuỗi ký tự' })
   search?: string;
 
   @IsOptional()
@@ -62,23 +63,23 @@ export class ListEquipmentsQueryDto {
     ],
     {
       message:
-        'sortBy chi duoc la equipmentCode, equipmentName, equipmentType, assetStatus, healthStatus hoac createdAt',
+        'sortBy chỉ được là equipmentCode, equipmentName, equipmentType, assetStatus, healthStatus hoặc createdAt',
     },
   )
   sortBy?: string = 'createdAt';
 
   @IsOptional()
-  @IsIn(['asc', 'desc'], { message: 'sortOrder chi duoc la asc hoac desc' })
+  @IsIn(['asc', 'desc'], { message: 'sortOrder chỉ được là asc hoặc desc' })
   sortOrder?: 'asc' | 'desc' = 'desc';
 
   @Type(() => Number)
   @IsOptional()
-  @Min(1, { message: 'page phai lon hon hoac bang 1' })
+  @Min(1, { message: 'page phải lớn hơn hoặc bằng 1' })
   page?: number = 1;
 
   @Type(() => Number)
   @IsOptional()
-  @Min(1, { message: 'limit phai lon hon hoac bang 1' })
-  @Max(100, { message: 'limit khong duoc vuot qua 100' })
+  @Min(1, { message: 'limit phải lớn hơn hoặc bằng 1' })
+  @Max(100, { message: 'limit không được vượt quá 100' })
   limit?: number = 20;
 }

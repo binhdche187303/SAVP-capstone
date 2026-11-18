@@ -346,7 +346,7 @@ describe('GateAccessLogService (GAL-001 / UC-107)', () => {
       expect(ds.createQueryRunner).not.toHaveBeenCalled();
     });
 
-    it('zone không tồn tại / đã xoá mềm → zone_not_gate (SELECT lọc deleted_at IS NULL)', async () => {
+    it('zone không tồn tại / đã xóa mềm → zone_not_gate (SELECT lọc deleted_at IS NULL)', async () => {
       ds.manager.query.mockResolvedValueOnce([]);
       const r = await service.writeGateLog(input());
       expect(r).toEqual({ written: false, skipReason: 'zone_not_gate' });

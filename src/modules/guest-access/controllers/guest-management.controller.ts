@@ -44,7 +44,7 @@ export class GuestManagementController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Xem danh sach khach ngoai cong ty cua cuoc hop' })
   @ApiParam({ name: 'meetingId', type: String, format: 'uuid' })
-  @ApiResponse({ status: 200, description: 'Danh sach khach' })
+  @ApiResponse({ status: 200, description: 'Danh sách khách' })
   @ApiResponse({ status: 403, description: 'NOT_MEETING_HOST / FORBIDDEN' })
   @ApiResponse({ status: 404, description: 'MEETING_NOT_FOUND' })
   async listGuests(
@@ -55,7 +55,7 @@ export class GuestManagementController {
       meetingId,
       user.userId,
     );
-    return { success: true, message: 'Danh sach khach', data };
+    return { success: true, message: 'Danh sách khách', data };
   }
 
   @Get('lobby')
@@ -77,7 +77,7 @@ export class GuestManagementController {
       meetingId,
       user.userId,
     );
-    return { success: true, message: 'Hang cho duyet vao', data };
+    return { success: true, message: 'Hàng chờ duyệt vào', data };
   }
 
   @Post(':externalParticipantId/admit')
@@ -100,7 +100,7 @@ export class GuestManagementController {
       externalParticipantId,
       user.userId,
     );
-    return { success: true, message: 'Da duyet khach vao cuoc hop' };
+    return { success: true, message: 'Đã duyệt khách vào cuộc họp' };
   }
 
   @Post(':externalParticipantId/reject')
@@ -123,7 +123,7 @@ export class GuestManagementController {
       externalParticipantId,
       user.userId,
     );
-    return { success: true, message: 'Da tu choi khach' };
+    return { success: true, message: 'Đã từ chối khách' };
   }
 
   @Post(':externalParticipantId/resend-invite')
@@ -154,7 +154,7 @@ export class GuestManagementController {
       externalParticipantId,
       user.userId,
     );
-    return { success: true, message: 'Da gui lai link moi cho khach' };
+    return { success: true, message: 'Đã gửi lại link mời cho khách' };
   }
 
   @Delete(':externalParticipantId/access')
@@ -177,6 +177,6 @@ export class GuestManagementController {
       externalParticipantId,
       user.userId,
     );
-    return { success: true, message: 'Da thu hoi quyen truy cap cua khach' };
+    return { success: true, message: 'Đã thu hồi quyền truy cập của khách' };
   }
 }

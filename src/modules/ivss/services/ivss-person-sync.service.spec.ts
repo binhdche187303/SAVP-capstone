@@ -207,7 +207,7 @@ describe('IvssPersonSyncService (IPS-001 #37)', () => {
       groupId: 'SMRMPTS',
       personUid: 'SZ_OLD',
     });
-    // Thứ tự bắt buộc: xoá sạch person cũ rồi mới enroll → 1 user chỉ còn 1 szUID.
+    // Thứ tự bắt buộc: xóa sạch person cũ rồi mới enroll → 1 user chỉ còn 1 szUID.
     expect(bridgeMock.deleteFace.mock.invocationCallOrder[0]).toBeLessThan(
       bridgeMock.enrollFace.mock.invocationCallOrder[0],
     );

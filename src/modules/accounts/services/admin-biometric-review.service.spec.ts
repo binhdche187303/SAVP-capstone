@@ -166,7 +166,7 @@ describe('AdminBiometricReviewService', () => {
       expect(q.sql).toContain('deleted_at IS NULL');
     });
 
-    it('KHÔNG soft-delete — nếu xoá mềm thì bước dọn ảnh cũ trên IVSS sẽ mù', async () => {
+    it('KHÔNG soft-delete — nếu xóa mềm thì bước dọn ảnh cũ trên IVSS sẽ mù', async () => {
       const { queries } = wireTx();
       await service.approveBiometricSubmission(FP_ID, 'admin-1');
 

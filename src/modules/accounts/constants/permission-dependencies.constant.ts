@@ -2,7 +2,7 @@
  * Ràng buộc 1 chiều: quyền THAO TÁC (create/update/delete/assign/approve/...) trên 1
  * resource phụ thuộc (dependsOn) quyền XEM (read) cùng resource — nếu role có quyền
  * thao tác mà không có quyền xem, user không có cách nào chạm tới thao tác đó qua UI
- * (màn hình sửa/xoá luôn load dữ liệu qua 1 API read bị PermissionsGuard chặn trước).
+ * (màn hình sửa/xóa luôn load dữ liệu qua 1 API read bị PermissionsGuard chặn trước).
  * Quyền `read` không bao giờ phụ thuộc gì — chiều ngược lại (role chỉ-xem) là hợp lệ.
  *
  * Chỉ chứa các cặp đã xác minh trực tiếp trong permission catalog thật — xem

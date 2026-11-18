@@ -58,7 +58,7 @@ describe('EquipmentController.confirmFault (EQUIP-FAULT-LIFECYCLE-001)', () => {
     );
     expect(result).toEqual({
       success: true,
-      message: 'Xac nhan loi thiet bi thanh cong',
+      message: 'Xác nhận lỗi thiết bị thành công',
       data,
     });
   });

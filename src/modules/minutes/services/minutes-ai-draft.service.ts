@@ -111,7 +111,7 @@ export class MinutesAiDraftService {
       if (!meeting || meeting.deletedAt) {
         throw new NotFoundException({
           success: false,
-          message: 'Khong tim thay cuoc hop.',
+          message: 'Không tìm thấy cuộc họp.',
           error: {
             code: AI_MINUTES_ERROR_CODES.MEETING_NOT_FOUND,
             details: { meetingId },
@@ -130,7 +130,7 @@ export class MinutesAiDraftService {
           throw new ForbiddenException({
             success: false,
             message:
-              'Ban khong phai Host cua cuoc hop nay va khong phai System Admin.',
+              'Bạn không phải chủ trì của cuộc họp này và không phải System Admin.',
             error: {
               code: AI_MINUTES_ERROR_CODES.PERMISSION_DENIED,
               details: {},
@@ -145,7 +145,7 @@ export class MinutesAiDraftService {
         throw new ForbiddenException({
           success: false,
           message:
-            'Tinh nang AI tao bien ban nhap dang tat (system_configs ai.minutes_summary).',
+            'Tính năng AI tạo biên bản nháp đang tắt (system_configs ai.minutes_summary).',
           error: {
             code: AI_MINUTES_ERROR_CODES.AI_SUMMARY_DISABLED,
             details: {},
@@ -161,7 +161,7 @@ export class MinutesAiDraftService {
       if (!transcript || transcript.meetingId !== meetingId) {
         throw new NotFoundException({
           success: false,
-          message: 'Khong tim thay transcript thuoc cuoc hop nay.',
+          message: 'Không tìm thấy transcript thuộc cuộc họp này.',
           error: {
             code: AI_MINUTES_ERROR_CODES.TRANSCRIPT_NOT_FOUND,
             details: { transcriptId: dto.transcriptId },
@@ -173,7 +173,7 @@ export class MinutesAiDraftService {
         throw new UnprocessableEntityException({
           success: false,
           message:
-            'Transcript chua hoan tat (status phai la draft/reviewed/approved).',
+            'Transcript chưa hoàn tất (trạng thái phải là draft/reviewed/approved).',
           error: {
             code: AI_MINUTES_ERROR_CODES.TRANSCRIPT_NOT_READY,
             details: { transcriptStatus: transcript.status },
@@ -184,7 +184,7 @@ export class MinutesAiDraftService {
       if (TRANSCRIPT_BLOCKED_SECURITY.includes(transcript.securityStatus)) {
         throw new ForbiddenException({
           success: false,
-          message: 'Transcript bi han che, khong duoc dua vao AI (FR-017).',
+          message: 'Transcript bị hạn chế, không được đưa vào AI (FR-017).',
           error: {
             code: AI_MINUTES_ERROR_CODES.TRANSCRIPT_RESTRICTED,
             details: {},
@@ -212,7 +212,7 @@ export class MinutesAiDraftService {
       if (runningJob) {
         throw new ConflictException({
           success: false,
-          message: 'Da co AI draft job dang chay cho cuoc hop nay.',
+          message: 'Đã có tác vụ AI tạo biên bản nháp đang chạy cho cuộc họp này.',
           error: {
             code: AI_MINUTES_ERROR_CODES.AI_JOB_ALREADY_RUNNING,
             details: { jobId: runningJob.id, jobStatus: runningJob.status },
@@ -236,7 +236,7 @@ export class MinutesAiDraftService {
           throw new ConflictException({
             success: false,
             message:
-              'Cuoc hop da co bien ban. Dung forceRerun=true neu muon ghi de ban nhap AI cu.',
+              'Cuộc họp đã có biên bản. Dùng forceRerun=true nếu muốn ghi đè bản nháp AI cũ.',
             error: {
               code: AI_MINUTES_ERROR_CODES.MINUTES_ALREADY_EXISTS,
               details: { existingMinutesId: existingMinutes.id },
@@ -251,7 +251,7 @@ export class MinutesAiDraftService {
           throw new ConflictException({
             success: false,
             message:
-              'Bien ban hien tai khong phai ban nhap AI (soan tay hoac da ban hanh) — khong duoc ghi de (FR-020).',
+              'Biên bản hiện tại không phải bản nháp AI (soạn tay hoặc đã ban hành), không được ghi đè (FR-020).',
             error: {
               code: AI_MINUTES_ERROR_CODES.MINUTES_NOT_AI_DRAFT,
               details: { existingMinutesId: existingMinutes.id },
@@ -310,7 +310,7 @@ export class MinutesAiDraftService {
       );
       throw new InternalServerErrorException({
         success: false,
-        message: 'Khong the dua job vao hang doi. Vui long thu lai.',
+        message: 'Không thể đưa tác vụ vào hàng đợi. Vui lòng thử lại.',
         error: { code: 'ENQUEUE_FAILED', details: { jobId: job.id } },
       });
     }
@@ -343,7 +343,7 @@ export class MinutesAiDraftService {
     if (!meeting || meeting.deletedAt) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay cuoc hop.',
+        message: 'Không tìm thấy cuộc họp.',
         error: {
           code: AI_MINUTES_ERROR_CODES.MEETING_NOT_FOUND,
           details: { meetingId },
@@ -360,7 +360,7 @@ export class MinutesAiDraftService {
       if (!isAdmin) {
         throw new ForbiddenException({
           success: false,
-          message: 'Ban khong phai Host cua cuoc hop nay va khong phai Admin.',
+          message: 'Bạn không phải chủ trì của cuộc họp này và không phải Admin.',
           error: {
             code: AI_MINUTES_ERROR_CODES.PERMISSION_DENIED,
             details: {},
@@ -414,7 +414,7 @@ export class MinutesAiDraftService {
     if (!meeting || meeting.deletedAt) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay cuoc hop.',
+        message: 'Không tìm thấy cuộc họp.',
         error: {
           code: AI_MINUTES_ERROR_CODES.MEETING_NOT_FOUND,
           details: { meetingId },
@@ -430,7 +430,7 @@ export class MinutesAiDraftService {
       if (!isAdmin) {
         throw new ForbiddenException({
           success: false,
-          message: 'Ban khong phai Host cua cuoc hop nay va khong phai Admin.',
+          message: 'Bạn không phải chủ trì của cuộc họp này và không phải Admin.',
           error: {
             code: AI_MINUTES_ERROR_CODES.PERMISSION_DENIED,
             details: {},

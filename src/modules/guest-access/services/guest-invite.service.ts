@@ -285,7 +285,7 @@ export class GuestInviteService {
   private invalidInvite(): BadRequestException {
     return new BadRequestException({
       success: false,
-      message: 'Link moi khong hop le.',
+      message: 'Link mời không hợp lệ.',
       error: {
         code: GUEST_ACCESS_ERROR_CODES.GUEST_INVITE_INVALID,
         details: {},
@@ -296,7 +296,7 @@ export class GuestInviteService {
   private expiredInvite(): GoneException {
     return new GoneException({
       success: false,
-      message: 'Link moi da het han.',
+      message: 'Link mời đã hết hạn.',
       error: {
         code: GUEST_ACCESS_ERROR_CODES.GUEST_INVITE_EXPIRED,
         details: {},
@@ -307,7 +307,7 @@ export class GuestInviteService {
   private revokedInvite(): GoneException {
     return new GoneException({
       success: false,
-      message: 'Link moi da bi thu hoi.',
+      message: 'Link mời đã bị thu hồi.',
       error: {
         code: GUEST_ACCESS_ERROR_CODES.GUEST_INVITE_REVOKED,
         details: {},
@@ -318,7 +318,7 @@ export class GuestInviteService {
   private meetingCancelled(): ConflictException {
     return new ConflictException({
       success: false,
-      message: 'Cuoc hop da bi huy.',
+      message: 'Cuộc họp đã bị hủy.',
       error: {
         code: GUEST_ACCESS_ERROR_CODES.GUEST_MEETING_CANCELLED,
         details: {},

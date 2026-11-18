@@ -449,7 +449,7 @@ describe('VehicleRegistrationService (VPR-001 / UC1)', () => {
       expect(repo.softDelete).toHaveBeenCalledWith('veh1');
     });
 
-    it('id không tồn tại / đã xoá (findOne null) → ném NotFoundException code VEHICLE_NOT_FOUND_OR_FORBIDDEN, softDelete KHÔNG gọi', async () => {
+    it('id không tồn tại / đã xóa (findOne null) → ném NotFoundException code VEHICLE_NOT_FOUND_OR_FORBIDDEN, softDelete KHÔNG gọi', async () => {
       repo.findOne.mockResolvedValue(undefined);
       await expect(service.adminSoftDelete('not-exist')).rejects.toMatchObject({
         response: {

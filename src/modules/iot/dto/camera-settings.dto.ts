@@ -41,7 +41,7 @@ export class CameraLayoutPositionDto {
   angle: number;
 }
 
-/** PUT /iot-devices/layout — lưu vị trí các camera của 1 tầng; reset=true xoá vị trí cả tầng. */
+/** PUT /iot-devices/layout — lưu vị trí các camera của 1 tầng; reset=true xóa vị trí cả tầng. */
 export class SaveCameraLayoutDto {
   /** Khoá tầng dạng "Tòa A - Tầng 1" (khớp areaName của phòng). */
   @Expose({ name: 'floor_key' })

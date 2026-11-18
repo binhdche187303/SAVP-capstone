@@ -50,7 +50,7 @@ describe('EquipmentController.assignToRoom (UC-65)', () => {
     );
     expect(result).toEqual({
       success: true,
-      message: 'Phan bo thiet bi vao phong thanh cong',
+      message: 'Phân bổ thiết bị vào phòng thành công',
       data,
     });
   });

@@ -76,7 +76,7 @@ describe('ZonePresenceWriterService (ZPW-001 / UC-109)', () => {
       });
     });
 
-    it('zone không tồn tại / đã xoá mềm → zone_wrong_type (SELECT lọc deleted_at IS NULL)', async () => {
+    it('zone không tồn tại / đã xóa mềm → zone_wrong_type (SELECT lọc deleted_at IS NULL)', async () => {
       ds.manager.query.mockResolvedValueOnce([]);
       expect(await service.resolvePresenceZone('z')).toEqual({
         valid: false,
@@ -188,7 +188,7 @@ describe('ZonePresenceWriterService (ZPW-001 / UC-109)', () => {
     it('zone không tồn tại → ném, KHÔNG chạm dedupe-check, KHÔNG mở transaction', async () => {
       ds.manager.query.mockResolvedValueOnce([]); // SELECT zones trả rỗng
       await expect(service.writeCountEvent(countInput())).rejects.toThrow(
-        'không tồn tại hoặc đã xoá',
+        'không tồn tại hoặc đã xóa',
       );
       expect(ds.transaction).not.toHaveBeenCalled();
     });

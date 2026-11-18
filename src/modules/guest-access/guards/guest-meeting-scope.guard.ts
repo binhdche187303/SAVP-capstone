@@ -72,7 +72,7 @@ export class GuestMeetingScopeGuard implements CanActivate {
   private scopeMismatch(): ForbiddenException {
     return new ForbiddenException({
       success: false,
-      message: 'Phien truy cap khong khop voi cuoc hop nay.',
+      message: 'Phiên truy cập không khớp với cuộc họp này.',
       error: {
         code: GUEST_ACCESS_ERROR_CODES.GUEST_MEETING_SCOPE_MISMATCH,
         details: {},
@@ -83,7 +83,7 @@ export class GuestMeetingScopeGuard implements CanActivate {
   private meetingCancelled(): ConflictException {
     return new ConflictException({
       success: false,
-      message: 'Cuoc hop da huy hoac da ket thuc, khong the tiep tuc truy cap.',
+      message: 'Cuộc họp đã hủy hoặc đã kết thúc, không thể tiếp tục truy cập.',
       error: {
         code: GUEST_ACCESS_ERROR_CODES.GUEST_MEETING_CANCELLED,
         details: {},
