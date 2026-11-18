@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class DepartmentResponseDto {
   @ApiProperty({ description: 'ID phòng ban', format: 'uuid' })
@@ -35,6 +35,18 @@ export class DepartmentResponseDto {
       'Số lượng nhân viên đang hoạt động trực thuộc TRỰC TIẾP phòng ban (employment_status active/probation, account_status active) — không đệ quy phòng ban con',
   })
   memberCount: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Số cán bộ (memberCount trừ SV) — chỉ có ở danh sách phòng ban',
+  })
+  staffCount?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Số SV gắn vào phòng ban (khoa) — chỉ có ở danh sách phòng ban',
+  })
+  studentCount?: number;
 
   @ApiProperty({ description: 'Thời điểm tạo', format: 'date-time' })
   createdAt: Date;

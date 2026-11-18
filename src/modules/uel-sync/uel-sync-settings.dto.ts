@@ -1,4 +1,8 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  ApiHideProperty,
+  ApiProperty,
+  ApiPropertyOptional,
+} from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -14,7 +18,6 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { MAX_SESSION_DAYS_AHEAD } from './uel-sync-settings.service.js';
 
 export class UelSyncSettingsDto {
   @ApiPropertyOptional({ example: true, description: 'Bật đồng bộ tự động' })
@@ -22,10 +25,24 @@ export class UelSyncSettingsDto {
   @IsBoolean()
   autoEnabled?: boolean;
 
-  @ApiPropertyOptional({ enum: ['daily', 'weekly'], example: 'daily' })
+  @ApiPropertyOptional({
+    enum: ['daily', 'weekly', 'interval'],
+    example: 'daily',
+    description: 'interval = mỗi intervalDays ngày',
+  })
   @IsOptional()
-  @IsIn(['daily', 'weekly'])
-  frequency?: 'daily' | 'weekly';
+  @IsIn(['daily', 'weekly', 'interval'])
+  frequency?: 'daily' | 'weekly' | 'interval';
+
+  @ApiPropertyOptional({
+    example: 3,
+    description: 'Số ngày giữa 2 lần khi frequency = interval (2..90)',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(2)
+  @Max(90)
+  intervalDays?: number;
 
   @ApiPropertyOptional({
     example: 0,
@@ -69,15 +86,10 @@ export class UelSyncSettingsDto {
   @MaxLength(10)
   hocKy?: string;
 
-  @ApiPropertyOptional({
-    example: 14,
-    description: 'Số ngày lịch học kéo trước',
-  })
+  /** Bỏ qua — tương thích FE cũ (lịch học giờ luôn lấy đến hết năm học). */
+  @ApiHideProperty()
   @IsOptional()
-  @IsInt()
-  @Min(1)
-  @Max(MAX_SESSION_DAYS_AHEAD)
-  sessionDaysAhead?: number;
+  sessionDaysAhead?: unknown;
 }
 
 export class StudyPeriodDto {

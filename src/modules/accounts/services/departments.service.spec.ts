@@ -52,6 +52,7 @@ describe('DepartmentsService', () => {
     repo = { findAndCount: jest.fn(), findOne: jest.fn() };
     userQueryBuilder = {
       innerJoin: jest.fn().mockReturnThis(),
+      leftJoin: jest.fn().mockReturnThis(),
       select: jest.fn().mockReturnThis(),
       addSelect: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
@@ -741,6 +742,29 @@ describe('DepartmentsService', () => {
       expect(r.data.find((d) => d.id === 'd1')?.memberCount).toBe(5);
       expect(r.data.find((d) => d.id === 'd2')?.memberCount).toBe(0);
       expect(r.data.find((d) => d.id === 'd3')?.memberCount).toBe(0);
+    });
+
+    it('tách số cán bộ / SV: staffCount = memberCount - studentCount (SV gắn vào khoa)', async () => {
+      repo.findAndCount.mockResolvedValue([
+        [deptRow({ id: 'd1' }), deptRow({ id: 'd2' })],
+        2,
+      ]);
+      userQueryBuilder.getRawMany.mockResolvedValue([
+        { departmentId: 'd1', count: '3469', students: '3406' },
+      ]);
+
+      const r = await service.listDepartments({});
+
+      expect(r.data.find((d) => d.id === 'd1')).toMatchObject({
+        memberCount: 3469,
+        staffCount: 63,
+        studentCount: 3406,
+      });
+      expect(r.data.find((d) => d.id === 'd2')).toMatchObject({
+        memberCount: 0,
+        staffCount: 0,
+        studentCount: 0,
+      });
     });
 
     it('memberCount: list rỗng → KHÔNG gọi batch query (tránh query thừa)', async () => {

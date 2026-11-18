@@ -1,5 +1,6 @@
 import {
   codeListOf,
+  lecturerNamesOf,
   cohortOfClass,
   eachDate,
   isCohortInScope,
@@ -9,6 +10,7 @@ import {
   semesterCodeOf,
   semesterNameOf,
   sessionTimesFromClock,
+  sessionTimesFromStart,
   sessionTimesOf,
   staffRoleOf,
   toIsoDate,
@@ -97,6 +99,52 @@ describe('uel-sync.mapper', () => {
     expect(sessionTimesFromClock('2026-11-12', '11:00', '07:00')).toBeNull();
     expect(sessionTimesFromClock('2026-11-12', '25:00', '26:00')).toBeNull();
     expect(sessionTimesFromClock('2026-11-12', 'sáng', '11:00')).toBeNull();
+  });
+
+  it('sessionTimesFromStart: giờ kết thúc API sai ⇒ suy từ buổi cùng tiết, không có thì 50 phút/tiết', () => {
+    const learned = new Map([['13|3', 150]]);
+    // UEL trả 17:45 → 17:35 cho buổi 1 tiết tối: dùng 50 phút/tiết.
+    expect(
+      sessionTimesFromStart('2026-11-20', '17:45', 13, 1, learned),
+    ).toEqual({
+      start: '2026-11-20T17:45:00+07:00',
+      end: '2026-11-20T18:35:00+07:00',
+    });
+    expect(
+      sessionTimesFromStart(
+        '2026-11-20',
+        '17:45',
+        13,
+        3,
+        new Map([['13|3', 165]]),
+      ),
+    ).toEqual({
+      start: '2026-11-20T17:45:00+07:00',
+      end: '2026-11-20T20:30:00+07:00',
+    });
+    expect(
+      sessionTimesFromStart('2026-11-20', null, 13, 1, learned),
+    ).toBeNull();
+    expect(
+      sessionTimesFromStart('2026-11-20', '17:45', 13, null, learned),
+    ).toBeNull();
+    expect(
+      sessionTimesFromStart('2026-11-20', '23:30', 1, 1, learned),
+    ).toBeNull(); // qua ngày
+  });
+
+  it('lecturerNamesOf bỏ học hàm/học vị, tách nhiều GV, chuẩn hóa hoa/thường', () => {
+    expect(lecturerNamesOf('TS. Lê Thanh Hòa')).toEqual(['lê thanh hòa']);
+    expect(lecturerNamesOf('PGS.TS. Nguyễn  Văn A, ThS. Trần Thị B')).toEqual([
+      'nguyễn văn a',
+      'trần thị b',
+    ]);
+    expect(lecturerNamesOf('GS. TSKH. Phạm C; CN. Đỗ D')).toEqual([
+      'phạm c',
+      'đỗ d',
+    ]);
+    expect(lecturerNamesOf('Thảo Nguyên')).toEqual(['thảo nguyên']); // "Th" đầu tên không phải học vị
+    expect(lecturerNamesOf(null)).toEqual([]);
   });
 
   it('codeListOf tách mã, bỏ trống/trùng', () => {

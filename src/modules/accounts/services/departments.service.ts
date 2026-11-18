@@ -825,9 +825,14 @@ export class DepartmentsService {
     );
 
     return {
-      data: rows.map((dept) =>
-        this.toResponse(dept, memberCountMap.get(dept.id) ?? 0),
-      ),
+      data: rows.map((dept) => {
+        const c = memberCountMap.get(dept.id) ?? { total: 0, students: 0 };
+        return {
+          ...this.toResponse(dept, c.total),
+          staffCount: c.total - c.students,
+          studentCount: c.students,
+        };
+      }),
       meta: {
         page,
         limit,
@@ -984,8 +989,8 @@ export class DepartmentsService {
    */
   private async countActiveMembersBatch(
     departmentIds: string[],
-  ): Promise<Map<string, number>> {
-    const map = new Map<string, number>();
+  ): Promise<Map<string, { total: number; students: number }>> {
+    const map = new Map<string, { total: number; students: number }>();
     if (departmentIds.length === 0) return map;
 
     const rows = await this.dataSource
@@ -993,6 +998,9 @@ export class DepartmentsService {
       .createQueryBuilder('u')
       .select('u.departmentId', 'departmentId')
       .addSelect('COUNT(*)', 'count')
+      // SV được gắn vào khoa ⇒ tách riêng để FE hiện "x cán bộ · y SV".
+      .addSelect('COUNT(s.id)', 'students')
+      .leftJoin('students', 's', 's.user_id = u.id AND s.deleted_at IS NULL')
       .where('u.departmentId IN (:...departmentIds)', { departmentIds })
       .andWhere('u.deletedAt IS NULL')
       .andWhere('u.accountStatus = :accountStatus', {
@@ -1005,10 +1013,17 @@ export class DepartmentsService {
         ],
       })
       .groupBy('u.departmentId')
-      .getRawMany<{ departmentId: string; count: string }>();
+      .getRawMany<{
+        departmentId: string;
+        count: string;
+        students?: string;
+      }>();
 
     for (const row of rows) {
-      map.set(row.departmentId, parseInt(row.count, 10));
+      map.set(row.departmentId, {
+        total: parseInt(row.count, 10),
+        students: parseInt(row.students ?? '0', 10),
+      });
     }
     return map;
   }
