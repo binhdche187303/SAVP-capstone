@@ -6,7 +6,16 @@ const READ_SET_TTL_SECONDS = 90 * 24 * 60 * 60; // 90 ngày (§3B PLAN_THUC_THI_
 export interface NotificationReadState {
   readIds: Set<string>;
   readAllAt: Date | null;
+  /** Nhóm đã đọc: "loại|YYYY-MM-DD" (ngày theo giờ VN) — đọc cả nhóm 1 lần bấm. */
+  readGroups?: Set<string>;
 }
+
+/** Ngày (YYYY-MM-DD) theo giờ Việt Nam — khớp to_char(created_at AT TIME ZONE 'Asia/Ho_Chi_Minh'). */
+export const vnDayOf = (d: Date): string =>
+  new Date(d.getTime() + 7 * 3600 * 1000).toISOString().slice(0, 10);
+
+export const notificationGroupKey = (type: string, day: string): string =>
+  `${type}|${day}`;
 
 /**
  * NotificationReadStateService (BE-07) — trạng thái "đã đọc" theo user, lưu hoàn toàn ở Redis.
@@ -37,6 +46,27 @@ export class NotificationReadStateService {
 
   private readAllKey(userId: string): string {
     return `notif:readall:${userId}`;
+  }
+
+  private readGroupKey(userId: string): string {
+    return `notif:readgrp:${userId}`;
+  }
+
+  /** Đánh dấu cả nhóm (loại + ngày) là đã đọc — không phải lưu từng id (1 ngày có thể hàng nghìn). */
+  async markGroupRead(
+    userId: string,
+    type: string,
+    day: string,
+  ): Promise<void> {
+    try {
+      const key = this.readGroupKey(userId);
+      await this.redisService.sadd(key, notificationGroupKey(type, day));
+      await this.redisService.expire(key, READ_SET_TTL_SECONDS);
+    } catch (error) {
+      this.logger.error(
+        `markGroupRead failed for user=${userId} group=${type}|${day}: ${(error as Error).message}`,
+      );
+    }
   }
 
   async markRead(userId: string, notificationId: string): Promise<void> {
@@ -70,19 +100,21 @@ export class NotificationReadStateService {
    */
   async getReadState(userId: string): Promise<NotificationReadState> {
     try {
-      const [ids, readAllRaw] = await Promise.all([
+      const [ids, readAllRaw, groups] = await Promise.all([
         this.redisService.smembers(this.readKey(userId)),
         this.redisService.get(this.readAllKey(userId)),
+        this.redisService.smembers(this.readGroupKey(userId)),
       ]);
       return {
         readIds: new Set(ids),
         readAllAt: readAllRaw ? new Date(readAllRaw) : null,
+        readGroups: new Set(groups ?? []),
       };
     } catch (error) {
       this.logger.error(
         `getReadState failed for user=${userId}, fail-soft to unread: ${(error as Error).message}`,
       );
-      return { readIds: new Set(), readAllAt: null };
+      return { readIds: new Set(), readAllAt: null, readGroups: new Set() };
     }
   }
 
@@ -90,8 +122,17 @@ export class NotificationReadStateService {
     state: NotificationReadState,
     notificationId: string,
     createdAt: Date,
+    notificationType?: string,
   ): boolean {
     if (state.readIds.has(notificationId)) return true;
+    if (
+      notificationType &&
+      state.readGroups?.has(
+        notificationGroupKey(notificationType, vnDayOf(createdAt)),
+      )
+    ) {
+      return true;
+    }
     if (state.readAllAt && createdAt.getTime() <= state.readAllAt.getTime()) {
       return true;
     }
@@ -103,8 +144,14 @@ export class NotificationReadStateService {
     userId: string,
     notificationId: string,
     createdAt: Date,
+    notificationType?: string,
   ): Promise<boolean> {
     const state = await this.getReadState(userId);
-    return this.computeIsRead(state, notificationId, createdAt);
+    return this.computeIsRead(
+      state,
+      notificationId,
+      createdAt,
+      notificationType,
+    );
   }
 }

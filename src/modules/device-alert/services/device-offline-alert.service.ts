@@ -27,11 +27,11 @@ export interface OfflineDeviceRef {
 /** Số camera liệt kê tên trong nội dung thông báo; còn lại ghi "và N camera khác". */
 const MAX_NAMES_IN_TEXT = 5;
 
-/** "Cam 1 (CAM-1), Cam 2 (CAM-2) và 3 camera khác". */
+/** "Cổng 1, Cổng 2 và 3 camera khác" — chỉ tên camera; mã thiết bị nằm trong payload. */
 export function formatCameraList(refs: OfflineDeviceRef[]): string {
   const shown = refs
     .slice(0, MAX_NAMES_IN_TEXT)
-    .map((r) => `${r.deviceName} (${r.deviceCode})`)
+    .map((r) => r.deviceName?.trim() || r.deviceCode)
     .join(', ');
   const rest = refs.length - MAX_NAMES_IN_TEXT;
   return rest > 0 ? `${shown} và ${rest} camera khác` : shown;

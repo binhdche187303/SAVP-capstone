@@ -70,7 +70,8 @@ describe('VehicleControlAlertService (VCC-001 / UC9)', () => {
     expect(dto.recipientUserIds).toEqual(['admin1', 'admin2']);
     // Tiếng Việt thật, không phải chuỗi escape literal "ả" (lộ ra ở WS realtime)
     expect(dto.subject).toBe('Cảnh báo: xe trong danh sách chặn');
-    expect(dto.content).toContain('Biển số 30A12345 vừa qua cổng');
+    expect(dto.content).toContain('Biển số 30A12345 được ghi nhận tại cổng (đi vào).');
+    expect(dto.content).not.toMatch(/channel|direction/);
     expect(dto.content).toContain('Lý do: stolen.');
     expect(`${dto.subject}${dto.content}`).not.toMatch(/\\u[0-9a-fA-F]{4}/);
     expect(dto.payloadJson).toMatchObject({
@@ -90,6 +91,37 @@ describe('VehicleControlAlertService (VCC-001 / UC9)', () => {
     expect(dto.priority).toBe('normal');
     expect(dto.subject).not.toBe('Cảnh báo: xe trong danh sách chặn');
     expect(dto.payloadJson.listType).toBe('watchlist');
+  });
+
+  it('nội dung dùng tên khu vực của kênh camera, hướng đi tiếng Việt, không lộ channel/direction', async () => {
+    controlListMock.checkControlList.mockResolvedValue(blocklistMatch);
+    dsMock.manager.query.mockImplementation((sql: string) => {
+      if (sql.includes('FROM system_configs'))
+        return Promise.resolve([
+          { config_json: { '7': '11111111-1111-1111-1111-111111111111' } },
+        ]);
+      if (sql.includes('FROM zones'))
+        return Promise.resolve([{ zone_name: 'Cổng chính' }]);
+      if (sql.includes('FROM vehicle_registrations')) return Promise.resolve([]);
+      return Promise.resolve(adminRows);
+    });
+    await service.evaluate('10DS10086', { channelId: 7, direction: 'seen' });
+    const dto = notifMock.createNotification.mock.calls[0][0];
+    expect(dto.content).toBe(
+      'Biển số 10DS10086 được ghi nhận tại Cổng chính. Danh sách: chặn. Lý do: stolen.',
+    );
+    expect(dto.payloadJson).toMatchObject({ zoneName: 'Cổng chính', channelId: 7 });
+  });
+
+  it('xe lạ thông thường → mức thấp (chỉ gom nhóm, không đếm trên chuông)', async () => {
+    dsMock.manager.query.mockImplementation((sql: string) => {
+      if (sql.includes('FROM vehicle_registrations')) return Promise.resolve([]);
+      return Promise.resolve(adminRows);
+    });
+    await service.evaluate('51H35379', ctx);
+    const dto = notifMock.createNotification.mock.calls[0][0];
+    expect(dto.notificationType).toBe('unknown_vehicle_alert');
+    expect(dto.priority).toBe('low');
   });
 
   describe('throttle theo plate', () => {

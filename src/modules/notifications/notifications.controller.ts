@@ -20,13 +20,19 @@ import { RequirePermissions } from '../auth/decorators/require-permissions.decor
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 
 import { MeetingNotificationsService } from './services/meeting-notifications.service.js';
-import { NotificationsService } from './notifications.service.js';
+import {
+  NotificationListFilters,
+  NotificationsService,
+} from './notifications.service.js';
 
 import { SendMeetingInvitationDto } from './dto/send-meeting-invitation.dto.js';
 import { SendMeetingReminderDto } from './dto/send-meeting-reminder.dto.js';
 import { ResendCancellationNotificationDto } from './dto/resend-cancellation-notification.dto.js';
 import { DistributeMeetingMinutesDto } from './dto/distribute-meeting-minutes.dto.js';
-import { ListNotificationsQueryDto } from './dto/list-notifications-query.dto.js';
+import {
+  ListNotificationsQueryDto,
+  MarkNotificationGroupReadDto,
+} from './dto/list-notifications-query.dto.js';
 
 /**
  * NotificationsController — routes for module notifications.
@@ -148,8 +154,50 @@ export class NotificationsController {
       user.userId,
       page,
       limit,
+      this.filtersOf(query),
     );
     return { success: true, ...result };
+  }
+
+  private filtersOf(query: ListNotificationsQueryDto): NotificationListFilters {
+    return {
+      isRead: query.isRead,
+      types: query.type,
+      from: query.from,
+      to: query.to,
+      search: query.search,
+    };
+  }
+
+  // Path TĨNH 'notifications/groups' phải khai TRƯỚC 'notifications/:id'.
+  @Get('notifications/groups')
+  @RequirePermissions('notification.read.self')
+  async listMyNotificationGroups(
+    @CurrentUser() user: { userId: string },
+    @Query() query: ListNotificationsQueryDto,
+  ) {
+    const result = await this.notificationsService.listMyNotificationGroups(
+      user.userId,
+      query.page ?? 1,
+      query.limit ?? 20,
+      this.filtersOf(query),
+    );
+    return { success: true, ...result };
+  }
+
+  @Patch('notifications/read-group')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions('notification.update.self')
+  async markNotificationGroupRead(
+    @CurrentUser() user: { userId: string },
+    @Body() body: MarkNotificationGroupReadDto,
+  ) {
+    await this.notificationsService.markNotificationGroupRead(
+      user.userId,
+      body.type,
+      body.day,
+    );
+    return { success: true, message: 'Đã đánh dấu cả nhóm là đã đọc' };
   }
 
   @Get('notifications/:id')

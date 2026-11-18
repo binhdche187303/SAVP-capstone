@@ -31,6 +31,18 @@ export interface VehicleControlAlertOptions {
 }
 
 /** STT 20 (perf): TTL cache zone map + recipients (mirror CHANNEL_MAP_CACHE_MS của VehicleResolveService). */
+const DIRECTION_LABEL: Record<string, string> = {
+  enter: 'đi vào',
+  in: 'đi vào',
+  leave: 'đi ra',
+  exit: 'đi ra',
+  out: 'đi ra',
+};
+const LIST_TYPE_LABEL: Record<string, string> = {
+  blocklist: 'chặn',
+  watchlist: 'theo dõi',
+};
+
 const CONFIG_CACHE_MS = 30_000;
 /** STT 20 (perf): trần map throttle — vượt thì dọn các plate đã hết cửa sổ throttle. */
 const THROTTLE_MAP_MAX = 5000;
@@ -220,22 +232,38 @@ export class VehicleControlAlertService {
         );
         return;
       }
+      // Nội dung cho người đọc: tên khu vực + hướng đi tiếng Việt. Kênh/hướng kỹ thuật
+      // vẫn nằm trong payload để tra soát.
+      const zoneName = await this.resolveZoneName(zoneId);
+      if (zoneName) payload = { ...payload, zoneName };
+      const dir = DIRECTION_LABEL[context.direction];
+      const listLabel =
+        typeof payload.listType === 'string'
+          ? (LIST_TYPE_LABEL[payload.listType] ?? payload.listType)
+          : null;
       const alertContent =
-        `Biển số ${plateNumber} vừa qua cổng ` +
-        `(channel ${context.channelId}, direction ${context.direction}).` +
-        (payload.listType ? ` Loại: ${payload.listType}.` : '') +
-        (payload.reason ? ` Lý do: ${payload.reason}.` : '');
+        `Biển số ${plateNumber} được ghi nhận tại ${zoneName ?? 'cổng'}` +
+        (dir ? ` (${dir})` : '') +
+        '.' +
+        (listLabel ? ` Danh sách: ${listLabel}.` : '') +
+        (typeof payload.reason === 'string' && payload.reason
+          ? ` Lý do: ${payload.reason}.`
+          : '');
       await this.notificationsService.createNotification({
         notificationType,
         channel: NotificationChannel.IN_APP,
         subject,
         content: alertContent,
+        // Xe lạ thông thường: mức thấp ⇒ chỉ gom nhóm, không đếm trên chuông
+        // (1 ngày có thể hàng trăm lượt). Mức cảnh báo an ninh (severity) giữ nguyên.
         priority:
-          severity === 'high'
-            ? NotificationPriority.HIGH
-            : severity === 'low'
-              ? NotificationPriority.LOW
-              : NotificationPriority.NORMAL,
+          notificationType === NotificationType.UNKNOWN_VEHICLE_ALERT
+            ? NotificationPriority.LOW
+            : severity === 'high'
+              ? NotificationPriority.HIGH
+              : severity === 'low'
+                ? NotificationPriority.LOW
+                : NotificationPriority.NORMAL,
         recipientScope: 'user_list',
         recipientUserIds: recipients,
         payloadJson: payload,
@@ -249,6 +277,22 @@ export class VehicleControlAlertService {
   private async resolveZone(channelId: number): Promise<string | null> {
     const map = await this.getChannelPresenceZoneMap();
     return map[String(channelId)] ?? null;
+  }
+
+  /** Tên khu vực để hiển thị trong thông báo; lỗi/không có → null (dùng "cổng"). */
+  private async resolveZoneName(zoneId: string | null): Promise<string | null> {
+    if (!zoneId) return null;
+    try {
+      const rows: Array<{ zone_name?: string }> =
+        await this.dataSource.manager.query(
+          `SELECT zone_name FROM zones WHERE id = $1 AND deleted_at IS NULL LIMIT 1`,
+          [zoneId],
+        );
+      const name = rows?.[0]?.zone_name;
+      return typeof name === 'string' && name.trim() ? name.trim() : null;
+    } catch {
+      return null;
+    }
   }
 
   /** STT 20 (perf): map vượt trần → xóa plate đã quá cửa sổ throttle (không đổi hành vi throttle). */

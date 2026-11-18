@@ -23,11 +23,24 @@ describe('NotificationsService — inbox + BE-07 mark-read', () => {
       skip: jest.fn().mockReturnThis(),
       take: jest.fn().mockReturnThis(),
       getManyAndCount: jest.fn(),
+      getCount: jest.fn().mockResolvedValue(0),
+      select: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
+      groupBy: jest.fn().mockReturnThis(),
+      addGroupBy: jest.fn().mockReturnThis(),
+      having: jest.fn().mockReturnThis(),
+      offset: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockReturnThis(),
+      getRawMany: jest.fn().mockResolvedValue([]),
+      getQueryAndParameters: jest.fn().mockReturnValue(['SELECT 1', []]),
+      setParameters: jest.fn().mockReturnThis(),
     };
 
     repo = {
       createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
       findOne: jest.fn(),
+      find: jest.fn().mockResolvedValue([]),
+      manager: { query: jest.fn().mockResolvedValue([{ total: 0 }]) },
     };
 
     readStateService = {
@@ -36,6 +49,7 @@ describe('NotificationsService — inbox + BE-07 mark-read', () => {
       isRead: jest.fn(),
       markRead: jest.fn(),
       markAllRead: jest.fn(),
+      markGroupRead: jest.fn(),
     } as unknown as jest.Mocked<NotificationReadStateService>;
 
     dataSourceMock = { manager: { query: jest.fn().mockResolvedValue([]) } };
@@ -211,6 +225,80 @@ describe('NotificationsService — inbox + BE-07 mark-read', () => {
     });
   });
 
+  describe('lọc / đếm chưa đọc / gom nhóm', () => {
+    const emptyState = { readIds: new Set<string>(), readAllAt: null, readGroups: new Set<string>() };
+    const conds = () =>
+      queryBuilder.andWhere.mock.calls.map((c: unknown[]) => String(c[0]));
+
+    beforeEach(() => {
+      queryBuilder.getManyAndCount.mockResolvedValue([[], 0]);
+      readStateService.getReadState.mockResolvedValue(emptyState);
+      readStateService.computeIsRead.mockReturnValue(false);
+    });
+
+    it('lọc theo loại, chưa đọc, khoảng ngày, từ khóa — đều chạy ở SQL', async () => {
+      await service.listMyNotifications('u1', 1, 20, {
+        types: ['unknown_vehicle_alert'],
+        isRead: false,
+        from: '2026-10-26',
+        to: '2026-10-27',
+        search: '10DS',
+      });
+      const all = conds().join('\n');
+      expect(all).toContain('n.notification_type IN (:...types)');
+      expect(all).toMatch(/NOT \(/);
+      expect(all).toContain("AT TIME ZONE 'Asia/Ho_Chi_Minh'");
+      expect(all).toContain('ILIKE :search');
+      const params = Object.assign(
+        {},
+        ...queryBuilder.andWhere.mock.calls.map((c: unknown[]) => c[1] ?? {}),
+      );
+      expect(params).toMatchObject({
+        types: ['unknown_vehicle_alert'],
+        from: '2026-10-26',
+        to: '2026-10-27',
+        search: '%10DS%',
+      });
+    });
+
+    it('meta.unread = số chưa đọc (bỏ mức thấp) để chuông hiển thị', async () => {
+      queryBuilder.getCount.mockResolvedValue(7);
+      const r = await service.listMyNotifications('u1', 1, 20);
+      expect(r.meta.unread).toBe(7);
+      expect(conds().join('\n')).toContain("n.priority <> 'low'");
+    });
+
+    it('gom nhóm theo loại + ngày, kèm thông báo mới nhất', async () => {
+      queryBuilder.getRawMany.mockResolvedValue([
+        { type: 'unknown_vehicle_alert', day: '2026-10-26', total: '470', unread: '470', latestAt: new Date('2026-10-26T09:07:00Z'), latestId: 'n9' },
+      ]);
+      repo.manager.query.mockResolvedValue([{ total: 1 }]);
+      repo.find.mockResolvedValue([
+        { id: 'n9', notificationType: 'unknown_vehicle_alert', subject: 'Cảnh báo: biển số không xác định', content: 'Biển số 10DS10086 vừa đi qua Cổng 2.', priority: 'low', createdAt: new Date('2026-10-26T09:07:00Z'), payloadJson: { plateNumber: '10DS10086' } },
+      ]);
+
+      const r = await service.listMyNotificationGroups('u1', 1, 20, {});
+
+      expect(r.meta.total).toBe(1);
+      expect(r.data[0]).toMatchObject({
+        type: 'unknown_vehicle_alert',
+        day: '2026-10-26',
+        total: 470,
+        unread: 470,
+        latest: { id: 'n9', content: 'Biển số 10DS10086 vừa đi qua Cổng 2.' },
+      });
+    });
+
+    it('đánh dấu đọc cả nhóm → ghi Redis theo loại + ngày', async () => {
+      await service.markNotificationGroupRead('u1', 'unknown_vehicle_alert', '2026-10-26');
+      expect(readStateService.markGroupRead).toHaveBeenCalledWith(
+        'u1',
+        'unknown_vehicle_alert',
+        '2026-10-26',
+      );
+    });
+  });
+
   describe('getMyNotificationDetail', () => {
     it('404 nếu không tồn tại', async () => {
       repo.findOne.mockResolvedValue(null);
@@ -251,6 +339,7 @@ describe('NotificationsService — inbox + BE-07 mark-read', () => {
         'u1',
         'n1',
         createdAt,
+        't',
       );
       expect(result.isRead).toBe(true);
     });

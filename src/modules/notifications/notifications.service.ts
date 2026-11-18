@@ -1,11 +1,12 @@
 import {
+  BadRequestException,
   Injectable,
   Logger,
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, In, Repository, SelectQueryBuilder } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import {
   NotificationEntity,
@@ -18,8 +19,45 @@ import { QueueService } from '../queue/queue.service.js';
 import { BackgroundJobsService } from '../administration/services/background-jobs.service.js';
 import { BackgroundJobType } from '../administration/entities/background-job.entity.js';
 import { NotificationListItemDto } from './dto/notification-list-item.dto.js';
-import { NotificationReadStateService } from './services/notification-read-state.service.js';
+import {
+  NotificationReadState,
+  NotificationReadStateService,
+} from './services/notification-read-state.service.js';
 import { WebsocketService } from '../websocket/websocket.service.js';
+
+/** Bộ lọc hộp thư — tất cả chạy ở SQL (1 ngày có thể hàng nghìn cảnh báo). */
+export interface NotificationListFilters {
+  types?: string[];
+  isRead?: boolean;
+  /** YYYY-MM-DD theo giờ VN, tính cả ngày. */
+  from?: string;
+  to?: string;
+  search?: string;
+}
+
+export interface NotificationGroupDto {
+  type: string;
+  /** YYYY-MM-DD theo giờ VN. */
+  day: string;
+  total: number;
+  unread: number;
+  latestAt: Date;
+  latest: {
+    id: string;
+    subject: string | null;
+    content: string;
+    priority: string;
+    createdAt: Date;
+    payloadJson: Record<string, unknown> | null;
+  } | null;
+}
+
+const VN_DAY_SQL = `to_char(n.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD')`;
+/** "Đã đọc" (Redis) đưa xuống SQL: theo id, theo mốc đọc tất cả, hoặc theo nhóm loại + ngày. */
+const READ_SQL =
+  `(CAST(n.id AS text) IN (:...readIds)` +
+  ` OR n.created_at <= CAST(:readAllAt AS timestamptz)` +
+  ` OR (n.notification_type || '|' || ${VN_DAY_SQL}) IN (:...readGroups))`;
 
 export interface CreateNotificationDto {
   notificationType: NotificationType;
@@ -341,30 +379,105 @@ export class NotificationsService {
    * Dùng GIN index ix_notifications_recipients cho jsonb containment.
    * Không có trạng thái "đã đọc" theo từng user (xem note đầu file).
    */
+  /** Hộp thư của user: thông báo in-app gửi tới user, đã tới giờ hiển thị. */
+  private inboxQuery(userId: string): SelectQueryBuilder<NotificationEntity> {
+    return (
+      this.repo
+        .createQueryBuilder('n')
+        .where('n.recipient_user_ids_json @> :userIdJsonb', {
+          userIdJsonb: JSON.stringify([userId]),
+        })
+        .andWhere("n.channel IN ('in_app', 'websocket')")
+        // Thông báo hẹn giờ chưa tới hạn chưa được hiện (xem deliverScheduledInApp).
+        .andWhere(
+          '(n.scheduled_send_at IS NULL OR n.scheduled_send_at <= now())',
+        )
+    );
+  }
+
+  /** Tham số cho READ_SQL — trạng thái đọc (Redis) đưa xuống SQL để lọc/đếm ở DB. */
+  private readParams(
+    state: NotificationReadState | undefined,
+  ): Record<string, unknown> {
+    return {
+      readIds: state?.readIds?.size ? [...state.readIds] : ['-'],
+      readAllAt: state?.readAllAt ? state.readAllAt.toISOString() : '-infinity',
+      readGroups: state?.readGroups?.size ? [...state.readGroups] : ['-'],
+    };
+  }
+
+  /** Bộ lọc loại / đã đọc / khoảng ngày (giờ VN) / từ khóa — chạy ở SQL. */
+  private applyInboxFilters(
+    qb: SelectQueryBuilder<NotificationEntity>,
+    f: NotificationListFilters,
+    state: NotificationReadState,
+  ): SelectQueryBuilder<NotificationEntity> {
+    if (f.types?.length) {
+      qb.andWhere('n.notification_type IN (:...types)', { types: f.types });
+    }
+    if (f.from) {
+      qb.andWhere(
+        `n.created_at >= (CAST(CAST(:from AS date) AS timestamp) AT TIME ZONE 'Asia/Ho_Chi_Minh')`,
+        { from: f.from },
+      );
+    }
+    if (f.to) {
+      qb.andWhere(
+        `n.created_at < (CAST(CAST(:to AS date) + 1 AS timestamp) AT TIME ZONE 'Asia/Ho_Chi_Minh')`,
+        { to: f.to },
+      );
+    }
+    const term = f.search?.trim();
+    if (term) {
+      qb.andWhere('(n.subject ILIKE :search OR n.content ILIKE :search)', {
+        search: `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`,
+      });
+    }
+    if (f.isRead !== undefined) {
+      qb.andWhere(
+        f.isRead ? READ_SQL : `NOT ${READ_SQL}`,
+        this.readParams(state),
+      );
+    }
+    return qb;
+  }
+
   async listMyNotifications(
     userId: string,
     page: number,
     limit: number,
+    filters: NotificationListFilters = {},
   ): Promise<{
     data: NotificationListItemDto[];
-    meta: { page: number; limit: number; total: number; totalPages: number };
+    meta: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+      unread: number;
+    };
   }> {
     const skip = (page - 1) * limit;
+    const readState = await this.readStateService.getReadState(userId);
 
-    const [items, total] = await this.repo
-      .createQueryBuilder('n')
-      .where('n.recipient_user_ids_json @> :userIdJsonb', {
-        userIdJsonb: JSON.stringify([userId]),
-      })
-      .andWhere("n.channel IN ('in_app', 'websocket')")
-      // Thông báo hẹn giờ chưa tới hạn chưa được hiện (xem deliverScheduledInApp).
-      .andWhere('(n.scheduled_send_at IS NULL OR n.scheduled_send_at <= now())')
+    const [items, total] = await this.applyInboxFilters(
+      this.inboxQuery(userId),
+      filters,
+      readState,
+    )
       .orderBy('n.created_at', 'DESC')
       .skip(skip)
       .take(limit)
       .getManyAndCount();
 
-    const readState = await this.readStateService.getReadState(userId);
+    // Số trên chuông: chưa đọc, bỏ mức thấp (xe lạ thông thường chỉ gom nhóm, không làm phiền).
+    const unread = await this.applyInboxFilters(
+      this.inboxQuery(userId),
+      { isRead: false },
+      readState,
+    )
+      .andWhere("n.priority <> 'low'")
+      .getCount();
     const noShowLiveStatusMap = await this.fetchNoShowLiveStatusMap(items);
     const data: NotificationListItemDto[] = items.map((item) => {
       const noShowCaseId =
@@ -387,6 +500,7 @@ export class NotificationsService {
           readState,
           item.id,
           item.createdAt,
+          item.notificationType,
         ),
         payloadJson: item.payloadJson ?? null,
         noShowLiveStatus: live?.detectionStatus ?? null,
@@ -401,8 +515,104 @@ export class NotificationsService {
         limit,
         total,
         totalPages: Math.ceil(total / limit),
+        unread,
       },
     };
+  }
+
+  /**
+   * Gom nhóm thông báo theo loại + ngày (giờ VN): mỗi nhóm 1 dòng (tổng, chưa đọc, mới nhất).
+   * 1 ngày có thể hàng nghìn cảnh báo xe lạ ⇒ đọc theo nhóm thay vì cuộn từng dòng.
+   */
+  async listMyNotificationGroups(
+    userId: string,
+    page: number,
+    limit: number,
+    filters: NotificationListFilters,
+  ): Promise<{
+    data: NotificationGroupDto[];
+    meta: { page: number; limit: number; total: number; totalPages: number };
+  }> {
+    const readState = await this.readStateService.getReadState(userId);
+    const unreadSql = `COUNT(*) FILTER (WHERE NOT ${READ_SQL})`;
+    const qb = this.applyInboxFilters(
+      this.inboxQuery(userId),
+      { ...filters, isRead: undefined },
+      readState,
+    )
+      .select('n.notification_type', 'type')
+      .addSelect(VN_DAY_SQL, 'day')
+      .addSelect('COUNT(*)', 'total')
+      .addSelect(unreadSql, 'unread')
+      .addSelect('MAX(n.created_at)', 'latestAt')
+      .addSelect('(ARRAY_AGG(n.id ORDER BY n.created_at DESC))[1]', 'latestId')
+      .setParameters(this.readParams(readState))
+      .groupBy('n.notification_type')
+      .addGroupBy(VN_DAY_SQL);
+    if (filters.isRead === false) qb.having(`${unreadSql} > 0`);
+    if (filters.isRead === true) qb.having(`${unreadSql} = 0`);
+
+    const [countSql, countParams] = qb.getQueryAndParameters();
+    const totalRows: Array<{ total: number | string }> =
+      await this.repo.manager.query(
+        `SELECT COUNT(*)::int AS total FROM (${countSql}) g`,
+        countParams,
+      );
+    const total = Number(totalRows[0]?.total ?? 0);
+
+    const rows = await qb
+      .orderBy('MAX(n.created_at)', 'DESC')
+      .offset((page - 1) * limit)
+      .limit(limit)
+      .getRawMany<{
+        type: string;
+        day: string;
+        total: string;
+        unread: string;
+        latestAt: Date;
+        latestId: string;
+      }>();
+
+    const latestIds = rows.map((r) => r.latestId).filter(Boolean);
+    const latest = latestIds.length
+      ? await this.repo.find({ where: { id: In(latestIds) } })
+      : [];
+    const byId = new Map(latest.map((n) => [n.id, n]));
+
+    return {
+      data: rows.map((r) => {
+        const n = byId.get(r.latestId);
+        return {
+          type: r.type,
+          day: r.day,
+          total: Number(r.total),
+          unread: Number(r.unread),
+          latestAt: r.latestAt,
+          latest: n
+            ? {
+                id: n.id,
+                subject: n.subject,
+                content: n.content,
+                priority: n.priority,
+                createdAt: n.createdAt,
+                payloadJson: n.payloadJson ?? null,
+              }
+            : null,
+        };
+      }),
+      meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    };
+  }
+
+  async markNotificationGroupRead(
+    userId: string,
+    type: string,
+    day: string,
+  ): Promise<void> {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !type?.trim()) {
+      throw new BadRequestException('Nhóm thông báo không hợp lệ.');
+    }
+    await this.readStateService.markGroupRead(userId, type.trim(), day);
   }
 
   /**
@@ -484,6 +694,7 @@ export class NotificationsService {
         userId,
         notification.id,
         notification.createdAt,
+        notification.notificationType,
       ),
       payloadJson: notification.payloadJson ?? null,
     };

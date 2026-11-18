@@ -160,7 +160,7 @@ describe('DeviceOfflineAlertService', () => {
           notifierMock.notifyDeviceStatus.mock.calls[0];
         expect(title).toBe('Cảnh báo: thêm 3 camera mất kết nối');
         expect(content).toContain(
-          'Cam 2 (CAM-2), Cam 3 (CAM-3), Cam 4 (CAM-4)',
+          'Cam 2, Cam 3, Cam 4',
         );
         expect(content).toContain('5 camera đang mất kết nối');
       });
@@ -206,7 +206,7 @@ describe('DeviceOfflineAlertService', () => {
       expect(notifierMock.notifyDeviceStatus).toHaveBeenCalledWith(
         expect.objectContaining({ id: 'a1' }),
         'Camera đã có tín hiệu lại',
-        'Camera Cam 1 (CAM-1) đã có tín hiệu lại. Cảnh báo đã tự động đóng.',
+        'Camera Cam 1 đã có tín hiệu lại. Cảnh báo đã tự động đóng.',
       );
     });
 
@@ -237,7 +237,7 @@ describe('DeviceOfflineAlertService', () => {
       expect(notifierMock.notifyDeviceStatus).toHaveBeenCalledWith(
         expect.anything(),
         'Camera đã có tín hiệu lại',
-        'Camera Cam 1 (CAM-1) đã có tín hiệu lại. Còn 2 camera đang mất kết nối trong khu vực.',
+        'Camera Cam 1 đã có tín hiệu lại. Còn 2 camera đang mất kết nối trong khu vực.',
       );
     });
 
@@ -268,15 +268,18 @@ describe('DeviceOfflineAlertService', () => {
   });
 
   describe('formatCameraList', () => {
+    it('chỉ ghi tên camera, không ghi mã thiết bị; thiếu tên thì dùng mã', () => {
+      expect(formatCameraList([{ deviceId: 'x', deviceCode: 'HGVISION-GATE-2-IN', deviceName: '' }])).toBe('HGVISION-GATE-2-IN');
+    });
     it('≤5 camera → liệt kê đủ', () => {
       expect(formatCameraList([ref(1), ref(2)])).toBe(
-        'Cam 1 (CAM-1), Cam 2 (CAM-2)',
+        'Cam 1, Cam 2',
       );
     });
     it('>5 camera → 5 tên + "và N camera khác"', () => {
       const refs = Array.from({ length: 8 }, (_, i) => ref(i + 1));
       expect(formatCameraList(refs)).toBe(
-        'Cam 1 (CAM-1), Cam 2 (CAM-2), Cam 3 (CAM-3), Cam 4 (CAM-4), Cam 5 (CAM-5) và 3 camera khác',
+        'Cam 1, Cam 2, Cam 3, Cam 4, Cam 5 và 3 camera khác',
       );
     });
   });

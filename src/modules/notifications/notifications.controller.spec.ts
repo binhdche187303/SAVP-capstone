@@ -22,6 +22,8 @@ describe('NotificationsController', () => {
 
     notificationsService = {
       listMyNotifications: jest.fn(),
+      listMyNotificationGroups: jest.fn(),
+      markNotificationGroupRead: jest.fn(),
       getMyNotificationDetail: jest.fn(),
       markNotificationRead: jest.fn(),
       markAllNotificationsRead: jest.fn(),
@@ -142,6 +144,7 @@ describe('NotificationsController', () => {
         'user-uuid',
         1,
         20,
+        expect.any(Object),
       );
       expect(response.success).toBe(true);
     });
@@ -157,6 +160,66 @@ describe('NotificationsController', () => {
         'user-uuid',
         1,
         20,
+        expect.any(Object),
+      );
+    });
+
+    it('chuyển bộ lọc (chưa đọc, loại, ngày, từ khóa) xuống service', async () => {
+      notificationsService.listMyNotifications.mockResolvedValue({
+        data: [],
+        meta: {},
+      });
+      await controller.listMyNotifications(mockUser, {
+        isRead: false,
+        type: ['unknown_vehicle_alert'],
+        from: '2026-10-26',
+        to: '2026-10-26',
+        search: '10DS',
+      });
+      expect(notificationsService.listMyNotifications).toHaveBeenCalledWith(
+        'user-uuid',
+        1,
+        20,
+        {
+          isRead: false,
+          types: ['unknown_vehicle_alert'],
+          from: '2026-10-26',
+          to: '2026-10-26',
+          search: '10DS',
+        },
+      );
+    });
+
+    it('GET notifications/groups → gom nhóm theo loại + ngày', async () => {
+      notificationsService.listMyNotificationGroups.mockResolvedValue({
+        data: [],
+        meta: {},
+      });
+      const r = await controller.listMyNotificationGroups(mockUser, {
+        isRead: false,
+      });
+      expect(
+        notificationsService.listMyNotificationGroups,
+      ).toHaveBeenCalledWith(
+        'user-uuid',
+        1,
+        20,
+        expect.objectContaining({ isRead: false }),
+      );
+      expect(r.success).toBe(true);
+    });
+
+    it('PATCH notifications/read-group → đánh dấu đọc cả nhóm', async () => {
+      await controller.markNotificationGroupRead(mockUser, {
+        type: 'unknown_vehicle_alert',
+        day: '2026-10-26',
+      });
+      expect(
+        notificationsService.markNotificationGroupRead,
+      ).toHaveBeenCalledWith(
+        'user-uuid',
+        'unknown_vehicle_alert',
+        '2026-10-26',
       );
     });
 

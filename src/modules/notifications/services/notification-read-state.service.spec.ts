@@ -100,6 +100,68 @@ describe('NotificationReadStateService (BE-07)', () => {
     });
   });
 
+  describe('markGroupRead (đọc cả nhóm loại + ngày)', () => {
+    it('sadd "type|YYYY-MM-DD" vào notif:readgrp:{userId} + TTL 90 ngày', async () => {
+      await service.markGroupRead('u1', 'unknown_vehicle_alert', '2026-10-26');
+      expect(redisService.sadd).toHaveBeenCalledWith(
+        'notif:readgrp:u1',
+        'unknown_vehicle_alert|2026-10-26',
+      );
+      expect(redisService.expire).toHaveBeenCalledWith(
+        'notif:readgrp:u1',
+        90 * 24 * 60 * 60,
+      );
+    });
+
+    it('getReadState đọc thêm tập nhóm đã đọc', async () => {
+      redisService.smembers.mockImplementation((key: string) =>
+        Promise.resolve(
+          key === 'notif:readgrp:u1'
+            ? ['unknown_vehicle_alert|2026-10-26']
+            : [],
+        ),
+      );
+      redisService.get.mockResolvedValue(null);
+      const state = await service.getReadState('u1');
+      expect(state.readGroups).toEqual(
+        new Set(['unknown_vehicle_alert|2026-10-26']),
+      );
+    });
+
+    it('computeIsRead: thuộc nhóm đã đọc (theo ngày giờ VN) → true', () => {
+      const state = {
+        readIds: new Set<string>(),
+        readAllAt: null,
+        readGroups: new Set(['unknown_vehicle_alert|2026-10-26']),
+      };
+      // 2026-10-25T18:30Z = 01:30 ngày 26/10 giờ VN
+      expect(
+        service.computeIsRead(
+          state,
+          'x',
+          new Date('2026-10-25T18:30:00Z'),
+          'unknown_vehicle_alert',
+        ),
+      ).toBe(true);
+      expect(
+        service.computeIsRead(
+          state,
+          'y',
+          new Date('2026-10-26T18:30:00Z'),
+          'unknown_vehicle_alert',
+        ),
+      ).toBe(false);
+      expect(
+        service.computeIsRead(
+          state,
+          'z',
+          new Date('2026-10-25T18:30:00Z'),
+          'late_checkin_alert',
+        ),
+      ).toBe(false);
+    });
+  });
+
   describe('computeIsRead', () => {
     it('id nằm trong SET đã đọc → true', () => {
       const result = service.computeIsRead(
