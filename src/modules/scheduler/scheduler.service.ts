@@ -284,7 +284,7 @@ export class SchedulerService {
    * TRƯỚC KHI phòng bị auto-release, nhưng `first_presence_at` chỉ được
    * `reconcilePendingConfirmations()` ghi nhận ~20s SAU KHI phòng đã bị thu hồi — vì tick
    * của 2 cron không đồng bộ, `autoReleaseBatch()` đọc thấy `first_presence_at IS NULL` và
-   * release trước khi cron kia kịp xác nhận. Gộp tuần tự vào 1 luồng xoá hoàn toàn race này:
+   * release trước khi cron kia kịp xác nhận. Gộp tuần tự vào 1 luồng xóa hoàn toàn race này:
    * `reconcilePresence()` LUÔN chạy xong (case đã kept/resolved nếu có presence hợp lệ)
    * TRƯỚC KHI `autoReleaseBatch()` chạy trong CÙNG tick. `autoReleaseEnabled` GIỮ NGUYÊN
    * gate ĐỘC LẬP (KHÔNG gộp chung điều kiện với `noShowEnabled`) — admin vẫn bật được cảnh

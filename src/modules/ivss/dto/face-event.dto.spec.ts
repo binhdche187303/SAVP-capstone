@@ -72,7 +72,7 @@ describe('FaceEventDto (IVS-001 #36, R4)', () => {
     });
     const errors = await validate(dto, { whitelist: true });
     expect(errors.length).toBe(0);
-    // whitelist:true → class-validator xoá field không-decorator khỏi instance.
+    // whitelist:true → class-validator xóa field không-decorator khỏi instance.
     const asRecord = dto as unknown as Record<string, unknown>;
     expect(asRecord.bogusField).toBeUndefined();
     expect(asRecord.another).toBeUndefined();

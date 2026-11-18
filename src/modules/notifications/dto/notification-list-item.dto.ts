@@ -20,7 +20,7 @@ export class NotificationListItemDto {
    * (tra theo `payloadJson.noShowCaseId`), KHÔNG PHẢI snapshot tĩnh
    * `payloadJson.kind` lúc notification được tạo (payloadJson KHÔNG BAO GIỜ
    * được cập nhật lại sau khi tạo — record lịch sử). null nếu không phải
-   * notificationType='no_show_alert' hoặc case đã bị xoá.
+   * notificationType='no_show_alert' hoặc case đã bị xóa.
    */
   noShowLiveStatus?: string | null;
   /** Chỉ có giá trị khi noShowLiveStatus='snoozed'. */

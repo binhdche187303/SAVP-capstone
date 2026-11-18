@@ -1,3 +1,4 @@
+import { filterValues, type FilterSelection } from '../../../common/utils/filter-selection.js';
 import {
   Injectable,
   Logger,
@@ -230,10 +231,10 @@ export class DashboardOverviewService {
   /**
    * Validate departmentId is within scope for MANAGER role.
    */
-  validateDepartmentOwnership(scope: ScopeResult, departmentId?: string): void {
+  validateDepartmentOwnership(scope: ScopeResult, departmentId?: FilterSelection<string>): void {
     if (scope.isAdmin || !departmentId) return;
 
-    if (!scope.scopeDepartmentIds?.includes(departmentId)) {
+    if (filterValues(departmentId).some(id => !scope.scopeDepartmentIds?.includes(id))) {
       throw new ForbiddenException({
         success: false,
         message: 'Department is outside your scope',

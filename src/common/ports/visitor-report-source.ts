@@ -1,3 +1,4 @@
+import type { FilterSelection } from '../utils/filter-selection.js';
 /**
  * VISITOR_REPORT_SOURCE (RPT-CENTER-BE-001 ↔ VIS-BE-001) — port nối Trung tâm báo cáo → phân hệ Khách.
  *
@@ -16,8 +17,8 @@ export interface VisitorReportKpis {
 export interface VisitorReportFilter {
   from: string;
   to: string;
-  departmentId?: string;
-  purpose?: string;
+  departmentId?: FilterSelection<string>;
+  purpose?: FilterSelection<string>;
 }
 
 export interface VisitorReportSource {
@@ -27,7 +28,7 @@ export interface VisitorReportSource {
     byDepartment: Array<{ departmentId: string | null; name: string; count: number }>;
   }>;
   reportRows(
-    filter: VisitorReportFilter & { status?: string; q?: string },
+    filter: VisitorReportFilter & { status?: FilterSelection<string>; q?: string },
     page: { page: number; limit: number; sortKey?: string; sortDir?: 'asc' | 'desc' } | null,
     now?: Date,
   ): Promise<{ rows: Array<Record<string, unknown>>; total: number }>;

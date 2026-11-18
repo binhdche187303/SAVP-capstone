@@ -232,7 +232,7 @@ describe('IotDevicesController — check-availability (A5)', () => {
       }
     });
 
-    it('tải lên / xoá ảnh mặt bằng cần iot.device.update', () => {
+    it('tải lên / xóa ảnh mặt bằng cần iot.device.update', () => {
       for (const handler of [
         controller.saveFloorPlan,
         controller.removeFloorPlan,

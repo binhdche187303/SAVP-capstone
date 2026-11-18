@@ -71,7 +71,7 @@ export class GuestSessionGuard implements CanActivate {
   private invalidSession(): UnauthorizedException {
     return new UnauthorizedException({
       success: false,
-      message: 'Phien truy cap khong hop le hoac da het han.',
+      message: 'Phiên truy cập không hợp lệ hoặc đã hết hạn.',
       error: {
         code: GUEST_ACCESS_ERROR_CODES.GUEST_SESSION_INVALID,
         details: {},

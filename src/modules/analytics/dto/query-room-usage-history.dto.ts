@@ -1,3 +1,4 @@
+import type { FilterSelection } from '../../../common/utils/filter-selection.js';
 import {
   IsDateString,
   IsEnum,
@@ -40,9 +41,9 @@ export class QueryRoomUsageHistoryDto {
   roomId?: string;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(150)
-  siteName?: string;
+  @IsString({ each: true })
+  @MaxLength(150, { each: true })
+  siteName?: FilterSelection<string>;
 
   @IsOptional()
   @IsString()

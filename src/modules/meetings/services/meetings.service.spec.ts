@@ -278,12 +278,12 @@ describe('MeetingsService', () => {
       expect(code).toMatch(/^MT-\d{8}-006$/);
     });
 
-    // Bug 1 (regression): bản cũ dùng count() bản ghi ĐANG SỐNG nên xoá 1 họp là seq
+    // Bug 1 (regression): bản cũ dùng count() bản ghi ĐANG SỐNG nên xóa 1 họp là seq
     // tụt lại, sinh trùng mã đã cấp → 23505 ux_meetings_code.
     it('Bug1: tính cả mã của bản ghi soft-delete (withDeleted) — KHÔNG cấp lại seq cũ', async () => {
       const qb = wireCodes([
         `MT-${todayStamp()}-001`,
-        `MT-${todayStamp()}-002`, // giả sử họp này đã bị xoá mềm
+        `MT-${todayStamp()}-002`, // giả sử họp này đã bị xóa mềm
       ]);
       const code = await service.generateMeetingCode();
       expect(code).toBe(`MT-${todayStamp()}-003`);

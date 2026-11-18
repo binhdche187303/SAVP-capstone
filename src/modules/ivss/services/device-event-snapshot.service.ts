@@ -123,7 +123,7 @@ export class DeviceEventSnapshotService {
     };
   }
 
-  /** Proxy ảnh từ HGVision (token chỉ nằm ở BE). HGVision lỗi/xoá ảnh → 404. */
+  /** Proxy ảnh từ HGVision (token chỉ nằm ở BE). HGVision lỗi/xóa ảnh → 404. */
   private async fetchRemote(path: string): Promise<DeviceEventSnapshot> {
     let client: HgvisionClient | undefined;
     try {

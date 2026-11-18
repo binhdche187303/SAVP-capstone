@@ -1,3 +1,4 @@
+import type { FilterSelection } from '../../../common/utils/filter-selection.js';
 import {
   IsOptional,
   IsString,
@@ -23,9 +24,9 @@ export class MinutesQueryDto {
   limit?: number = 20;
 
   @IsOptional()
-  @IsString()
-  @IsIn(['draft', 'published', 'archived', 'all'])
-  status?: string;
+  @IsString({ each: true })
+  @IsIn(['draft', 'published', 'archived', 'all'], { each: true })
+  status?: FilterSelection<string>;
 
   @IsOptional()
   @IsUUID('4')

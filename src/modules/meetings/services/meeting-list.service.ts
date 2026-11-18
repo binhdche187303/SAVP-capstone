@@ -1,3 +1,4 @@
+import { filterValues } from '../../../common/utils/filter-selection.js';
 import {
   BadRequestException,
   ForbiddenException,
@@ -71,7 +72,7 @@ export class MeetingListService {
     if (query.from && query.to && new Date(query.from) > new Date(query.to)) {
       throw new BadRequestException({
         code: 'INVALID_DATE_RANGE',
-        message: '"from" phai truoc hoac bang "to".',
+        message: '"from" phải trước hoặc bằng "to".',
       });
     }
 
@@ -107,10 +108,10 @@ export class MeetingListService {
     // Add this filter to the authorized scope; it must never replace that scope.
     if (query.departmentId) {
       qb.andWhere(
-        `(organizer.department_id = :departmentId OR EXISTS (
+        `(organizer.department_id IN (:...departmentId) OR EXISTS (
            SELECT 1 FROM meeting_participants selected_mp JOIN users selected_user ON selected_user.id = selected_mp.user_id
-           WHERE selected_mp.meeting_id = meeting.id AND selected_user.department_id = :departmentId))`,
-        { departmentId: query.departmentId },
+           WHERE selected_mp.meeting_id = meeting.id AND selected_user.department_id IN (:...departmentId)))`,
+        { departmentId: filterValues(query.departmentId) },
       );
     }
 
@@ -118,7 +119,7 @@ export class MeetingListService {
       qb.andWhere('meeting.status = :status', { status: query.status });
     }
     if (query.roomId) {
-      qb.andWhere('meeting.room_id = :roomId', { roomId: query.roomId });
+      qb.andWhere('meeting.room_id IN (:...roomId)', { roomId: filterValues(query.roomId) });
     }
     if (query.organizerId) {
       qb.andWhere('meeting.organizer_id = :organizerId', {

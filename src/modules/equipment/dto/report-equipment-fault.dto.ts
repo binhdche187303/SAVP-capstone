@@ -26,18 +26,18 @@ export class ReportEquipmentFaultDto {
   @IsOptional()
   @IsIn(['warning', 'faulty', 'offline'], {
     message:
-      'healthStatus chi nhan warning, faulty hoac offline (khong cho recovery)',
+      'Tình trạng chỉ nhận warning, faulty hoặc offline (không cho phép khôi phục)',
   })
   healthStatus?: HealthStatus;
 
   @IsOptional()
   @IsIn(['active', 'maintenance', 'retired'], {
-    message: 'assetStatus chi nhan active, maintenance hoac retired',
+    message: 'Trạng thái tài sản chỉ nhận active, maintenance hoặc retired',
   })
   assetStatus?: ReportedAssetAction;
 
-  @IsString({ message: 'issueNote phai la chuoi ky tu' })
-  @IsNotEmpty({ message: 'issueNote khong duoc de trong' })
-  @MaxLength(2000, { message: 'issueNote toi da 2000 ky tu' })
+  @IsString({ message: 'Mô tả sự cố phải là chuỗi ký tự' })
+  @IsNotEmpty({ message: 'Mô tả sự cố không được để trống' })
+  @MaxLength(2000, { message: 'Mô tả sự cố tối đa 2000 ký tự' })
   issueNote: string;
 }

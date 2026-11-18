@@ -244,6 +244,8 @@ export const envValidationSchema = Joi.object({
   HGVISION_MOCK_FALLBACK_ENABLED: Joi.boolean().default(false),
   HGVISION_SCOPE: Joi.string().default('faces:read plates:read cameras:read'),
   HGVISION_TIMEOUT_MS: Joi.number().integer().min(1000).default(8000),
+  // Cho phép BE GHI định danh (khuôn mặt/biển số/danh sách đen) sang HGVision. Tắt mặc định.
+  HGVISION_WRITE_ENABLED: Joi.boolean().default(false),
   HGVISION_POLL_INTERVAL_MS: Joi.number()
     .integer()
     .min(1000)

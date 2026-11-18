@@ -137,7 +137,7 @@ export class GuestContentService {
     await this.guestAttendanceService.logJoinOnce(guest);
 
     const meetingTitle = meeting?.title ?? '';
-    const hostName = meeting?.host?.fullName ?? 'Chua xac dinh';
+    const hostName = meeting?.host?.fullName ?? 'Chưa xác định';
 
     const [
       agendaItems,

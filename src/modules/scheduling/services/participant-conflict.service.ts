@@ -115,7 +115,7 @@ export class ParticipantConflictService {
     if (isNaN(startTime.getTime()) || isNaN(endTime.getTime())) {
       throw new BadRequestException({
         statusCode: 400,
-        message: 'startTime hoac endTime khong dung dinh dang',
+        message: 'startTime hoặc endTime không đúng định dạng',
         error: { code: 'VALIDATION_ERROR', details: {} },
         timestamp: new Date().toISOString(),
       });
@@ -124,7 +124,7 @@ export class ParticipantConflictService {
     if (endTime <= startTime) {
       throw new BadRequestException({
         statusCode: 400,
-        message: 'endTime phai sau startTime',
+        message: 'Thời gian kết thúc phải sau thời gian bắt đầu',
         error: { code: 'VALIDATION_ERROR', details: {} },
         timestamp: new Date().toISOString(),
       });
@@ -139,7 +139,7 @@ export class ParticipantConflictService {
     if (uniqueIds.length !== userIds.length) {
       throw new BadRequestException({
         statusCode: 400,
-        message: 'participantUserIds chua gia tri trung lap',
+        message: 'Danh sách người tham dự chứa giá trị trùng lặp',
         error: { code: 'VALIDATION_ERROR', details: {} },
         timestamp: new Date().toISOString(),
       });
@@ -155,7 +155,7 @@ export class ParticipantConflictService {
       throw new BadRequestException({
         statusCode: 400,
         message:
-          'Mot hoac nhieu participantUserId khong ton tai hoac da bi xoa',
+          'Một hoặc nhiều participantUserId không tồn tại hoặc đã bị xóa',
         error: { code: 'VALIDATION_ERROR', details: {} },
         timestamp: new Date().toISOString(),
       });
@@ -171,7 +171,7 @@ export class ParticipantConflictService {
     if (!meeting || meeting.length === 0) {
       throw new NotFoundException({
         statusCode: 404,
-        message: 'Khong tim thay cuoc hop voi excludeMeetingId',
+        message: 'Không tìm thấy cuộc họp với excludeMeetingId',
         error: { code: 'RESOURCE_NOT_FOUND', details: {} },
         timestamp: new Date().toISOString(),
       });
@@ -193,7 +193,7 @@ export class ParticipantConflictService {
       if (!isOrganizer && !isParticipant) {
         throw new ForbiddenException({
           statusCode: 403,
-          message: 'Ban khong co quyen truy cap cuoc hop nay',
+          message: 'Bạn không có quyền truy cập cuộc họp này',
           error: { code: 'PERMISSION_DENIED', details: {} },
           timestamp: new Date().toISOString(),
         });

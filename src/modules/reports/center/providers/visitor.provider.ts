@@ -1,3 +1,4 @@
+import { filterValues } from '../../../../common/utils/filter-selection.js';
 import { Inject, Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { VISITOR_REPORT_SOURCE, type VisitorReportSource } from '../../../../common/ports/visitor-report-source.js';
@@ -21,7 +22,7 @@ export class VisitorReportProvider implements ReportProvider {
   async build(filters: ReportFilters, scope: ResolvedScope, page: ReportPage | null, now: Date): Promise<ReportModel> {
     const def = REPORT_DEFINITIONS.visitor;
     // Phạm vi MANAGER: chỉ khách của đơn vị mình tiếp. `departmentId` đã được ReportScopeService kiểm; không chọn thì lấy lần lượt.
-    const departmentIds = scope.unrestricted ? [filters['departmentId']] : scope.departmentIds ?? [];
+    const departmentIds = scope.unrestricted ? (filters['departmentId'] ? filterValues(filters['departmentId']) : [undefined]) : scope.departmentIds ?? [];
     const partial = await Promise.all(
       departmentIds.map(async (departmentId) => {
         const base = { from: filters.from, to: filters.to, departmentId: departmentId ?? undefined, purpose: filters['purpose'] };

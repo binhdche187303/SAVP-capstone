@@ -45,7 +45,7 @@ describe('EquipmentController.deleteEquipment (UC-63)', () => {
     );
     expect(result).toEqual({
       success: true,
-      message: 'Xoa thiet bi thanh cong',
+      message: 'Xóa thiết bị thành công',
     });
     expect(result).not.toHaveProperty('data');
   });

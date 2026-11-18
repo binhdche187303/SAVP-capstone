@@ -59,7 +59,7 @@ describe('MinutesController', () => {
     });
     expect(result).toEqual({
       success: true,
-      message: 'Bien ban hop nhap da duoc tao thanh cong',
+      message: 'Biên bản họp nháp đã được tạo thành công',
       data: sampleResponse,
     });
   });

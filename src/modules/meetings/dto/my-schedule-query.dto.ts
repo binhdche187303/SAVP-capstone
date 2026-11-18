@@ -16,14 +16,14 @@ export enum ScheduleView {
 }
 
 export class MyScheduleQueryDto {
-  @IsEnum(ScheduleView, { message: 'view phai la day, week hoac month' })
+  @IsEnum(ScheduleView, { message: 'Chế độ xem phải là day, week hoặc month' })
   view: ScheduleView;
 
   @IsDateString(
     {},
     {
       message:
-        'from phai la ISO date string co offset (vd: 2026-06-08T00:00:00+07:00)',
+        'Thời điểm bắt đầu phải là chuỗi ngày ISO có múi giờ (vd: 2026-06-08T00:00:00+07:00)',
     },
   )
   from: string;
@@ -32,7 +32,7 @@ export class MyScheduleQueryDto {
     {},
     {
       message:
-        'to phai la ISO date string co offset (vd: 2026-06-08T00:00:00+07:00)',
+        'Thời điểm kết thúc phải là chuỗi ngày ISO có múi giờ (vd: 2026-06-08T00:00:00+07:00)',
     },
   )
   to: string;
@@ -42,6 +42,10 @@ export class MyScheduleQueryDto {
   timezone?: string = 'Asia/Ho_Chi_Minh';
 
   @IsOptional()
+  // ?status=a (1 giá trị) là chuỗi thuần → IN (:...status) crash; chuẩn hoá về mảng.
+  @Transform(({ value }) =>
+    value === undefined ? undefined : Array.isArray(value) ? value : [value],
+  )
   @IsEnum(
     [
       'draft',
@@ -53,22 +57,22 @@ export class MyScheduleQueryDto {
     ],
     {
       each: true,
-      message: 'status khong hop le',
+      message: 'Trạng thái không hợp lệ',
     },
   )
   status?: string[];
 
   @IsOptional()
   @IsEnum(['organizer', 'host', 'attendee'], {
-    message: 'role phai la organizer, host hoac attendee',
+    message: 'Vai trò phải là organizer, host hoặc attendee',
   })
   role?: 'organizer' | 'host' | 'attendee';
 
   @IsOptional()
-  @IsUUID('4', { message: 'roomId phai la UUID hop le' })
+  @IsUUID('4', { message: 'roomId phải là UUID hợp lệ' })
   roomId?: string;
 
   @IsOptional()
-  @MaxLength(200, { message: 'q khong duoc vuot qua 200 ky tu' })
+  @MaxLength(200, { message: 'Từ khóa tìm kiếm không được vượt quá 200 ký tự' })
   q?: string;
 }

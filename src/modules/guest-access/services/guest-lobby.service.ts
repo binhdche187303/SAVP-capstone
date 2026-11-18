@@ -140,7 +140,7 @@ export class GuestLobbyService {
     if (status === GuestLobbyStatus.WAITING) {
       throw new ForbiddenException({
         success: false,
-        message: 'Vui long cho host duyet truoc khi vao cuoc hop.',
+        message: 'Vui lòng chờ chủ trì duyệt trước khi vào cuộc họp.',
         error: {
           code: GUEST_ACCESS_ERROR_CODES.GUEST_LOBBY_PENDING,
           details: {},
@@ -150,7 +150,7 @@ export class GuestLobbyService {
     if (status !== GuestLobbyStatus.ADMITTED) {
       throw new UnauthorizedException({
         success: false,
-        message: 'Phien truy cap khong hop le hoac da het han.',
+        message: 'Phiên truy cập không hợp lệ hoặc đã hết hạn.',
         error: {
           code: GUEST_ACCESS_ERROR_CODES.GUEST_SESSION_INVALID,
           details: {},

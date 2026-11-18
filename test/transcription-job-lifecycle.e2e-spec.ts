@@ -145,7 +145,7 @@ suite('Transcription job lifecycle (integration, BullMQ + DB)', () => {
 
   afterAll(async () => {
     if (ds?.isInitialized) {
-      // Xoá theo đúng thứ tự FK.
+      // Xóa theo đúng thứ tự FK.
       // T029: notifyTranscriptReady tạo notification cho Host — dọn luôn.
       await ds.query(
         `DELETE FROM notifications WHERE related_entity_type = 'meeting' AND related_entity_id = $1`,

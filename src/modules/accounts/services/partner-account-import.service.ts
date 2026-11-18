@@ -137,7 +137,7 @@ export class PartnerAccountImportService {
     const guideSheet = workbook.addWorksheet('Huong dan');
     guideSheet.columns = [
       { header: 'Cot', key: 'col', width: 22 },
-      { header: 'Bat buoc', key: 'req', width: 14 },
+      { header: 'Bắt buộc', key: 'req', width: 14 },
       { header: 'Mota', key: 'desc', width: 65 },
     ];
     const guideHeader = guideSheet.getRow(1);
@@ -145,18 +145,18 @@ export class PartnerAccountImportService {
 
     guideSheet.addRow({
       col: 'full_name',
-      req: 'Bat buoc',
+      req: 'Bắt buộc',
       desc: 'Ho va ten doi tac / khach hang.',
     });
     guideSheet.addRow({
       col: 'email',
-      req: 'Bat buoc',
-      desc: 'Dia chi email (duoc dung lam ten dang nhap va mat khau khoi tao ban dau).',
+      req: 'Bắt buộc',
+      desc: 'Địa chỉ email (được dùng làm tên đăng nhập và mật khẩu khởi tạo ban đầu).',
     });
     guideSheet.addRow({
       col: 'account_expires_at',
       req: 'Tuy chon',
-      desc: 'Ngay het han tai khoan (ISO date, vd: 2026-08-20T17:00:00Z). Neu de trong, tai khoan se dung defaultExpiresInDays gui tu request.',
+      desc: 'Ngày hết hạn tài khoản (ISO date, vd: 2026-08-20T17:00:00Z). Nếu để trống, tài khoản sẽ dùng defaultExpiresInDays gửi từ request.',
     });
     guideSheet.addRow({
       col: 'phone_number',
@@ -166,11 +166,11 @@ export class PartnerAccountImportService {
     guideSheet.addRow({
       col: 'license_plate',
       req: 'Tuy chon',
-      desc: 'Bien so xe dang ky cho doi tac (vd: 30A12345). Best-effort, khong chan tao tai khoan neu sai/trung.',
+      desc: 'Biển số xe đăng ký cho đối tác (vd: 30A12345). Không chặn tạo tài khoản nếu biển số sai hoặc trùng.',
     });
     guideSheet.addRow({
       col: '[ANH SINH TRAC HOC]',
-      req: 'BAT BUOC',
+      req: 'BẮT BUỘC',
       desc: 'Moi doi tac BAT BUOC co 1 anh khuon mat dinh kem. Dat ten file anh bang EMAIL cua doi tac (vd: khach1@doitac-x.com.jpg) va gop vao file .zip.',
     });
 

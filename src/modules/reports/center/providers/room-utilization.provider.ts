@@ -1,3 +1,4 @@
+import { filterValues } from '../../../../common/utils/filter-selection.js';
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { REPORT_DEFINITIONS } from '../report-definition.registry.js';
@@ -26,8 +27,8 @@ export class RoomUtilizationReportProvider implements ReportProvider {
     const def = REPORT_DEFINITIONS['room-utilization'];
     const params: unknown[] = [filters.from, filters.to];
     let roomClause = '';
-    if (filters['roomId']) { params.push(filters['roomId']); roomClause += ` AND r.id = $${params.length}::uuid`; }
-    if (filters['building']) { params.push(filters['building']); roomClause += ` AND r.site_name = $${params.length}`; }
+    if (filters['roomId']) { params.push(filterValues(filters['roomId'])); roomClause += ` AND r.id = ANY($${params.length}::uuid[])`; }
+    if (filters['building']) { params.push(filterValues(filters['building'])); roomClause += ` AND r.site_name = ANY($${params.length}::text[])`; }
 
     const rows: Row[] = await this.dataSource.query(
       `SELECT r.id AS room_id, r.room_name, r.site_name AS building, r.capacity,

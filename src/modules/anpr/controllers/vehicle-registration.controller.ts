@@ -113,12 +113,14 @@ export class VehicleRegistrationController {
       'Admin xem danh sách biển số lạ (đi qua camera nhưng chưa khớp đăng ký nào)',
   })
   async listUnknown(@Query() query: ListUnknownVehiclesQueryDto) {
-    const { items, meta } = await this.vehicleUnknownService.listUnknown(query);
+    const { items, meta, stats, facets } = await this.vehicleUnknownService.listUnknown(query);
     return {
       success: true,
       message: 'Unknown vehicles retrieved',
       data: items,
       meta,
+      stats,
+      facets,
     };
   }
 
@@ -249,7 +251,7 @@ export class VehicleRegistrationController {
   @RequirePermissions('anpr.vehicle.admin_delete')
   @ApiOperation({
     summary:
-      'Admin xoá mềm 1 biển số của bất kỳ user nào (không cần là chủ xe)',
+      'Admin xóa mềm 1 biển số của bất kỳ user nào (không cần là chủ xe)',
   })
   async removeAsAdmin(@Param('id', ParseUUIDPipe) id: string) {
     await this.vehicleRegistrationService.adminSoftDelete(id);

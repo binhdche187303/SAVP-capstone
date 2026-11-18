@@ -507,7 +507,7 @@ export class VehicleResolveService implements VehicleEventHandlerPort {
    * OQ-1: biển active đang sống → {userId, vehicleRegistrationId}; disabled/đã-xóa/không-có → null.
    * QC-7: trả thêm `id` (vehicle_registration_id) cho gate_access_logs — cùng MỘT query.
    * VPT-001: JOIN users để lọc tài khoản hết hạn (account_expires_at < NOW()) hoặc
-   *           đã bị xoá (u.deleted_at IS NOT NULL) — biển của tài khoản như vậy → null (unmatched).
+   *           đã bị xóa (u.deleted_at IS NOT NULL) — biển của tài khoản như vậy → null (unmatched).
    */
   private async resolveUserByPlate(
     plateNumber: string,

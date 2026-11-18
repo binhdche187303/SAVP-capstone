@@ -1,3 +1,4 @@
+import { filterValues } from '../../../../common/utils/filter-selection.js';
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { resolveNonStaffDepartmentIds } from '../../../../common/utils/non-staff-department.util.js';
@@ -133,8 +134,8 @@ export class StaffAttendanceReportProvider implements ReportProvider {
     const nonStaff = await resolveNonStaffDepartmentIds(this.dataSource);
     const params: unknown[] = [nonStaff];
     let where = '';
-    if (filters['departmentId']) { params.push(filters['departmentId']); where += ` AND u.department_id = $${params.length}::uuid`; }
-    if (filters['staffId']) { params.push(filters['staffId']); where += ` AND u.id = $${params.length}::uuid`; }
+    if (filters['departmentId']) { params.push(filterValues(filters['departmentId'])); where += ` AND u.department_id = ANY($${params.length}::uuid[])`; }
+    if (filters['staffId']) { params.push(filterValues(filters['staffId'])); where += ` AND u.id = ANY($${params.length}::uuid[])`; }
     if (filters.q) { params.push(filters.q); where += ` AND (unaccent(lower(u.full_name)) LIKE '%' || unaccent(lower($${params.length})) || '%' OR lower(u.employee_code) LIKE '%' || lower($${params.length}) || '%')`; }
     if (!scope.unrestricted) { params.push(scope.departmentIds ?? []); where += ` AND u.department_id = ANY($${params.length}::uuid[])`; }
     return this.dataSource.query(

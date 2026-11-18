@@ -210,7 +210,7 @@ export class AttendanceExcuseService {
       });
     }
     if (meeting.status === 'cancelled') {
-      throw new ConflictException({ message: 'Cuộc họp đã bị huỷ', error: 'MEETING_CANCELLED' });
+      throw new ConflictException({ message: 'Cuộc họp đã bị hủy', error: 'MEETING_CANCELLED' });
     }
     return meeting;
   }

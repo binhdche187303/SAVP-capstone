@@ -116,8 +116,10 @@ export class HgvisionPollerService implements OnModuleInit, OnModuleDestroy {
         const faceEvt = toIvssFaceEvent(obj, cameraMap);
         if (faceEvt) {
           if (
-            this.config.get<string>('HGVISION_REPLAY_HISTORY_ENABLED', 'false') ===
-            'true'
+            this.config.get<string>(
+              'HGVISION_REPLAY_HISTORY_ENABLED',
+              'false',
+            ) === 'true'
           ) {
             faceEvt.allowHistorical = true;
           }
@@ -131,7 +133,7 @@ export class HgvisionPollerService implements OnModuleInit, OnModuleDestroy {
           // Mặc định chỉ lưu đường dẫn ảnh (xem qua BE proxy) — tránh đầy ổ đĩa.
           vehicleEvt.remoteImagePath = obj.object_image_path || undefined;
           vehicleEvt.remotePlateImagePath = obj.lp_image_path || undefined;
-          // Biển nằm trong control-list → tải ảnh về lưu làm bằng chứng (HGVision có thể xoá ảnh cũ).
+          // Biển nằm trong control-list → tải ảnh về lưu làm bằng chứng (HGVision có thể xóa ảnh cũ).
           if (await this.isControlListed(vehicleEvt.plateNumber)) {
             vehicleEvt.imageBase64 = await this.loadVehicleImage(obj);
           }
@@ -171,10 +173,12 @@ export class HgvisionPollerService implements OnModuleInit, OnModuleDestroy {
           e instanceof Error ? e.message : 'unknown'
         }`,
       );
-      if (path.startsWith("/")) {
+      if (path.startsWith('/')) {
         try {
-          return (await readFile(path)).toString("base64");
-        } catch {}
+          return (await readFile(path)).toString('base64');
+        } catch {
+          // file ảnh cục bộ không đọc được → bỏ qua ảnh
+        }
       }
       return undefined;
     }

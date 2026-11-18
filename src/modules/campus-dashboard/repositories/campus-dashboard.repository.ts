@@ -1,3 +1,4 @@
+import { filterWhere, type FilterSelection } from '../../../common/utils/filter-selection.js';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, IsNull, MoreThanOrEqual, Repository } from 'typeorm';
@@ -13,8 +14,8 @@ const STALENESS_CONFIG_KEY = 'campus_dashboard.occupancy_staleness_minutes';
 const DEFAULT_STALENESS_MINUTES = 15;
 
 export interface ZoneHierarchyFilter {
-  building?: string;
-  floor?: string;
+  building?: FilterSelection<string>;
+  floor?: FilterSelection<string>;
 }
 
 /**
@@ -40,8 +41,8 @@ export class CampusDashboardRepository {
 
   async loadZoneHierarchy(filter: ZoneHierarchyFilter): Promise<ZoneEntity[]> {
     const where: Record<string, unknown> = { deletedAt: IsNull() };
-    if (filter.building) where.building = filter.building;
-    if (filter.floor) where.floor = filter.floor;
+    if (filter.building) where.building = filterWhere(filter.building);
+    if (filter.floor) where.floor = filterWhere(filter.floor);
 
     return this.zoneRepo.find({
       where,

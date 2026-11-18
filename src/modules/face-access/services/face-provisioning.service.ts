@@ -410,7 +410,7 @@ export class FaceProvisioningService {
           ipAddress: device.ip_address,
           metadataJson: device.metadata_json,
         });
-        // findUidByName trả uid mới nhất; nếu khác uid đã lưu → xoá uid cũ (trùng).
+        // findUidByName trả uid mới nhất; nếu khác uid đã lưu → xóa uid cũ (trùng).
         const latest = await provider.findUidByName(uname);
         if (latest && latest !== mp.device_person_id) {
           await provider.deletePerson(mp.device_person_id);

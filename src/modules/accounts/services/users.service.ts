@@ -1,3 +1,4 @@
+import { filterValues } from '../../../common/utils/filter-selection.js';
 import {
   Injectable,
   Logger,
@@ -141,7 +142,7 @@ export interface PartnerProvisionData {
 
 /**
  * Role được thao tác tài khoản toàn trường (bỏ qua phạm vi phòng ban).
- * KHÔNG dùng roles.is_system_role: cờ đó nghĩa là "role có sẵn, không xoá được"
+ * KHÔNG dùng roles.is_system_role: cờ đó nghĩa là "role có sẵn, không xóa được"
  * và đang bật cho mọi role seed ⇒ trước đây mọi tài khoản đều vượt phạm vi.
  */
 const FULL_SCOPE_ROLE_CODES = ['SYSTEM_ADMIN', 'BUSINESS_ADMIN'];
@@ -2410,7 +2411,7 @@ export class UsersService {
     let scopeIds: string[] | null = null;
     if (!isSystemAdmin) {
       const scope = await this.resolveDepartmentScope(actorId);
-      if (query.departmentId && !scope.has(query.departmentId)) {
+      if (query.departmentId && filterValues(query.departmentId).some(id => !scope.has(id))) {
         throw new ForbiddenException({
           success: false,
           message: 'Bạn không có quyền xem tài khoản ngoài phạm vi quản lý.',
@@ -2437,31 +2438,27 @@ export class UsersService {
       qb.andWhere('u.departmentId IN (:...scopeIds)', { scopeIds });
     }
     if (query.departmentId) {
-      qb.andWhere('u.departmentId = :departmentId', {
-        departmentId: query.departmentId,
+      qb.andWhere('u.departmentId IN (:...departmentId)', {
+        departmentId: filterValues(query.departmentId),
       });
     }
-    if (query.accountStatus === 'expired') {
-      // 'expired' là filter ảo: tài khoản đối tác accountStatus vẫn 'active' trong
-      // DB nhưng accountExpiresAt đã qua (login đã bị chặn — xem LoginService).
-      qb.andWhere('u.accountStatus = :activeStatus', {
-        activeStatus: 'active',
-      })
-        .andWhere('u.accountExpiresAt IS NOT NULL')
-        .andWhere('u.accountExpiresAt <= :now', { now });
-    } else if (query.accountStatus) {
-      qb.andWhere('u.accountStatus = :accountStatus', {
-        accountStatus: query.accountStatus,
-      });
+    if (query.accountStatus) {
+      const states = filterValues(query.accountStatus);
+      const normal = states.filter(value => value !== 'expired');
+      qb.andWhere(new Brackets(w => {
+        if (normal.length) w.where('u.accountStatus IN (:...accountStatuses)', { accountStatuses: normal });
+        if (states.includes('expired')) w.orWhere("(u.accountStatus = 'active' AND u.accountExpiresAt IS NOT NULL AND u.accountExpiresAt <= :now)", { now });
+      }));
     }
     if (query.roleId) {
       // Subquery (KHÔNG innerJoin) để không nhân dòng làm sai total/pagination.
       qb.andWhere(
-        'u.id IN (SELECT ur.user_id FROM user_roles ur WHERE ur.role_id = :roleId AND ur.is_active = true AND (ur.expired_at IS NULL OR ur.expired_at > :now))',
-        { roleId: query.roleId, now },
+        'u.id IN (SELECT ur.user_id FROM user_roles ur WHERE ur.role_id IN (:...roleId) AND ur.is_active = true AND (ur.expired_at IS NULL OR ur.expired_at > :now))',
+        { roleId: filterValues(query.roleId), now },
       );
     }
-    if (query.accountType === 'student') {
+    const accountTypes = filterValues(query.accountType);
+    if (accountTypes.length === 1 && accountTypes[0] === 'student') {
       qb.andWhere(
         `EXISTS (
           SELECT 1
@@ -2474,30 +2471,7 @@ export class UsersService {
         )`,
         { now },
       );
-      if (query.classId?.trim()) {
-        const classIdentifier = query.classId.trim();
-        qb.andWhere(
-          `EXISTS (
-            SELECT 1
-              FROM students st
-              LEFT JOIN class_enrollments ce
-                ON ce.student_id = st.id
-               AND ce.status = 'active'
-              LEFT JOIN class_sections cs
-                ON cs.id = ce.class_section_id
-               AND cs.deleted_at IS NULL
-             WHERE st.user_id = u.id
-               AND st.deleted_at IS NULL
-               AND (
-                 lower(st.administrative_class) = lower(:classIdentifier)
-                 OR cs.id::text = :classIdentifier
-                 OR lower(cs.class_code) = lower(:classIdentifier)
-               )
-          )`,
-          { classIdentifier },
-        );
-      }
-    } else if (query.accountType === 'staff') {
+    } else if (accountTypes.length === 1 && accountTypes[0] === 'staff') {
       qb.andWhere(
         `NOT EXISTS (
           SELECT 1
@@ -2511,6 +2485,29 @@ export class UsersService {
         { now },
       );
     }
+      if (query.classId) {
+        const classIdentifier = filterValues(query.classId).map(value => value.trim().toLowerCase());
+        qb.andWhere(
+          `EXISTS (
+            SELECT 1
+              FROM students st
+              LEFT JOIN class_enrollments ce
+                ON ce.student_id = st.id
+               AND ce.status = 'active'
+              LEFT JOIN class_sections cs
+                ON cs.id = ce.class_section_id
+               AND cs.deleted_at IS NULL
+             WHERE st.user_id = u.id
+               AND st.deleted_at IS NULL
+               AND (
+                 lower(st.administrative_class) IN (:...classIdentifier)
+                 OR cs.id::text IN (:...classIdentifier)
+                 OR lower(cs.class_code) IN (:...classIdentifier)
+               )
+          )`,
+          { classIdentifier },
+        );
+      }
     if (search) {
       qb.andWhere(
         new Brackets((w) => {

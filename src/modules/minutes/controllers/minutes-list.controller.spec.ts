@@ -285,7 +285,7 @@ describe('MeetingMinutesListController', () => {
 
       expect(response).toEqual({
         success: true,
-        message: 'So sanh bien ban thu cong va AI',
+        message: 'So sánh biên bản thủ công và AI',
         data: mockResult,
       });
     });

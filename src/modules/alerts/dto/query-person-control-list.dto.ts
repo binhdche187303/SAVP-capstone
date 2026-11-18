@@ -1,3 +1,4 @@
+import type { FilterSelection } from '../../../common/utils/filter-selection.js';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsOptional,
@@ -43,18 +44,18 @@ export class QueryPersonControlListDto {
   })
   @Expose({ name: 'list_type' })
   @IsOptional()
-  @IsIn(PERSON_CONTROL_LIST_TYPES)
-  listType?: PersonControlListType;
+  @IsIn(PERSON_CONTROL_LIST_TYPES, { each: true })
+  listType?: FilterSelection<PersonControlListType>;
 
   @ApiPropertyOptional({
     description: 'Lọc theo trạng thái kích hoạt theo dõi',
   })
   @Transform(({ value }) =>
-    value === undefined ? undefined : value === 'true',
+    Array.isArray(value) ? value.map(item => item === 'true' ? true : item === 'false' ? false : item) : value === 'true' ? true : value === 'false' ? false : value,
   )
   @IsOptional()
-  @IsBoolean()
-  active?: boolean;
+  @IsBoolean({ each: true })
+  active?: FilterSelection<boolean>;
 
   @ApiPropertyOptional({
     description: 'Lọc theo user id ứng với người trong danh sách',

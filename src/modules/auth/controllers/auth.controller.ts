@@ -135,7 +135,7 @@ export class AuthController {
 
     return {
       success: true,
-      message: 'Refresh token thanh cong',
+      message: 'Làm mới token thành công',
       data: new RefreshTokenResponseDto(result),
     };
   }

@@ -520,7 +520,7 @@ describe('ZonesService (ZNC-001 / UC-90)', () => {
       expect(r.longitude).toBe(105);
     });
 
-    it('xoá chỉ 1 nửa cặp → 400; xoá cả cặp (null, null) → OK', async () => {
+    it('xóa chỉ 1 nửa cặp → 400; xóa cả cặp (null, null) → OK', async () => {
       repo.findOne.mockResolvedValueOnce(
         makeZone({ latitude: 21, longitude: 105 }),
       );
@@ -778,7 +778,7 @@ describe('ZonesService (ZNC-001 / UC-90)', () => {
     });
 
     // Case 15
-    it('404 ZONE_NOT_FOUND khi không tồn tại / đã xoá mềm', async () => {
+    it('404 ZONE_NOT_FOUND khi không tồn tại / đã xóa mềm', async () => {
       repo.findOne.mockResolvedValueOnce(null);
 
       await expect(service.getDetail('missing')).rejects.toMatchObject({
@@ -1239,7 +1239,7 @@ describe('ZonesService (ZNC-001 / UC-90)', () => {
     });
   });
 
-  // ── UC-92 (ZND-001): xoá khu vực ──
+  // ── UC-92 (ZND-001): xóa khu vực ──
   describe('remove (ZND-001 / UC-92)', () => {
     const makeZone = (over: Record<string, any> = {}) => ({
       id: 'z1',
@@ -1252,7 +1252,7 @@ describe('ZonesService (ZNC-001 / UC-90)', () => {
     });
 
     // Case 1
-    it('xoá thành công: softDelete + audit trong transaction, có commit và release', async () => {
+    it('xóa thành công: softDelete + audit trong transaction, có commit và release', async () => {
       repo.findOne.mockResolvedValueOnce(makeZone());
       iotDevicesService.countByZoneId.mockResolvedValue(0);
 
@@ -1292,7 +1292,7 @@ describe('ZonesService (ZNC-001 / UC-90)', () => {
     });
 
     // Case 3
-    it('404 zone đã xoá mềm (gồm DELETE lần 2): lookup lọc deletedAt IS NULL', async () => {
+    it('404 zone đã xóa mềm (gồm DELETE lần 2): lookup lọc deletedAt IS NULL', async () => {
       repo.findOne.mockResolvedValueOnce(null);
 
       await expect(service.remove('z-deleted', 'u1')).rejects.toBeInstanceOf(
@@ -1320,7 +1320,7 @@ describe('ZonesService (ZNC-001 / UC-90)', () => {
     });
 
     // Case 5 — crux OQ-1 (vế KHÔNG chặn theo log)
-    it('còn LOG nhưng hết thiết bị → VẪN XOÁ (không chặn theo log)', async () => {
+    it('còn LOG nhưng hết thiết bị → VẪN XÓA (không chặn theo log)', async () => {
       repo.findOne.mockResolvedValueOnce(makeZone());
       iotDevicesService.countByZoneId.mockResolvedValue(0);
 

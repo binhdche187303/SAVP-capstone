@@ -66,7 +66,7 @@ describe('RoomSearchService', () => {
     const [sql, params] = queryMock.mock.calls[0];
     expect(sql).toContain('r.is_active = true');
     expect(sql).toContain('r.deleted_at IS NULL');
-    expect(params).toEqual([null, null, null, null, null, null, null, 50, 0]);
+    expect(params).toEqual([null, null, null, null, null, null, null, null, 50, 0]);
   });
 
   it('combines exact building/area and capacity filters before counting and paging', async () => {
@@ -83,7 +83,7 @@ describe('RoomSearchService', () => {
     });
     const [sql, params] = queryMock.mock.calls[0];
     expect(sql).toContain('r.site_name = $7');
-    expect(sql).toContain('LIMIT $8 OFFSET $9');
+    expect(sql).toContain('LIMIT $9 OFFSET $10');
     expect(params).toEqual([
       1,
       10,
@@ -92,10 +92,11 @@ describe('RoomSearchService', () => {
       null,
       null,
       'Tòa nhà A',
+      null,
       10,
       10,
     ]);
-    expect(queryMock.mock.calls[1][1]).toEqual(params.slice(0, 7));
+    expect(queryMock.mock.calls[1][1]).toEqual(params.slice(0, 8));
   });
 
   // ─── [FIX 2026-08-19] computeStatus: real-time thay vi doc thang r.current_status ───
@@ -197,7 +198,7 @@ describe('RoomSearchService', () => {
     });
 
     const [, params] = queryMock.mock.calls[0];
-    expect(params).toEqual([8, 15, 'Tang 3', true, null, null, null, 50, 0]);
+    expect(params).toEqual([8, 15, 'Tang 3', true, null, null, null, null, 50, 0]);
   });
 
   // ─── [FIX 2026-08-19] them filter q (ten/ma phong) va status (real-time) ───
@@ -220,7 +221,8 @@ describe('RoomSearchService', () => {
       null,
       null,
       'Phong hop',
-      'occupied',
+      ['occupied'],
+      null,
       null,
       50,
       0,

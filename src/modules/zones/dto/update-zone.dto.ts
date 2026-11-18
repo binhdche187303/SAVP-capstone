@@ -38,13 +38,13 @@ const SkipWhenAbsent = () => ValidateIf((_, value) => value !== undefined);
 /**
  * UpdateZoneDto (ZNU-001 / UC-91) — body cập nhật khu vực.
  *
- * Ngữ nghĩa 3 nhánh (OQ-8): không gửi (`undefined`) = giữ nguyên · gửi `null` = xoá giá trị
+ * Ngữ nghĩa 3 nhánh (OQ-8): không gửi (`undefined`) = giữ nguyên · gửi `null` = xóa giá trị
  * (chỉ các field nullable) · gửi giá trị = gán. `metadata_json` được **thay thế toàn bộ**,
  * KHÔNG merge sâu.
  *
  * 2 nhóm decorator KHÔNG được dùng lẫn:
  * - KHÔNG nhận `null`: `zone_code`, `zone_name`, `zone_type`, `status` → `SkipWhenAbsent()`.
- * - Nhận `null` (= xoá): `building`, `floor`, `description`, `metadata_json`, `latitude`,
+ * - Nhận `null` (= xóa): `building`, `floor`, `description`, `metadata_json`, `latitude`,
  *   `longitude` → `@IsOptional()`. Toạ độ phải đi cặp (kiểm ở service trên giá trị sau gộp).
  *
  * KHÔNG có `UpdateZoneStatusDto` riêng (OQ-3): `status` đi chung route `PATCH /zones/:id`.

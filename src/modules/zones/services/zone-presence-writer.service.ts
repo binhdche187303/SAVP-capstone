@@ -68,7 +68,7 @@ export class ZonePresenceWriterService {
   constructor(private readonly dataSource: DataSource) {}
 
   /**
-   * ĐỌC — zone tồn tại (chưa xoá mềm) + `zone_type ∈ {corridor,lobby,parking}` (QC-5)?
+   * ĐỌC — zone tồn tại (chưa xóa mềm) + `zone_type ∈ {corridor,lobby,parking}` (QC-5)?
    * Không tồn tại / sai type → `{valid:false, reason:'zone_wrong_type'}`. KHÔNG ghi.
    */
   async resolvePresenceZone(
@@ -144,7 +144,7 @@ export class ZonePresenceWriterService {
    * GHI — INSERT 1 dòng `count` (F3, recon B5). KHÔNG giới hạn `zone_type` như
    * `writeAppearEvent` (QC-5 chỉ áp dụng vòng `appear` — crowd-alert/heatmap đọc
    * theo zone_id bất kỳ do `alert_rules`/dashboard chỉ định, không kén loại zone).
-   * Chỉ kiểm zone tồn tại (chưa xoá mềm).
+   * Chỉ kiểm zone tồn tại (chưa xóa mềm).
    *
    * [RACE FIX 2026-08-22] SELECT-precheck [FIX 2026-08-18] rời rạc (KHÔNG transaction)
    * từng coi race window "không đáng kể" vì writeCountEvent() chỉ 1 nguồn gọi tuần tự —
@@ -171,7 +171,7 @@ export class ZonePresenceWriterService {
     );
     if (zoneRows.length === 0) {
       throw new Error(
-        `writeCountEvent: zone ${input.zoneId} không tồn tại hoặc đã xoá`,
+        `writeCountEvent: zone ${input.zoneId} không tồn tại hoặc đã xóa`,
       );
     }
 

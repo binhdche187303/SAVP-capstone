@@ -43,7 +43,7 @@ describe('EquipmentController.create (UC-61)', () => {
     expect(mockService.create).toHaveBeenCalledWith(dto, 'user-1', '10.0.0.1');
     expect(result).toEqual({
       success: true,
-      message: 'Dang ky thiet bi thanh cong',
+      message: 'Đăng ký thiết bị thành công',
       data,
     });
   });

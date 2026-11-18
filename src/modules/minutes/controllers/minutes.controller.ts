@@ -77,7 +77,7 @@ export class MinutesController {
 
     return {
       success: true,
-      message: 'Bien ban hop nhap da duoc tao thanh cong',
+      message: 'Biên bản họp nháp đã được tạo thành công',
       data: result,
     };
   }

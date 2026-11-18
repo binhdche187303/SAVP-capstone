@@ -1,3 +1,4 @@
+import type { FilterSelection } from '../../../common/utils/filter-selection.js';
 import { Type } from 'class-transformer';
 import {
   IsIn,
@@ -49,16 +50,16 @@ export class MeetingListQueryDto {
   status?: MeetingStatus;
 
   @IsOptional()
-  @IsUUID()
-  roomId?: string;
+  @IsUUID('all', { each: true })
+  roomId?: FilterSelection<string>;
 
   @IsOptional()
   @IsUUID()
   organizerId?: string;
 
   @IsOptional()
-  @IsUUID()
-  departmentId?: string;
+  @IsUUID('all', { each: true })
+  departmentId?: FilterSelection<string>;
 
   @IsOptional()
   @IsISO8601()

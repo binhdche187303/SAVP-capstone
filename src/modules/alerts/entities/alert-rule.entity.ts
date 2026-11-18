@@ -22,7 +22,7 @@ import { ZoneEntity } from '../../zones/entities/zone.entity.js';
  *   mặc định trùng loại. Migration 20260722000006 TÁCH 2 partial unique
  *   (zone_id IS NOT NULL / zone_id IS NULL) để chặn đúng cả 2 trường hợp.
  * - `enabled=false`: NGỪNG sinh cảnh báo nhưng event gốc vẫn ghi (UC-122 AF1/BR1) —
- *   tầng service đọc cờ này TRƯỚC khi ghi `security_alerts`, KHÔNG xoá rule.
+ *   tầng service đọc cờ này TRƯỚC khi ghi `security_alerts`, KHÔNG xóa rule.
  * - `restricted_hours_json` + `allowed_person_ids_json`: cấu hình cho UC-124 (xâm nhập
  *   khu vực hạn chế). `allowed_person_ids_json` là mảng user_id KHÔNG có FK (residual
  *   đã ghi trong báo cáo review — chấp nhận cho scope này, tách bảng nối sau nếu cần

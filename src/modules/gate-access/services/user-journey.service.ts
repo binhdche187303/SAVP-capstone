@@ -311,7 +311,7 @@ export class UserJourneyService {
     const day = date ?? this.todayStr();
     const params = [userId, day];
 
-    // ── Tên người (1 query, không chặn nếu user đã xoá mềm) ──
+    // ── Tên người (1 query, không chặn nếu user đã xóa mềm) ──
     const users: UserRow[] = await this.dataSource.manager.query(
       `SELECT full_name FROM users WHERE id = $1 LIMIT 1`,
       [userId],

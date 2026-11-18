@@ -5,7 +5,7 @@ export interface DepartmentPresenceDto {
   departmentName: string | null;
   /** Số người có log cổng CUỐI CÙNG hôm nay là `enter` (đã vào, chưa ra). */
   presentCount: number;
-  /** Nhân sự đang làm việc (`employment_status='active'`, chưa xoá) của phòng ban. */
+  /** Nhân sự đang làm việc (`employment_status='active'`, chưa xóa) của phòng ban. */
   totalStaff: number;
 }
 

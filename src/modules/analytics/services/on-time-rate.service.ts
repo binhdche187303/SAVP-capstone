@@ -1,3 +1,4 @@
+import { filterValues, type FilterSelection } from '../../../common/utils/filter-selection.js';
 import {
   Injectable,
   Logger,
@@ -259,7 +260,7 @@ export class OnTimeRateService {
 
     // 4. If departmentId is specified, check existence (404) and ownership (403)
     if (query.departmentId) {
-      const exists = await this.repo.checkDepartmentExists(query.departmentId);
+      const exists = (await Promise.all(filterValues(query.departmentId).map(id => this.repo.checkDepartmentExists(id)))).every(Boolean);
       if (!exists) {
         throw new NotFoundException({
           success: false,
@@ -622,10 +623,10 @@ export class OnTimeRateService {
   /**
    * Validate departmentId is within scope for MANAGER.
    */
-  validateDepartmentOwnership(scope: ScopeResult, departmentId?: string): void {
+  validateDepartmentOwnership(scope: ScopeResult, departmentId?: FilterSelection<string>): void {
     if (scope.isAdmin || !departmentId) return;
 
-    if (!scope.scopeDepartmentIds?.includes(departmentId)) {
+    if (filterValues(departmentId).some(id => !scope.scopeDepartmentIds?.includes(id))) {
       throw new ForbiddenException({
         success: false,
         message: 'Department is outside your scope',

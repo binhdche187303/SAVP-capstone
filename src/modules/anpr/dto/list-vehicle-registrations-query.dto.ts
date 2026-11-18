@@ -1,3 +1,4 @@
+import type { FilterSelection } from '../../../common/utils/filter-selection.js';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsOptional,
@@ -50,8 +51,8 @@ export class ListVehicleRegistrationsQueryDto {
     enum: VEHICLE_STATUSES,
   })
   @IsOptional()
-  @IsIn(VEHICLE_STATUSES)
-  status?: VehicleStatus;
+  @IsIn(VEHICLE_STATUSES, { each: true })
+  status?: FilterSelection<VehicleStatus>;
 
   // UC-101: tìm theo biển số (một phần). Service normalize qua normalizePlate rồi ILike.
   @ApiPropertyOptional({
@@ -70,7 +71,7 @@ export class ListVehicleRegistrationsQueryDto {
   })
   @Expose({ name: 'vehicle_type' })
   @IsOptional()
-  @IsString()
-  @MaxLength(50)
-  vehicleType?: string;
+  @IsString({ each: true })
+  @MaxLength(50, { each: true })
+  vehicleType?: FilterSelection<string>;
 }

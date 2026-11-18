@@ -1,3 +1,4 @@
+import { filterWhere } from '../../../common/utils/filter-selection.js';
 import {
   Injectable,
   ConflictException,
@@ -92,14 +93,14 @@ export class VehicleControlListService {
       where.plateNumber = normalizePlate(query.plate);
     }
     if (query.listType) {
-      where.listType = query.listType;
+      where.listType = filterWhere(query.listType);
     }
     if (query.vehicleType) {
-      where.vehicleType = query.vehicleType;
+      where.vehicleType = filterWhere(query.vehicleType);
     }
     // active=false là filter hợp lệ — PHẢI check !== undefined, KHÔNG if-truthy.
     if (query.active !== undefined) {
-      where.active = query.active;
+      where.active = filterWhere(query.active);
     }
 
     const [items, total] = await this.repo.findAndCount({

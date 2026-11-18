@@ -1,3 +1,4 @@
+import type { FilterSelection } from '../../../common/utils/filter-selection.js';
 import { IsOptional, IsEnum, IsDateString, IsUUID } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { MeetingType } from '../../meetings/entities/meeting.entity';
@@ -31,9 +32,9 @@ export class QueryMeetingCountByPeriodDto {
   granularity?: string;
 
   @IsOptional()
-  @IsUUID('4', { message: 'departmentId must be a valid UUID v4' })
+  @IsUUID('4', { each: true, message: 'departmentId must be a valid UUID v4' })
   @ApiPropertyOptional({ description: 'Filter by department UUID' })
-  departmentId?: string;
+  departmentId?: FilterSelection<string>;
 
   @IsOptional()
   @IsUUID('4', { message: 'roomId must be a valid UUID v4' })

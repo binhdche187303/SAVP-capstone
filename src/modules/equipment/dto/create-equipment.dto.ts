@@ -24,66 +24,66 @@ import { EquipmentType, HealthStatus } from '../entities/equipment.entity.js';
  * validate roomId TRƯỚC khi tạo (không tạo thiết bị "mồ côi" nếu gán thất bại).
  */
 export class CreateEquipmentDto {
-  @IsString({ message: 'equipmentName phai la chuoi ky tu' })
-  @IsNotEmpty({ message: 'equipmentName khong duoc de trong' })
-  @MaxLength(150, { message: 'equipmentName toi da 150 ky tu' })
+  @IsString({ message: 'Tên thiết bị phải là chuỗi ký tự' })
+  @IsNotEmpty({ message: 'Tên thiết bị không được để trống' })
+  @MaxLength(150, { message: 'Tên thiết bị tối đa 150 ký tự' })
   equipmentName: string;
 
   @IsEnum(EquipmentType, {
     message:
-      'equipmentType khong hop le. Gia tri: camera, microphone, display, speaker, capture_agent, sensor, other',
+      'Loại thiết bị không hợp lệ. Giá trị: camera, microphone, display, speaker, capture_agent, sensor, other',
   })
   equipmentType: EquipmentType;
 
-  @IsString({ message: 'equipmentCode phai la chuoi ky tu' })
-  @IsNotEmpty({ message: 'equipmentCode khong duoc de trong' })
-  @Length(3, 80, { message: 'equipmentCode phai tu 3 den 80 ky tu' })
+  @IsString({ message: 'Mã thiết bị phải là chuỗi ký tự' })
+  @IsNotEmpty({ message: 'Mã thiết bị không được để trống' })
+  @Length(3, 80, { message: 'Mã thiết bị phải từ 3 đến 80 ký tự' })
   @Matches(/^[A-Z0-9]+(?:-[A-Z0-9]+)*$/, {
     message:
-      'equipmentCode chi chap nhan ky tu A-Z, 0-9 va dau gach ngang (-), viet hoa',
+      'Mã thiết bị chỉ chấp nhận ký tự A-Z, 0-9 và dấu gạch ngang (-), viết hoa',
   })
-  @MaxLength(80, { message: 'equipmentCode toi da 80 ky tu' })
+  @MaxLength(80, { message: 'Mã thiết bị tối đa 80 ký tự' })
   equipmentCode: string;
 
   @IsOptional()
-  @IsString({ message: 'serialNumber phai la chuoi ky tu' })
-  @MaxLength(120, { message: 'serialNumber toi da 120 ky tu' })
+  @IsString({ message: 'Số serial phải là chuỗi ký tự' })
+  @MaxLength(120, { message: 'Số serial tối đa 120 ký tự' })
   serialNumber?: string;
 
   @IsOptional()
-  @IsString({ message: 'brand phai la chuoi ky tu' })
-  @MaxLength(100, { message: 'brand toi da 100 ky tu' })
+  @IsString({ message: 'Hãng sản xuất phải là chuỗi ký tự' })
+  @MaxLength(100, { message: 'Hãng sản xuất tối đa 100 ký tự' })
   brand?: string;
 
   @IsOptional()
-  @IsString({ message: 'model phai la chuoi ky tu' })
-  @MaxLength(100, { message: 'model toi da 100 ky tu' })
+  @IsString({ message: 'Model phải là chuỗi ký tự' })
+  @MaxLength(100, { message: 'Model tối đa 100 ký tự' })
   model?: string;
 
   @IsOptional()
   @IsDateString(
     {},
-    { message: 'purchaseDate phai la ngay hop le (YYYY-MM-DD)' },
+    { message: 'Ngày mua phải là ngày hợp lệ (YYYY-MM-DD)' },
   )
   purchaseDate?: string;
 
   @IsOptional()
-  @IsObject({ message: 'specification phai la object' })
+  @IsObject({ message: 'Thông số kỹ thuật phải là object' })
   specification?: Record<string, unknown>;
 
   @IsOptional()
   @IsEnum(HealthStatus, {
     message:
-      'healthStatus khong hop le. Gia tri: healthy, warning, faulty, offline, unknown',
+      'Tình trạng không hợp lệ. Giá trị: healthy, warning, faulty, offline, unknown',
   })
   healthStatus?: HealthStatus;
 
   @IsOptional()
-  @IsUUID('4', { message: 'roomId phai la dinh dang UUID' })
+  @IsUUID('4', { message: 'roomId phải là định dạng UUID' })
   roomId?: string;
 
   @IsOptional()
-  @IsString({ message: 'assignmentNote phai la chuoi ky tu' })
-  @MaxLength(2000, { message: 'assignmentNote toi da 2000 ky tu' })
+  @IsString({ message: 'Ghi chú phân bổ phải là chuỗi ký tự' })
+  @MaxLength(2000, { message: 'Ghi chú phân bổ tối đa 2000 ký tự' })
   assignmentNote?: string;
 }

@@ -538,7 +538,7 @@ describe('MeetingsController', () => {
       const forbiddenError = new (require('@nestjs/common').ForbiddenException)(
         {
           success: false,
-          message: 'Ban khong co quyen xem cuoc hop nay',
+          message: 'Bạn không có quyền xem cuộc họp này',
           error: { code: 'FORBIDDEN_NOT_PARTICIPANT', details: { meetingId } },
         },
       );
@@ -556,7 +556,7 @@ describe('MeetingsController', () => {
       const meetingId = '550e8400-e29b-41d4-a716-446655440000';
       const notFoundError = new (require('@nestjs/common').NotFoundException)({
         success: false,
-        message: 'Khong tim thay cuoc hop',
+        message: 'Không tìm thấy cuộc họp',
         error: { code: 'MEETING_NOT_FOUND', details: { meetingId } },
       });
       service.getMyScheduleDetail.mockRejectedValue(notFoundError);

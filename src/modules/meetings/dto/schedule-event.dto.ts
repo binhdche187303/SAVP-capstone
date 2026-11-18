@@ -27,6 +27,8 @@ export class ScheduleEventDto {
   colorKey: string;
   isCurrent: boolean;
   isPast: boolean;
+  /** Lịch tuần UEL: UNIT | SCHOOL_LEADERSHIP | SCHOOL_OTHER. */
+  calendarType?: string;
 
   constructor(data: ScheduleEventDto) {
     this.meetingId = data.meetingId;
@@ -43,5 +45,6 @@ export class ScheduleEventDto {
     this.colorKey = data.colorKey;
     this.isCurrent = data.isCurrent;
     this.isPast = data.isPast;
+    this.calendarType = data.calendarType;
   }
 }

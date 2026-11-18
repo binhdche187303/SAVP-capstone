@@ -39,7 +39,7 @@ export class GuestAccessController {
     type: String,
     description: 'Link mời dạng <epId>.<secret>',
   })
-  @ApiResponse({ status: 200, description: 'Thong tin loi moi' })
+  @ApiResponse({ status: 200, description: 'Thông tin lời mời' })
   @ApiResponse({ status: 400, description: 'GUEST_INVITE_INVALID' })
   @ApiResponse({ status: 409, description: 'GUEST_MEETING_CANCELLED' })
   @ApiResponse({
@@ -54,7 +54,7 @@ export class GuestAccessController {
     const info = await this.guestOtpService.getInviteInfo(token);
     return {
       success: true,
-      message: 'Thong tin loi moi',
+      message: 'Thông tin lời mời',
       data: new GuestInviteInfoResponseDto({
         meetingTitle: info.meetingTitle,
         startTime: info.startTime.toISOString(),
@@ -86,7 +86,7 @@ export class GuestAccessController {
     await this.guestOtpService.requestOtp(token);
     return {
       success: true,
-      message: 'Ma xac nhan da duoc gui toi email cua ban',
+      message: 'Mã xác nhận đã được gửi tới email của bạn',
     };
   }
 
@@ -98,7 +98,7 @@ export class GuestAccessController {
       'Tra ve guestToken (JWT ky bang GUEST_TOKEN_SECRET, KHAC secret nhan vien).',
   })
   @ApiParam({ name: 'token', type: String })
-  @ApiResponse({ status: 200, description: 'Xac thuc thanh cong' })
+  @ApiResponse({ status: 200, description: 'Xác thực thành công' })
   @ApiResponse({
     status: 409,
     description: 'GUEST_OTP_INVALID / GUEST_OTP_BLOCKED',
@@ -115,7 +115,7 @@ export class GuestAccessController {
     const result = await this.guestOtpService.verifyOtp(token, dto.otp);
     return {
       success: true,
-      message: 'Xac thuc thanh cong',
+      message: 'Xác thực thành công',
       data: new VerifyGuestOtpResponseDto(result),
     };
   }

@@ -1,3 +1,4 @@
+import { filterValues } from '../../../common/utils/filter-selection.js';
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import {
@@ -124,11 +125,11 @@ export class CameraTraceService {
                   LIMIT 1
                 ) AS channel_id
          FROM iot_devices d
-        WHERE ($1::uuid IS NULL OR d.id = $1::uuid)
-          AND ($2::uuid IS NULL OR EXISTS (
-                SELECT 1 FROM camera_group_members m WHERE m.group_id = $2::uuid AND m.device_id = d.id))
+        WHERE ($1::uuid[] IS NULL OR d.id = ANY($1::uuid[]))
+          AND ($2::uuid[] IS NULL OR EXISTS (
+                SELECT 1 FROM camera_group_members m WHERE m.group_id = ANY($2::uuid[]) AND m.device_id = d.id))
         ORDER BY d.device_name`,
-      [q.deviceId ?? null, q.groupId ?? null],
+      [q.deviceId ? filterValues(q.deviceId) : null, q.groupId ? filterValues(q.groupId) : null],
     );
     const base = {
       devices: devices.map((d) => ({ id: d.id, deviceCode: d.device_code, deviceName: d.device_name })),
@@ -145,8 +146,8 @@ export class CameraTraceService {
     };
     const scopeSql = await this.scopeClause(callerId, bind);
     const filters: string[] = [];
-    if (q.zoneId) filters.push("COALESCE(x.zone_id, d.zone_id) = " + bind(q.zoneId));
-    if (q.kind) filters.push(`x.kind = ${bind(q.kind)}`);
+    if (q.zoneId) filters.push("COALESCE(x.zone_id, d.zone_id) = ANY(" + bind(filterValues(q.zoneId)) + "::uuid[])");
+    if (q.kind) filters.push(`x.kind = ANY(${bind(filterValues(q.kind))}::text[])`);
     const needle = q.q?.trim();
     if (needle) {
       const like = bind(`%${needle.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);

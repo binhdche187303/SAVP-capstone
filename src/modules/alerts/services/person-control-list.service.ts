@@ -1,3 +1,4 @@
+import { filterWhere } from '../../../common/utils/filter-selection.js';
 import {
   ConflictException,
   Injectable,
@@ -144,8 +145,8 @@ export class PersonControlListService {
     const where: FindOptionsWhere<PersonControlListEntity> = {
       deletedAt: IsNull(),
     };
-    if (query.listType) where.listType = query.listType;
-    if (query.active !== undefined) where.active = query.active;
+    if (query.listType) where.listType = filterWhere(query.listType);
+    if (query.active !== undefined) where.active = filterWhere(query.active);
     if (query.userId) where.userId = query.userId;
     if (query.faceProfileId) where.faceProfileId = query.faceProfileId;
 

@@ -394,17 +394,17 @@ export class ZonesService {
     return { zone, devices };
   }
 
-  // ── UC-92 (ZND-001): xoá khu vực ──
+  // ── UC-92 (ZND-001): xóa khu vực ──
 
   /**
-   * Xoá mềm khu vực (UC-92).
+   * Xóa mềm khu vực (UC-92).
    *
    * Thứ tự bắt buộc:
    * 1. `loadActive` → 404 `ZONE_NOT_FOUND` (phủ luôn lần gọi DELETE thứ hai — OQ-4).
    * 2. Chặn theo THIẾT BỊ (OQ-1) — đặt NGOÀI transaction để fail nhanh, không tốn connection.
    *    KHÔNG đếm `gate_access_logs`/`zone_presence_events`: log chỉ tăng, chặn theo log sẽ
    *    khiến zone bất tử.
-   * 3. Transaction { softDelete + audit } — "đã xoá nhưng không có audit" là mất dấu vết
+   * 3. Transaction { softDelete + audit } — "đã xóa nhưng không có audit" là mất dấu vết
    *    vĩnh viễn, nên hai việc phải cùng sống hoặc cùng chết.
    *
    * DATA-01: chỉ soft-delete, TUYỆT ĐỐI không hard-delete.
@@ -422,7 +422,7 @@ export class ZonesService {
     if (deviceCount > 0) {
       throw new ConflictException({
         code: 'ZONE_HAS_DEVICES',
-        message: 'Khu vực còn thiết bị được gán, hãy gỡ thiết bị trước khi xoá',
+        message: 'Khu vực còn thiết bị được gán, hãy gỡ thiết bị trước khi xóa',
         details: { device_count: deviceCount },
       });
     }

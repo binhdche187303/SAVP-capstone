@@ -1,3 +1,4 @@
+import type { FilterSelection } from '../../../common/utils/filter-selection.js';
 import {
   IsIn,
   IsOptional,
@@ -33,10 +34,10 @@ const ROLE_FILTER_VALUES = [
 
 export class ListBiometricSubmissionsQueryDto {
   @IsOptional()
-  @IsIn(STATUS_FILTER_VALUES, {
+  @IsIn(STATUS_FILTER_VALUES, { each: true,
     message: 'status must be one of: pending_review, rejected, active',
   })
-  status?: string;
+  status?: FilterSelection<string>;
 
   @IsOptional()
   @Type(() => Number)
@@ -77,25 +78,25 @@ export class ListBiometricSubmissionsQueryDto {
   q?: string;
 
   @IsOptional()
-  @IsUUID('4', {
+  @IsUUID('4', { each: true,
     message: 'departmentId must be a valid UUID',
   })
-  departmentId?: string;
+  departmentId?: FilterSelection<string>;
 
   @IsOptional()
   @Transform(({ value }) =>
     typeof value === 'string' ? value.trim().toUpperCase() : value,
   )
-  @IsIn(ROLE_FILTER_VALUES, {
+  @IsIn(ROLE_FILTER_VALUES, { each: true,
     message:
       'role must be one of: SYSTEM_ADMIN, BUSINESS_ADMIN, MANAGER, EMPLOYEE, TEACHER, STUDENT, GUARD',
   })
-  role?: string;
+  role?: FilterSelection<string>;
 
   @IsOptional()
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
-  @MaxLength(100, {
+  @MaxLength(100, { each: true,
     message: 'classId must not exceed 100 characters',
   })
-  classId?: string;
+  classId?: FilterSelection<string>;
 }

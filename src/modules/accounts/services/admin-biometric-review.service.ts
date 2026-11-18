@@ -1,3 +1,4 @@
+import { filterValues } from '../../../common/utils/filter-selection.js';
 import {
   Injectable,
   Logger,
@@ -96,7 +97,7 @@ export class AdminBiometricReviewService {
       .innerJoin('fp.user', 'u')
       .leftJoin('u.department', 'd')
       .where('fp.deletedAt IS NULL')
-      .andWhere('fp.status = :status', { status });
+      .andWhere('fp.status IN (:...status)', { status: filterValues(status) });
 
     if (query.q) {
       const searchPattern = `%${query.q}%`;
@@ -107,8 +108,8 @@ export class AdminBiometricReviewService {
     }
 
     if (query.departmentId) {
-      qb.andWhere('u.departmentId = :departmentId', {
-        departmentId: query.departmentId,
+      qb.andWhere('u.departmentId IN (:...departmentId)', {
+        departmentId: filterValues(query.departmentId),
       });
     }
 
@@ -123,18 +124,16 @@ export class AdminBiometricReviewService {
              AND r.is_active = true
            WHERE ur.user_id = u.id
              AND ur.is_active = true
-             AND r.role_code = :roleCode
+             AND r.role_code IN (:...roleCode)
         )
         `,
-        { roleCode: query.role },
+        { roleCode: filterValues(query.role) },
       );
     }
 
     if (query.classId) {
-      const classIdentifier = query.classId.trim();
-      const normalizedClassCode = classIdentifier
-        .replace(/[^a-z0-9]/gi, '')
-        .toLowerCase();
+      const classIdentifier = filterValues(query.classId).map(value => value.trim().toLowerCase());
+      const normalizedClassCode = classIdentifier.map(value => value.replace(/[^a-z0-9]/gi, ''));
       qb.andWhere(
         `
         (
@@ -150,9 +149,9 @@ export class AdminBiometricReviewService {
              WHERE st.user_id = u.id
                AND st.deleted_at IS NULL
                AND (
-                 cs.id::text = :classIdentifier
-                 OR lower(cs.class_code) = lower(:classIdentifier)
-                 OR regexp_replace(lower(cs.class_code), '[^a-z0-9]', '', 'g') = :normalizedClassCode
+                 cs.id::text IN (:...classIdentifier)
+                 OR lower(cs.class_code) IN (:...classIdentifier)
+                 OR regexp_replace(lower(cs.class_code), '[^a-z0-9]', '', 'g') IN (:...normalizedClassCode)
                )
           )
           OR EXISTS (
@@ -161,9 +160,9 @@ export class AdminBiometricReviewService {
              WHERE cs.lecturer_user_id = u.id
                AND cs.deleted_at IS NULL
                AND (
-                 cs.id::text = :classIdentifier
-                 OR lower(cs.class_code) = lower(:classIdentifier)
-                 OR regexp_replace(lower(cs.class_code), '[^a-z0-9]', '', 'g') = :normalizedClassCode
+                 cs.id::text IN (:...classIdentifier)
+                 OR lower(cs.class_code) IN (:...classIdentifier)
+                 OR regexp_replace(lower(cs.class_code), '[^a-z0-9]', '', 'g') IN (:...normalizedClassCode)
                )
           )
         )
@@ -568,7 +567,7 @@ export class AdminBiometricReviewService {
           status: FaceProfileStatus.ACTIVE,
           lastUpdatedAt: now,
         });
-        // [SỬA 2026-07-29] ĐÃ XOÁ: manager.update(UserEntity, fp.userId, { avatarUrl: ... }).
+        // [SỬA 2026-07-29] ĐÃ XÓA: manager.update(UserEntity, fp.userId, { avatarUrl: ... }).
         // Approve KHÔNG còn cập nhật users.avatar_url (quyết định D2) — avatar hiển thị là
         // dữ liệu độc lập, quản lý bởi feature feat-update-avatar-photo.
 
@@ -584,7 +583,7 @@ export class AdminBiometricReviewService {
         // `deleted_at = now()`:
         //   · reconcile (1) lọc `NOT EXISTS(... sync_status='synced')` → user vào lại hàng đợi ✓
         //   · `enrollPortrait` dedupe theo `sync_status='synced'` → không noop nữa ✓
-        //   · bước dọn person cũ trên IVSS lọc `deleted_at IS NULL` → VẪN thấy mapping để xoá
+        //   · bước dọn person cũ trên IVSS lọc `deleted_at IS NULL` → VẪN thấy mapping để xóa
         //     ảnh cũ trước khi đẩy ảnh mới. Soft-delete làm bước này MÙ ⇒ ảnh cũ ở lại thiết bị
         //     và sinh trùng szUID (đúng thứ "Nợ #2" trong portrait-sync đang chống) ✗
         //   · reconcile (2) chỉ remove khi user KHÔNG còn face_profile active → không đụng ✓
@@ -775,7 +774,7 @@ export class AdminBiometricReviewService {
   //
   // Soft-delete qua face_profiles.deleted_at (cột đã có sẵn ở entity). KHÔNG cần
   // tự tay hạ device_user_mappings (source='portrait') như approve() — khi ảnh bị
-  // xoá, IvssPortraitSyncService.reconcilePortraits() bước (2) tự nhận ra user
+  // xóa, IvssPortraitSyncService.reconcilePortraits() bước (2) tự nhận ra user
   // "NOT EXISTS (face_profiles.status='active' AND deleted_at IS NULL)" ở lượt cron
   // kế tiếp và tự gỡ mapping/person trên IVSS — xem ivss-portrait-sync.service.ts:366-390.
 

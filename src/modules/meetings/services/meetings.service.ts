@@ -740,7 +740,7 @@ export class MeetingsService {
    *
    * ⚠ KHÔNG dùng `count(...) + 1` như bản cũ: `count` đếm bản ghi ĐANG SỐNG, trong khi
    * `ux_meetings_code` vẫn bị chiếm bởi bản ghi soft-delete (MeetingEntity có
-   * @DeleteDateColumn). Xoá 1 họp → count tụt 1 → sinh lại đúng mã đã cấp → 23505.
+   * @DeleteDateColumn). Xóa 1 họp → count tụt 1 → sinh lại đúng mã đã cấp → 23505.
    * Hai request đồng thời cũng cùng đọc một `count` → cùng seq.
    *
    * Cách mới: lấy MAX seq đã cấp (kể cả bản soft-delete qua `.withDeleted()`), +1, rồi
@@ -813,7 +813,7 @@ export class MeetingsService {
    *
    * ⚠ Bản cũ dùng lại `meetingCode` làm `requestCode` (chỉ kiểm tồn tại trong
    * `meetings.meeting_code`, không kiểm trong `meeting_requests.request_code`).
-   * `meeting_requests` không bao giờ bị xoá theo meeting (FK `SET NULL`), nên một
+   * `meeting_requests` không bao giờ bị xóa theo meeting (FK `SET NULL`), nên một
    * mã đã "trống" ở bảng `meetings` vẫn có thể còn bị chiếm ở `meeting_requests` →
    * 23505 trên `ux_meeting_requests_code` ngay ở lần tạo đầu tiên trong ngày.
    * Nay sinh mã riêng theo đúng pattern MAX-seq + kiểm tồn tại như `generateMeetingCode`.
@@ -4209,6 +4209,7 @@ export class MeetingsService {
         'm.endTime',
         'm.timezone',
         'm.status',
+        'm.calendarType',
       ])
       .addSelect(
         `CASE WHEN m.organizer_id = :userId THEN 'organizer'
@@ -4378,6 +4379,7 @@ export class MeetingsService {
         colorKey: effectiveStatus,
         isCurrent,
         isPast,
+        calendarType: (row.m_calendar_type as string) ?? 'UNIT',
       });
     });
 
@@ -4407,7 +4409,7 @@ export class MeetingsService {
     if (!meeting || meeting.deletedAt) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay cuoc hop',
+        message: 'Không tìm thấy cuộc họp',
         error: { code: 'MEETING_NOT_FOUND', details: { meetingId } },
       });
     }
@@ -4429,7 +4431,7 @@ export class MeetingsService {
     if (!isOrganizer && !isHost && !isParticipant) {
       throw new ForbiddenException({
         success: false,
-        message: 'Ban khong co quyen xem cuoc hop nay',
+        message: 'Bạn không có quyền xem cuộc họp này',
         error: { code: 'FORBIDDEN_NOT_PARTICIPANT', details: { meetingId } },
       });
     }
@@ -4610,7 +4612,7 @@ export class MeetingsService {
     userId: string,
     query: MeetingHistoryQueryDto,
   ): Promise<MeetingHistoryResponseDto> {
-    const { page, limit, from, to, q } = query;
+    const { page, limit, from, to, q, calendarType } = query;
     const status =
       query.status && query.status.length > 0 ? query.status : ['completed'];
     const wantsCompleted = status.includes(MeetingStatus.COMPLETED);
@@ -4620,7 +4622,7 @@ export class MeetingsService {
     const qb = this.dataSource
       .getRepository(MeetingEntity)
       .createQueryBuilder('m')
-      .select(['m.id', 'm.title', 'm.startTime', 'm.endTime', 'm.status'])
+      .select(['m.id', 'm.title', 'm.startTime', 'm.endTime', 'm.status', 'm.calendarType'])
       .addSelect('r.id', 'room_id')
       .addSelect('r.room_name', 'room_name')
       .addSelect('r.room_code', 'room_code')
@@ -4644,7 +4646,9 @@ export class MeetingsService {
       .andWhere('m.deleted_at IS NULL')
       .orderBy('m.start_time', 'DESC');
 
-    if (wantsCompleted && !wantsInProgress) {
+    // Có "completed" thì luôn kèm cuộc họp quá giờ chưa được đóng (scheduled/in_progress đã hết giờ),
+    // kể cả khi FE xin thêm "in_progress" (bộ lọc "Tất cả trạng thái" của Lịch sử tham dự).
+    if (wantsCompleted) {
       qb.andWhere(
         `(m.status IN (:...status) OR (m.status IN (:...overdueStatuses) AND m.end_time < NOW()))`,
         {
@@ -4669,6 +4673,9 @@ export class MeetingsService {
     }
     if (to) {
       qb.andWhere('m.start_time <= :to', { to: new Date(to) });
+    }
+    if (calendarType && calendarType.length > 0) {
+      qb.andWhere('m.calendar_type IN (:...calendarType)', { calendarType });
     }
 
     const normalizedQ = this.normalizeSearchQuery(q);
@@ -4733,6 +4740,7 @@ export class MeetingsService {
         room,
         organizerName: row.organizer_name ?? '',
         durationMinutes,
+        calendarType: row.m_calendar_type ?? 'UNIT',
       });
     });
 
@@ -4758,7 +4766,7 @@ export class MeetingsService {
     if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime())) {
       throw new BadRequestException({
         success: false,
-        message: 'from hoac to khong dung dinh dang ISO',
+        message: 'Thời gian bắt đầu hoặc kết thúc không đúng định dạng ISO',
         error: { code: 'INVALID_DATETIME_FORMAT', details: {} },
       });
     }
@@ -4766,7 +4774,7 @@ export class MeetingsService {
     if (fromDate >= toDate) {
       throw new UnprocessableEntityException({
         success: false,
-        message: 'Khoang thoi gian khong hop le: from phai truoc to',
+        message: 'Khoảng thời gian không hợp lệ: thời điểm bắt đầu phải trước thời điểm kết thúc',
         error: {
           code: 'INVALID_DATE_RANGE',
           details: { from, to },
@@ -4787,7 +4795,7 @@ export class MeetingsService {
     if (limit && diffDays > limit) {
       throw new UnprocessableEntityException({
         success: false,
-        message: `Khoang thoi gian qua rong cho view ${view}: toi da ${limit} ngay`,
+        message: `Khoảng thời gian quá rộng cho chế độ xem ${view}: tối đa ${limit} ngày`,
         error: {
           code: 'DATE_RANGE_TOO_WIDE',
           details: { maxDays: limit, view, actualDays: Math.ceil(diffDays) },
@@ -6865,7 +6873,7 @@ export class MeetingsService {
     if (!meeting || meeting.deletedAt) {
       throw new NotFoundException({
         success: false,
-        message: 'Cuoc hop khong ton tai hoac da bi xoa',
+        message: 'Cuộc họp không tồn tại hoặc đã bị xóa',
         error: { code: 'MEETING_NOT_FOUND', details: { meetingId } },
       });
     }
@@ -6879,7 +6887,7 @@ export class MeetingsService {
     if (!agenda) {
       throw new NotFoundException({
         success: false,
-        message: 'Muc agenda khong ton tai',
+        message: 'Mục chương trình họp không tồn tại',
         error: { code: 'AGENDA_ITEM_NOT_FOUND', details: { agendaId } },
       });
     }
@@ -6896,7 +6904,7 @@ export class MeetingsService {
     if (!file || !file.buffer || file.buffer.length === 0) {
       throw new BadRequestException({
         success: false,
-        message: 'Vui long dinh kem file',
+        message: 'Vui lòng đính kèm file',
         error: { code: 'AGENDA_ATTACHMENT_FILE_REQUIRED', details: {} },
       });
     }
@@ -6909,7 +6917,7 @@ export class MeetingsService {
     if (file.size > maxBytes) {
       throw new BadRequestException({
         success: false,
-        message: `File vuot qua gioi han ${maxBytes} bytes`,
+        message: `File vượt quá giới hạn ${maxBytes} byte`,
         error: {
           code: 'AGENDA_ATTACHMENT_FILE_TOO_LARGE',
           details: { maxBytes },
@@ -6925,7 +6933,7 @@ export class MeetingsService {
     if (!allowedMimeTypes.includes(file.mimetype)) {
       throw new BadRequestException({
         success: false,
-        message: 'Dinh dang file khong duoc ho tro',
+        message: 'Định dạng file không được hỗ trợ',
         error: {
           code: 'AGENDA_ATTACHMENT_FILE_TYPE_INVALID',
           details: { allowedMimeTypes },
@@ -6939,7 +6947,7 @@ export class MeetingsService {
     if (!allowedExtensions || !allowedExtensions.includes(ext)) {
       throw new BadRequestException({
         success: false,
-        message: 'Duoi file khong khop voi dinh dang khai bao',
+        message: 'Đuôi file không khớp với định dạng khai báo',
         error: {
           code: 'AGENDA_ATTACHMENT_FILE_TYPE_INVALID',
           details: { expectedExtensions: allowedExtensions },
@@ -6978,7 +6986,7 @@ export class MeetingsService {
       );
       throw new BadGatewayException({
         success: false,
-        message: 'Khong the luu file len kho luu tru',
+        message: 'Không thể lưu file lên kho lưu trữ',
         error: { code: 'AGENDA_ATTACHMENT_STORAGE_FAILED', details: {} },
       });
     }
@@ -7001,7 +7009,7 @@ export class MeetingsService {
         if (!lockedMeeting || lockedMeeting.deletedAt) {
           throw new NotFoundException({
             success: false,
-            message: 'Cuoc hop khong ton tai hoac da bi xoa',
+            message: 'Cuộc họp không tồn tại hoặc đã bị xóa',
             error: { code: 'MEETING_NOT_FOUND', details: { meetingId } },
           });
         }
@@ -7014,7 +7022,7 @@ export class MeetingsService {
         if (!agendaStillExists) {
           throw new NotFoundException({
             success: false,
-            message: 'Muc agenda khong ton tai',
+            message: 'Mục chương trình họp không tồn tại',
             error: { code: 'AGENDA_ITEM_NOT_FOUND', details: { agendaId } },
           });
         }
@@ -7031,7 +7039,7 @@ export class MeetingsService {
         if (currentCount >= maxCount) {
           throw new ConflictException({
             success: false,
-            message: 'Da dat so luong file dinh kem toi da cho muc agenda nay',
+            message: 'Đã đạt số lượng file đính kèm tối đa cho mục chương trình họp này',
             error: {
               code: 'AGENDA_ATTACHMENT_LIMIT_EXCEEDED',
               details: { maxCount, currentCount },
@@ -7111,7 +7119,7 @@ export class MeetingsService {
       if (!meeting || meeting.deletedAt) {
         throw new NotFoundException({
           success: false,
-          message: 'Cuoc hop khong ton tai hoac da bi xoa',
+          message: 'Cuộc họp không tồn tại hoặc đã bị xóa',
           error: { code: 'MEETING_NOT_FOUND', details: { meetingId } },
         });
       }
@@ -7124,7 +7132,7 @@ export class MeetingsService {
       if (!agenda) {
         throw new NotFoundException({
           success: false,
-          message: 'Muc agenda khong ton tai',
+          message: 'Mục chương trình họp không tồn tại',
           error: { code: 'AGENDA_ITEM_NOT_FOUND', details: { agendaId } },
         });
       }
@@ -7140,7 +7148,7 @@ export class MeetingsService {
       if (!mediaFile) {
         throw new NotFoundException({
           success: false,
-          message: 'File dinh kem khong ton tai hoac da bi xoa',
+          message: 'File đính kèm không tồn tại hoặc đã bị xóa',
           error: { code: 'AGENDA_ATTACHMENT_NOT_FOUND', details: { fileId } },
         });
       }

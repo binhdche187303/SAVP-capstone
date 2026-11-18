@@ -344,7 +344,7 @@ describe('ZonesController (ZNC-001 / UC-90)', () => {
     it('service ném ConflictException ZONE_HAS_DEVICES → propagate nguyên trạng', async () => {
       const conflict = new ConflictException({
         code: 'ZONE_HAS_DEVICES',
-        message: 'Khu vực còn thiết bị được gán, hãy gỡ thiết bị trước khi xoá',
+        message: 'Khu vực còn thiết bị được gán, hãy gỡ thiết bị trước khi xóa',
       });
       service.remove.mockRejectedValue(conflict);
 
