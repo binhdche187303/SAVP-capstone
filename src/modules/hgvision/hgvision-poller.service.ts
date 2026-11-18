@@ -116,8 +116,10 @@ export class HgvisionPollerService implements OnModuleInit, OnModuleDestroy {
         const faceEvt = toIvssFaceEvent(obj, cameraMap);
         if (faceEvt) {
           if (
-            this.config.get<string>('HGVISION_REPLAY_HISTORY_ENABLED', 'false') ===
-            'true'
+            this.config.get<string>(
+              'HGVISION_REPLAY_HISTORY_ENABLED',
+              'false',
+            ) === 'true'
           ) {
             faceEvt.allowHistorical = true;
           }
@@ -171,10 +173,12 @@ export class HgvisionPollerService implements OnModuleInit, OnModuleDestroy {
           e instanceof Error ? e.message : 'unknown'
         }`,
       );
-      if (path.startsWith("/")) {
+      if (path.startsWith('/')) {
         try {
-          return (await readFile(path)).toString("base64");
-        } catch {}
+          return (await readFile(path)).toString('base64');
+        } catch {
+          // file ảnh cục bộ không đọc được → bỏ qua ảnh
+        }
       }
       return undefined;
     }
