@@ -1,3 +1,4 @@
+import { filterValues } from '../../../common/utils/filter-selection.js';
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { normalizePlate } from '../utils/normalize-plate.js';
@@ -131,8 +132,8 @@ export class VehicleHistoryService {
     const params: unknown[] = [...VEHICLE_EVENT_TYPES];
     let where = `iot_device_events.event_type IN (${VEHICLE_EVENT_TYPE_SQL})`;
     if (query.matchState) {
-      params.push(query.matchState);
-      where += ` AND iot_device_events.payload_json->>'matchState' = $${params.length}`;
+      params.push(filterValues(query.matchState));
+      where += ` AND iot_device_events.payload_json->>'matchState' = ANY($${params.length}::text[])`;
     }
     // ownerName (yêu cầu FE 2026-08-08): lọc theo users.full_name — CHỈ khả dụng ở
     // listAll vì `where` này CHỈ dùng cho query có JOIN users (paginate() JOIN users
@@ -169,28 +170,28 @@ export class VehicleHistoryService {
       where += ` AND iot_device_events.payload_json->>'plateNumber' = $${params.length}`;
     }
     if (query.vehicleType) {
-      params.push(query.vehicleType);
-      where += ` AND LOWER(COALESCE(NULLIF(iot_device_events.payload_json->>'vehicleType', ''), vr.vehicle_type)) = LOWER($${params.length})`;
+      params.push(filterValues(query.vehicleType).map(value => value.toLowerCase()));
+      where += ` AND LOWER(COALESCE(NULLIF(iot_device_events.payload_json->>'vehicleType', ''), vr.vehicle_type)) = ANY($${params.length}::text[])`;
     }
     if (query.cameraName) {
-      params.push(query.cameraName);
+      params.push(filterValues(query.cameraName));
       where += ` AND COALESCE((SELECT camera.camera_name
           FROM system_configs sc
           CROSS JOIN LATERAL jsonb_each_text(COALESCE(sc.config_json, '{}'::jsonb)) camera(camera_name, mapped_channel)
          WHERE sc.config_key = 'hgvision.camera_channel_map'
            AND sc.is_active = true
            AND camera.mapped_channel = iot_device_events.payload_json->>'channelId'
-         LIMIT 1), NULLIF(anpr_device.device_name, '')) = $${params.length}`;
+         LIMIT 1), NULLIF(anpr_device.device_name, '')) = ANY($${params.length}::text[])`;
     }
     if (query.zoneId) {
-      params.push(query.zoneId);
+      params.push(filterValues(query.zoneId));
       where += ` AND COALESCE(iot_device_events.zone_id::text, (SELECT z.id::text
           FROM system_configs sc
           JOIN zones z ON z.id::text = sc.config_json->>(iot_device_events.payload_json->>'channelId')
          WHERE sc.config_key = 'ivss.channel_zone_map'
            AND sc.is_active = true
            AND z.deleted_at IS NULL
-         LIMIT 1)) = $${params.length}`;
+         LIMIT 1)) = ANY($${params.length}::text[])`;
     }
     return where;
   }

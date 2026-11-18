@@ -167,10 +167,10 @@ describe('VehicleResolveService (VRE-001 / UC5)', () => {
     expect(q?.params).toEqual(['30A12345']); // DATA-03: dùng plateNumber đã chuẩn
   });
 
-  // ── VPT-001: hết hạn / xoá tài khoản → unmatched ──
+  // ── VPT-001: hết hạn / xóa tài khoản → unmatched ──
 
-  it('VPT-001: hết hạn/xoá tài khoản → unmatched (userId null, matchState unmatched, processed_status unmatched)', async () => {
-    // Biển active nhưng user đã hết hạn/xoá → query JOIN không trả row → resolve null.
+  it('VPT-001: hết hạn/xóa tài khoản → unmatched (userId null, matchState unmatched, processed_status unmatched)', async () => {
+    // Biển active nhưng user đã hết hạn/xóa → query JOIN không trả row → resolve null.
     // Mock: user: [] = không có row nào khớp điều kiện JOIN (hết hạn hoặc deleted_at IS NOT NULL).
     wire({ user: [] });
     await service.onVehicleEvent(evt());
@@ -591,7 +591,7 @@ describe('VehicleResolveService (VRE-001 / UC5)', () => {
       // enter
       pairMock.pairForLeaveLog.mockClear();
       wire(GATE); // dirMap ch5=enter
-      // STT 7: map kênh cache 30s → đổi config giữa 2 event phải xoá cache.
+      // STT 7: map kênh cache 30s → đổi config giữa 2 event phải xóa cache.
       (service as any).zoneMapCache = undefined;
       (service as any).dirMapCache = undefined;
       await service.onVehicleEvent(evt({ utc: nowIso() }));

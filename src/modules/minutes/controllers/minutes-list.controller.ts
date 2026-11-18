@@ -79,7 +79,7 @@ export class MeetingMinutesListController {
     name: 'limit',
     required: false,
     type: Number,
-    description: 'Toi da 20 (BR2)',
+    description: 'Tối đa 20 (BR2)',
   })
   @ApiQuery({
     name: 'status',
@@ -91,7 +91,7 @@ export class MeetingMinutesListController {
     name: 'meetingId',
     required: false,
     type: String,
-    description: 'Loc bien ban theo cuoc hop cu the',
+    description: 'Lọc biên bản theo cuộc họp cụ thể',
   })
   @ApiQuery({ name: 'from', required: false, type: String })
   @ApiQuery({ name: 'to', required: false, type: String })
@@ -148,9 +148,9 @@ export class MeetingMinutesListController {
     name: 'meetingId',
     required: true,
     type: String,
-    description: 'UUID cuoc hop can so sanh',
+    description: 'UUID cuộc họp cần so sánh',
   })
-  @ApiResponse({ status: 200, description: 'So sanh bien ban thu cong va AI' })
+  @ApiResponse({ status: 200, description: 'So sánh biên bản thủ công và AI' })
   @ApiResponse({ status: 400, description: 'VALIDATION_ERROR' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'FORBIDDEN' })
@@ -168,7 +168,7 @@ export class MeetingMinutesListController {
     });
     return {
       success: true,
-      message: 'So sanh bien ban thu cong va AI',
+      message: 'So sánh biên bản thủ công và AI',
       data: new CompareMinutesResponseDto(result),
     };
   }
@@ -205,7 +205,7 @@ export class MeetingMinutesListController {
     });
     return {
       success: true,
-      message: 'Danh sach bien ban lien quan den nhan su',
+      message: 'Danh sách biên bản liên quan đến nhân sự',
       data: result.items,
       meta: {
         page: result.page,
@@ -228,7 +228,7 @@ export class MeetingMinutesListController {
       'Tra ve chi tiet bien ban hop bao gom thong tin chung, noi dung chinh, tai nguyen lien quan, file dinh kem.',
   })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
-  @ApiResponse({ status: 200, description: 'Chi tiet bien ban hop' })
+  @ApiResponse({ status: 200, description: 'Chi tiết biên bản họp' })
   @ApiResponse({ status: 400, description: 'VALIDATION_ERROR' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({
@@ -250,7 +250,7 @@ export class MeetingMinutesListController {
 
     return {
       success: true,
-      message: 'Chi tiet bien ban hop',
+      message: 'Chi tiết biên bản họp',
       data,
     };
   }
@@ -298,7 +298,7 @@ export class MeetingMinutesListController {
     });
     return {
       success: true,
-      message: 'Cap nhat noi dung bien ban cuoc hop thanh cong',
+      message: 'Cập nhật nội dung biên bản cuộc họp thành công',
       data,
     };
   }
@@ -392,7 +392,7 @@ export class MeetingMinutesListController {
     });
     return {
       success: true,
-      message: 'Da xoa bien ban hop nhap thanh cong',
+      message: 'Đã xóa biên bản họp nháp thành công',
       data,
     };
   }
@@ -431,7 +431,7 @@ export class MeetingMinutesListController {
     });
     return {
       success: true,
-      message: 'Ban hanh bien ban cuoc hop thanh cong',
+      message: 'Ban hành biên bản cuộc họp thành công',
       data,
     };
   }
@@ -487,7 +487,7 @@ export class MeetingMinutesListController {
     });
     return {
       success: true,
-      message: 'Da cap nhat lien ket tai nguyen cua bien ban',
+      message: 'Đã cập nhật liên kết tài nguyên của biên bản',
       data,
     };
   }
@@ -504,7 +504,7 @@ export class MeetingMinutesListController {
       'Chia se bien ban cho 1 user noi bo cu the (feat-share-meeting-minutes)',
     description:
       'Host (preparedBy hoac meeting.hostId) hoac Admin cap quyen xem bien ban da published ' +
-      'cho 1 user noi bo active bat ky (ngoai danh sach participant). Chi quyen xem (read-only).',
+      'cho một người dùng nội bộ đang hoạt động bất kỳ (ngoài danh sách tham dự). Chỉ quyền xem (read-only).',
   })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiBody({ type: CreateMinutesShareDto })
@@ -536,7 +536,7 @@ export class MeetingMinutesListController {
     });
     return {
       success: true,
-      message: 'Da chia se bien ban thanh cong',
+      message: 'Đã chia sẻ biên bản thành công',
       data,
     };
   }
@@ -571,7 +571,7 @@ export class MeetingMinutesListController {
     });
     return {
       success: true,
-      message: 'Lay danh sach chia se thanh cong',
+      message: 'Lấy danh sách chia sẻ thành công',
       data,
     };
   }
@@ -612,7 +612,7 @@ export class MeetingMinutesListController {
     });
     return {
       success: true,
-      message: 'Da thu hoi quyen xem bien ban',
+      message: 'Đã thu hồi quyền xem biên bản',
       data,
     };
   }
@@ -654,7 +654,7 @@ export class MeetingMinutesListController {
     });
     return {
       success: true,
-      message: 'Da tao yeu cau xuat bien ban, dang xu ly',
+      message: 'Đã tạo yêu cầu xuất biên bản, đang xử lý',
       data,
     };
   }
@@ -722,7 +722,7 @@ export class MeetingMinutesListController {
     });
     return {
       success: true,
-      message: 'Tai lieu da duoc dinh kem thanh cong',
+      message: 'Tài liệu đã được đính kèm thành công',
       data,
     };
   }
@@ -741,7 +741,7 @@ export class MeetingMinutesListController {
   })
   @ApiResponse({
     status: HttpStatus.OK,
-    description: 'Danh sach tai lieu dinh kem',
+    description: 'Danh sách tài liệu đính kèm',
   })
   @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Unauthorized' })
   @ApiResponse({
@@ -766,7 +766,7 @@ export class MeetingMinutesListController {
     });
     return {
       success: true,
-      message: 'Danh sach tai lieu dinh kem',
+      message: 'Danh sách tài liệu đính kèm',
       data: result.items,
       meta: { total: result.total, maxCount: result.maxCount },
     };
@@ -786,7 +786,7 @@ export class MeetingMinutesListController {
   })
   @ApiResponse({
     status: HttpStatus.OK,
-    description: 'Da go tai lieu dinh kem',
+    description: 'Đã gỡ tài liệu đính kèm',
   })
   @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Unauthorized' })
   @ApiResponse({
@@ -815,7 +815,7 @@ export class MeetingMinutesListController {
     });
     return {
       success: true,
-      message: 'Da go tai lieu dinh kem',
+      message: 'Đã gỡ tài liệu đính kèm',
       data,
     };
   }

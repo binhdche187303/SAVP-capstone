@@ -18,7 +18,7 @@ import { UserEntity } from '../../../modules/accounts/entities/user.entity.js';
  *   deleted_at IS NULL (xem migration 20260721000006) → một biển chỉ nằm 1 lần trong
  *   mỗi loại danh sách ĐANG SỐNG, vẫn cho thêm lại sau soft-delete.
  * - `plate_raw` giữ biển gốc admin nhập (hiển thị).
- * - `active` tách khỏi soft-delete: tạm tắt kiểm soát mà không xoá bản ghi/lý do.
+ * - `active` tách khỏi soft-delete: tạm tắt kiểm soát mà không xóa bản ghi/lý do.
  * - Soft-delete (`deleted_at`) mirror pattern `vehicle_registrations`.
  */
 @Entity('vehicle_control_list')

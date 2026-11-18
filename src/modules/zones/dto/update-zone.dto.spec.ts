@@ -46,7 +46,7 @@ describe('UpdateZoneDto (ZNU-001 / UC-91)', () => {
     );
   });
 
-  it('null cho 4 field nullable (xoá giá trị) → 0 lỗi', async () => {
+  it('null cho 4 field nullable (xóa giá trị) → 0 lỗi', async () => {
     expect(await validateBody({ building: null })).toHaveLength(0);
     expect(await validateBody({ floor: null })).toHaveLength(0);
     expect(await validateBody({ description: null })).toHaveLength(0);

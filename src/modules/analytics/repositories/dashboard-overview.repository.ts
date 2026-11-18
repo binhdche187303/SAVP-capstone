@@ -1,3 +1,4 @@
+import { filterValues, type FilterSelection } from '../../../common/utils/filter-selection.js';
 ﻿import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
@@ -5,7 +6,7 @@ export interface AggregateParams {
   from: string;
   to: string;
   scopeDepartmentIds: string[] | null;
-  departmentId?: string;
+  departmentId?: FilterSelection<string>;
   roomId?: string;
 }
 
@@ -72,9 +73,9 @@ export class DashboardOverviewRepository {
 
     if (params.departmentId) {
       conditions.push(
-        `${alias}.organizer_id IN (SELECT u2.id FROM users u2 WHERE u2.department_id = $${idx})`,
+        `${alias}.organizer_id IN (SELECT u2.id FROM users u2 WHERE u2.department_id = ANY($${idx}::uuid[]))`,
       );
-      values.push(params.departmentId);
+      values.push(filterValues(params.departmentId));
       idx++;
     }
 

@@ -53,7 +53,7 @@ export interface FaceDeviceProviderPort {
   addPerson(input: AddPersonInput): Promise<{ ok: true }>;
   /** Tìm uid theo uname (vì add KHÔNG trả uid). null nếu không thấy. */
   findUidByName(uname: string): Promise<string | null>;
-  /** Xoá person theo uid. */
+  /** Xóa person theo uid. */
   deletePerson(uid: string): Promise<{ ok: true }>;
   /** Parse response text `root.<NS>.<field>=value` (pure, không ném). */
   parseResponse(text: string): FaceGateResponse;

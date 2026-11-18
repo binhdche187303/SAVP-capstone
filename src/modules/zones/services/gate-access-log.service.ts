@@ -58,7 +58,7 @@ const GUARD_SCAN_DUPLICATE_WINDOW_SECONDS = 4;
  *
  * ⚠⚠ BẢNG APPEND-ONLY: `gate_access_logs` KHÔNG có cột `deleted_at` ⇒ TUYỆT ĐỐI KHÔNG
  * `deletedAt`/`IsNull()`. Và cũng KHÔNG lọc `z.deletedAt`/`u.deletedAt` của bảng được join:
- * đây là log LỊCH SỬ, phải giữ tên cổng/người kể cả khi zone/user đã xoá mềm (khác truy vấn
+ * đây là log LỊCH SỬ, phải giữ tên cổng/người kể cả khi zone/user đã xóa mềm (khác truy vấn
  * VẬN HÀNH của UC-92/93/94). SEC-03: mọi giá trị qua bound param.
  */
 @Injectable()
@@ -82,7 +82,7 @@ export class GateAccessLogService {
 
     const qb = this.repo
       .createQueryBuilder('gal')
-      // KHÔNG lọc z.deletedAt: log lịch sử phải giữ tên cổng dù zone đã xoá mềm.
+      // KHÔNG lọc z.deletedAt: log lịch sử phải giữ tên cổng dù zone đã xóa mềm.
       .leftJoinAndSelect('gal.zone', 'z')
       .where('gal.userId = :userId', { userId });
 
@@ -109,7 +109,7 @@ export class GateAccessLogService {
 
     const qb = this.repo
       .createQueryBuilder('gal')
-      // KHÔNG lọc z.deletedAt/u.deletedAt: log lịch sử phải giữ tên cổng/người dù đã xoá mềm.
+      // KHÔNG lọc z.deletedAt/u.deletedAt: log lịch sử phải giữ tên cổng/người dù đã xóa mềm.
       .leftJoinAndSelect('gal.zone', 'z')
       .leftJoinAndSelect('gal.user', 'u');
     // KHÔNG .where() fold — andWhere từ đầu HỢP LỆ (TypeORM bỏ tiền tố AND ở mệnh đề đầu).
@@ -682,7 +682,7 @@ export class GateAccessLogService {
    * WRITER (GAW-001 / UC-105) — ghi MỘT dòng `gate_access_logs`. Nguồn ghi DUY NHẤT của bảng
    * (QĐ-1/QC-3): `anpr` gọi method này, KHÔNG bắn raw SQL chéo.
    *
-   * Tự kiểm zone là bên chủ (QC-4): zone phải tồn tại, `zone_type='gate'`, chưa xoá mềm —
+   * Tự kiểm zone là bên chủ (QC-4): zone phải tồn tại, `zone_type='gate'`, chưa xóa mềm —
    * kiểm TRƯỚC khi mở queryRunner nên nhánh `zone_not_gate` thoát sớm, không cần release.
    *
    * Transaction RIÊNG, COMMIT trước khi return (nền QĐ-8: pairing là tx khác của caller).

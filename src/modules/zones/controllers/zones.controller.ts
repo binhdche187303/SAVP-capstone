@@ -189,7 +189,7 @@ export class ZonesController {
   }
 
   /**
-   * UC-92 (ZND-001): xoá mềm khu vực. KHÔNG `@HttpCode` — DELETE mặc định 200 (OQ-3:
+   * UC-92 (ZND-001): xóa mềm khu vực. KHÔNG `@HttpCode` — DELETE mặc định 200 (OQ-3:
    * trả envelope với `data: null`, KHÔNG dùng 204). KHÔNG `ZONE_PIPE` vì không có body/query.
    */
   @Delete(':id')

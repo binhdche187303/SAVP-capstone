@@ -1,3 +1,4 @@
+import type { FilterSelection } from '../../../common/utils/filter-selection.js';
 import {
   IsOptional,
   IsEnum,
@@ -42,8 +43,8 @@ export class QueryRoomUsageDashboardDto {
   roomId?: string;
 
   @IsOptional()
-  @IsString({ message: 'siteName must be a string' })
-  @MaxLength(150, { message: 'siteName must not exceed 150 characters' })
+  @IsString({ each: true, message: 'siteName must be a string' })
+  @MaxLength(150, { each: true, message: 'siteName must not exceed 150 characters' })
   @ApiPropertyOptional({ description: 'Filter by site name' })
-  siteName?: string;
+  siteName?: FilterSelection<string>;
 }

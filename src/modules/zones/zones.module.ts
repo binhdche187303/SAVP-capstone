@@ -28,7 +28,7 @@ import { ZonesAuditRepository } from './repositories/zones-audit.repository.js';
  * này là crash lúc boot (`UnknownDependenciesException`), KHÔNG phải lỗi 403. Mirror
  * `anpr.module.ts`.
  *
- * ZND-001 (UC-92): thêm xoá mềm + audit — `ZonesAuditRepository` (ghi `audit_logs` với
+ * ZND-001 (UC-92): thêm xóa mềm + audit — `ZonesAuditRepository` (ghi `audit_logs` với
  * `entity_type='zones'`) và import `IotModule` để đếm thiết bị đang gán vào zone qua
  * `IotDevicesService` (ARCH-01: KHÔNG query thẳng bảng `iot_devices`).
  *

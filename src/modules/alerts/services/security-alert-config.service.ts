@@ -26,7 +26,7 @@ const DEBOUNCE_CONFIG_ENV = 'SECURITY_ALERT_OCCURRENCE_DEBOUNCE_SECONDS';
 const DEBOUNCE_CONFIG_DEFAULT = 5;
 const DEBOUNCE_CONFIG_MIN = 0;
 
-/** getDebounceSeconds() bị gọi ở MỖI lần cộng dồn alert → cache; update() xoá ngay. */
+/** getDebounceSeconds() bị gọi ở MỖI lần cộng dồn alert → cache; update() xóa ngay. */
 const DEBOUNCE_CACHE_MS = 60_000;
 
 export interface UpdateSecurityAlertConfigInput {

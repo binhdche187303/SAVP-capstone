@@ -1,3 +1,4 @@
+import type { FilterSelection } from '../../../common/utils/filter-selection.js';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsIn, IsOptional, IsInt, IsUUID, Matches, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -58,8 +59,8 @@ export class ListStrangerAlertsQueryDto {
     description: 'Chỉ lấy người lạ của 1 thiết bị (camera)',
   })
   @IsOptional()
-  @IsUUID()
-  deviceId?: string;
+  @IsUUID('all', { each: true })
+  deviceId?: FilterSelection<string>;
 
   @ApiPropertyOptional({
     description:

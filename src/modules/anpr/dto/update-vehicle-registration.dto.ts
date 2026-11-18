@@ -14,7 +14,7 @@ import { Expose } from 'class-transformer';
  */
 export class UpdateVehicleRegistrationDto {
   @ApiPropertyOptional({
-    description: 'Loại phương tiện; gửi null để xoá',
+    description: 'Loại phương tiện; gửi null để xóa',
     nullable: true,
     maxLength: 50,
   })
@@ -25,7 +25,7 @@ export class UpdateVehicleRegistrationDto {
   vehicleType?: string | null;
 
   @ApiPropertyOptional({
-    description: 'Ghi chú; gửi null để xoá',
+    description: 'Ghi chú; gửi null để xóa',
     nullable: true,
     maxLength: 255,
   })

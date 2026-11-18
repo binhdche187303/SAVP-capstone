@@ -1,3 +1,4 @@
+import { filterValues } from '../../../common/utils/filter-selection.js';
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -221,22 +222,21 @@ export class StrangerAlertService implements StrangerAlertHook {
       );
     }
     if (query.deviceId) {
-      params.push(query.deviceId);
+      params.push(filterValues(query.deviceId));
       conds.push(`(
-        e.device_id = $${params.length}
-        OR e.payload_json->>'channelId' = (
+        e.device_id = ANY($${params.length}::uuid[])
+        OR e.payload_json->>'channelId' IN (
           SELECT x.mapped_channel
           FROM system_configs sc
           CROSS JOIN LATERAL jsonb_each_text(sc.config_json)
             AS x(camera_name, mapped_channel)
-          JOIN iot_devices cam ON cam.id = $${params.length}
+          JOIN iot_devices cam ON cam.id = ANY($${params.length}::uuid[])
           WHERE sc.config_key = 'hgvision.camera_channel_map'
             AND sc.is_active = true
             AND (
               x.camera_name = cam.device_name
               OR x.camera_name = cam.device_code
             )
-          LIMIT 1
         )
       )`);
     }

@@ -30,8 +30,8 @@ import { MediaFileEntity } from '../../recording/entities/media-file.entity.js';
  *   "người lạ" thông thường.
  * - `photo_media_file_id`: ẢNH CHỈ LƯU ĐỂ ĐỐI CHIẾU THỦ CÔNG (quyết định Hải §2.3) —
  *   KHÔNG enroll lên thiết bị nhận diện đợt này. Lý do: cron `cleanupEnded` (face-access)
- *   xoá mọi khuôn mặt không gắn cuộc họp nào; watchlist là thường trực, không gắn
- *   meeting nào, nên sẽ bị cron xoá ngay lần chạy kế tiếp nếu enroll bằng cơ chế hiện
+ *   xóa mọi khuôn mặt không gắn cuộc họp nào; watchlist là thường trực, không gắn
+ *   meeting nào, nên sẽ bị cron xóa ngay lần chạy kế tiếp nếu enroll bằng cơ chế hiện
  *   tại. Auto-match qua thiết bị = UC riêng sau (cần vòng đời enroll riêng).
  * - Dedup TÁCH 2 partial unique theo `user_id`/`face_profile_id` (mirror bẫy NULL !=
  *   NULL của `alert_rules`/`security_alerts`) — người chỉ có `display_name` (không có

@@ -312,9 +312,9 @@ describe('VehicleHistoryService (VHI-001 / UC7)', () => {
     await service.listAll(q({ matchState: 'unmatched' }));
     const c = rowsCall()!;
     expect(c.sql).toContain(
-      "iot_device_events.payload_json->>'matchState' = $3",
+      "iot_device_events.payload_json->>'matchState' = ANY($3::text[])",
     );
-    expect(c.params[2]).toBe('unmatched');
+    expect(c.params[2]).toEqual(['unmatched']);
   });
 
   // ── bind index liên tục, CẢ 2 method ──
@@ -366,14 +366,14 @@ describe('VehicleHistoryService (VHI-001 / UC7)', () => {
     );
     const c = rowsCall()!;
     expect(c.sql).toContain(
-      "iot_device_events.payload_json->>'matchState' = $3",
+      "iot_device_events.payload_json->>'matchState' = ANY($3::text[])",
     );
     expect(c.sql).toContain('iot_device_events.event_time >= $4');
     expect(c.sql).toContain('LIMIT $5 OFFSET $6');
     expect(c.params).toEqual([
       'ivss_vehicle_event',
       'camera_vehicle_event',
-      'matched',
+      ['matched'],
       '2026-06-01T00:00:00.000Z',
       20,
       0,

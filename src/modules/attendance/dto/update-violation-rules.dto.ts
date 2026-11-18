@@ -47,7 +47,7 @@ export class UpdateViolationRulesDto {
   @Type(() => ViolationRuleItemDto)
   rules: ViolationRuleItemDto[];
 
-  /** Chỉ xoá được hình thức tự thêm (không phải hệ thống). */
+  /** Chỉ xóa được hình thức tự thêm (không phải hệ thống). */
   @IsOptional()
   @IsArray()
   @IsUUID('all', { each: true })

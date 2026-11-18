@@ -320,7 +320,7 @@ describe('SchedulerService (NSL-001 + EVD-001 + IPS-001 + GAP-001 cron wiring)',
   // [FIX 2026-08-22, race no-show/auto-release] auto-release nay GỘP vào CUỐI chuỗi này
   // (không còn @Cron('auto-release') riêng) — reconcilePresence() LUÔN chạy xong (case đã
   // được "kept" nếu có presence hợp lệ) TRƯỚC KHI autoReleaseBatch() được gọi trong CÙNG
-  // tick, xoá race giữa 2 cron độc lập trước đây (xem no-show-lifecycle.service.spec.ts).
+  // tick, xóa race giữa 2 cron độc lập trước đây (xem no-show-lifecycle.service.spec.ts).
   it('checkNoShow ON (autoReleaseEnabled mặc định OFF) → thứ tự presence-reconcile → detect → reconcile → warn, KHÔNG auto-release', async () => {
     cfg = { SCHEDULER_ENABLED: true, SCHEDULER_NO_SHOW_CHECK_ENABLED: true };
     const s = await build();

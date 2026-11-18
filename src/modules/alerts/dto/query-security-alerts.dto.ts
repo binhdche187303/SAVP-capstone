@@ -1,3 +1,4 @@
+import type { FilterSelection } from '../../../common/utils/filter-selection.js';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsOptional,
@@ -9,7 +10,12 @@ import {
   IsDateString,
 } from 'class-validator';
 import { Type, Expose } from 'class-transformer';
-import { ALERT_TYPES, type AlertType } from './create-alert-rule.dto.js';
+import { ALERT_TYPES } from './create-alert-rule.dto.js';
+
+// Cảnh báo có thể LỌC = loại có quy tắc + `device_maintenance` (camera cần bảo trì — sinh theo
+// system_configs, không có quy tắc nên không nằm trong ALERT_TYPES).
+const FILTERABLE_ALERT_TYPES = [...ALERT_TYPES, 'device_maintenance'] as const;
+type FilterableAlertType = (typeof FILTERABLE_ALERT_TYPES)[number];
 
 const SECURITY_ALERT_STATUSES = ['new', 'acknowledged', 'resolved'] as const;
 const SORT_FIELDS = [
@@ -46,26 +52,26 @@ export class QuerySecurityAlertsDto {
 
   @ApiPropertyOptional({
     description: 'Lọc theo loại sự kiện cảnh báo',
-    enum: ALERT_TYPES,
+    enum: FILTERABLE_ALERT_TYPES,
   })
   @Expose({ name: 'alert_type' })
   @IsOptional()
-  @IsIn(ALERT_TYPES)
-  alertType?: AlertType;
+  @IsIn(FILTERABLE_ALERT_TYPES, { each: true })
+  alertType?: FilterSelection<FilterableAlertType>;
 
   @ApiPropertyOptional({
     description: 'Lọc mức độ cảnh báo',
     enum: ['low', 'medium', 'high', 'critical', 'urgent'],
   })
   @IsOptional()
-  @IsIn(['low', 'medium', 'high', 'critical', 'urgent'])
-  severity?: string;
+  @IsIn(['low', 'medium', 'high', 'critical', 'urgent'], { each: true })
+  severity?: FilterSelection<string>;
 
   @ApiPropertyOptional({ description: 'Lọc theo khu vực' })
   @Expose({ name: 'zone_id' })
   @IsOptional()
-  @IsUUID()
-  zoneId?: string;
+  @IsUUID('all', { each: true })
+  zoneId?: FilterSelection<string>;
 
   @ApiPropertyOptional({
     description:
@@ -73,8 +79,8 @@ export class QuerySecurityAlertsDto {
     enum: [...SECURITY_ALERT_STATUSES, 'open'],
   })
   @IsOptional()
-  @IsIn([...SECURITY_ALERT_STATUSES, 'open'])
-  status?: (typeof SECURITY_ALERT_STATUSES)[number] | 'open';
+  @IsIn([...SECURITY_ALERT_STATUSES, 'open'], { each: true })
+  status?: FilterSelection<(typeof SECURITY_ALERT_STATUSES)[number] | 'open'>;
 
   @ApiPropertyOptional({ description: 'Lọc từ thời điểm (ISO date)' })
   @IsOptional()

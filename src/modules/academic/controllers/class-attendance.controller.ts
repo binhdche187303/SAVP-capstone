@@ -228,11 +228,11 @@ export class ClassAttendanceController {
   async getTeacherReport(
     @CurrentUser() user: { userId: string },
     @Query('classId') classId?: string,
-    @Query('semester') semester?: string,
+    @Query('semester') semester?: string | string[],
     @Query('mode') mode?: string,
     @Query('anchorDate') anchorDate?: string,
-    @Query('subjectCode') subjectCode?: string,
-    @Query('administrativeClass') administrativeClass?: string,
+    @Query('subjectCode') subjectCode?: string | string[],
+    @Query('administrativeClass') administrativeClass?: string | string[],
     @Query('source') source?: string,
     @Query('include') include?: string,
   ) {
@@ -257,9 +257,9 @@ export class ClassAttendanceController {
   async getAbsenceWarnings(
     @CurrentUser() user: { userId: string },
     @Query('classId') classId?: string,
-    @Query('semester') semester?: string,
-    @Query('subjectCode') subjectCode?: string,
-    @Query('administrativeClass') administrativeClass?: string,
+    @Query('semester') semester?: string | string[],
+    @Query('subjectCode') subjectCode?: string | string[],
+    @Query('administrativeClass') administrativeClass?: string | string[],
   ) {
     const data = await this.service.getAbsenceWarnings(user.userId, {
       classId,

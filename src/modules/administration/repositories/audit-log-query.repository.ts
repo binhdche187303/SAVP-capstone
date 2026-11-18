@@ -1,3 +1,4 @@
+import { filterValues, type FilterSelection } from '../../../common/utils/filter-selection.js';
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
@@ -5,9 +6,9 @@ export interface AuditLogFilters {
   from?: string;
   to?: string;
   userId?: string;
-  actionType?: string;
+  actionType?: FilterSelection<string>;
   entityType?: string;
-  severity?: string;
+  severity?: FilterSelection<string>;
   search?: string;
   searchActionTypes?: string[];
   searchEntityTypes?: string[];
@@ -266,8 +267,8 @@ export class AuditLogQueryRepository {
     }
 
     if (filters.actionType) {
-      params.push(filters.actionType);
-      conditions.push(`al.action_type = $${params.length}`);
+      params.push(filterValues(filters.actionType));
+      conditions.push(`al.action_type = ANY($${params.length}::text[])`);
     }
 
     if (filters.entityType) {
@@ -276,8 +277,8 @@ export class AuditLogQueryRepository {
     }
 
     if (filters.severity) {
-      params.push(filters.severity);
-      conditions.push(`al.severity = $${params.length}`);
+      params.push(filterValues(filters.severity));
+      conditions.push(`al.severity = ANY($${params.length}::text[])`);
     }
 
     if (filters.search) {

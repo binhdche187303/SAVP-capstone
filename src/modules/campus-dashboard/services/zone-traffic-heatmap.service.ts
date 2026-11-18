@@ -1,3 +1,4 @@
+import { filterValues, type FilterSelection } from '../../../common/utils/filter-selection.js';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { CampusDashboardRepository } from '../repositories/campus-dashboard.repository.js';
@@ -23,14 +24,14 @@ const MAX_MINUTE_RANGE_MS = 24 * 60 * 60 * 1000; // gom theo phút chỉ cho kho
 
 /** Tuỳ chọn đọc: lọc theo nhóm camera và/hoặc gom theo phút — cả hai đều buộc đọc raw. */
 export interface TrafficOptions {
-  groupId?: string;
+  groupId?: FilterSelection<string>;
   bucket?: 'hour' | 'minute';
 }
 
 /** Điều kiện lọc camera thuộc nhóm; `column` PHẢI là hằng trong code. */
-const groupClause = (column: string, groupId: string | undefined, p: SqlParams): string =>
+const groupClause = (column: string, groupId: FilterSelection<string> | undefined, p: SqlParams): string =>
   groupId
-    ? `AND ${column} IN (SELECT device_id FROM camera_group_members WHERE group_id = ${p.add(groupId)}::uuid)`
+    ? `AND ${column} IN (SELECT device_id FROM camera_group_members WHERE group_id = ANY(${p.add(filterValues(groupId))}::uuid[]))`
     : '';
 
 interface SeriesRow {
@@ -67,8 +68,8 @@ export class ZoneTrafficHeatmapService {
   async getTraffic(
     from: Date,
     to: Date,
-    building?: string,
-    floor?: string,
+    building?: FilterSelection<string>,
+    floor?: FilterSelection<string>,
     options: TrafficOptions = {},
   ): Promise<TrafficResponseDto> {
     this.validateRange(from, to, options);

@@ -131,7 +131,7 @@ export class HgvisionPollerService implements OnModuleInit, OnModuleDestroy {
           // Mặc định chỉ lưu đường dẫn ảnh (xem qua BE proxy) — tránh đầy ổ đĩa.
           vehicleEvt.remoteImagePath = obj.object_image_path || undefined;
           vehicleEvt.remotePlateImagePath = obj.lp_image_path || undefined;
-          // Biển nằm trong control-list → tải ảnh về lưu làm bằng chứng (HGVision có thể xoá ảnh cũ).
+          // Biển nằm trong control-list → tải ảnh về lưu làm bằng chứng (HGVision có thể xóa ảnh cũ).
           if (await this.isControlListed(vehicleEvt.plateNumber)) {
             vehicleEvt.imageBase64 = await this.loadVehicleImage(obj);
           }

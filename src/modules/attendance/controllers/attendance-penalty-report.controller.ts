@@ -53,7 +53,7 @@ export class AttendancePenaltyReportController {
     @CurrentUser() actor: { userId: string },
     @Query('from') from?: string,
     @Query('to') to?: string,
-    @Query('departmentId') departmentId?: string,
+    @Query('departmentId') departmentId?: string | string[],
     @Query('search') search?: string,
   ) {
     const data = await this.service.getMeetingSummary(actor.userId, { from, to, departmentId, search });
@@ -65,7 +65,7 @@ export class AttendancePenaltyReportController {
   async meeting(
     @CurrentUser() actor: { userId: string },
     @Param('meetingId', ParseUUIDPipe) meetingId: string,
-    @Query('departmentId') departmentId?: string,
+    @Query('departmentId') departmentId?: string | string[],
   ) {
     const data = await this.service.getMeetingDetail(actor.userId, meetingId, departmentId);
     return { success: true, data };
@@ -77,7 +77,7 @@ export class AttendancePenaltyReportController {
     @CurrentUser() actor: { userId: string },
     @Query('from') from?: string,
     @Query('to') to?: string,
-    @Query('departmentId') departmentId?: string,
+    @Query('departmentId') departmentId?: string | string[],
     @Query('search') search?: string,
   ) {
     const data = await this.service.getSummary(actor.userId, { from, to, departmentId, search });

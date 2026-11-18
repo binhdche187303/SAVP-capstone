@@ -37,7 +37,7 @@ export class RolesController {
     const limit = query.limit || 20;
     return {
       success: true,
-      message: 'Danh sach role',
+      message: 'Danh sách vai trò',
       data,
       meta: {
         page,
@@ -75,14 +75,14 @@ export class RolesController {
     if (!userId) {
       throw new BadRequestException({
         success: false,
-        message: 'Khong the xac dinh nguoi dung tu token.',
+        message: 'Không thể xác định người dùng từ token.',
         error: { code: 'UNAUTHORIZED' },
       });
     }
     const data = await this.rolesService.create(dto, userId);
     return {
       success: true,
-      message: 'Role da duoc tao thanh cong',
+      message: 'Vai trò đã được tạo thành công',
       data,
     };
   }
@@ -102,7 +102,7 @@ export class RolesController {
     if (rawDto.roleCode) {
       throw new BadRequestException({
         success: false,
-        message: 'roleCode khong the thay doi sau khi tao.',
+        message: 'Mã vai trò không thể thay đổi sau khi tạo.',
         error: {
           code: 'VALIDATION_ERROR',
           details: { field: 'roleCode' },
@@ -112,7 +112,7 @@ export class RolesController {
     if (rawDto.isSystemRole !== undefined) {
       throw new BadRequestException({
         success: false,
-        message: 'isSystemRole khong the thay doi qua API.',
+        message: 'Không thể thay đổi cờ vai trò hệ thống qua API.',
         error: {
           code: 'VALIDATION_ERROR',
           details: { field: 'isSystemRole' },
@@ -124,7 +124,7 @@ export class RolesController {
     if (!userId) {
       throw new BadRequestException({
         success: false,
-        message: 'Khong the xac dinh nguoi dung tu token.',
+        message: 'Không thể xác định người dùng từ token.',
         error: { code: 'UNAUTHORIZED' },
       });
     }
@@ -132,7 +132,7 @@ export class RolesController {
     const data = await this.rolesService.update(id, dto, userId);
     return {
       success: true,
-      message: 'Role da duoc cap nhat thanh cong',
+      message: 'Vai trò đã được cập nhật thành công',
       data,
     };
   }
@@ -147,14 +147,14 @@ export class RolesController {
     if (!userId) {
       throw new BadRequestException({
         success: false,
-        message: 'Khong the xac dinh nguoi dung tu token.',
+        message: 'Không thể xác định người dùng từ token.',
         error: { code: 'UNAUTHORIZED' },
       });
     }
     await this.rolesService.remove(id, userId);
     return {
       success: true,
-      message: 'Role da duoc xoa (vo hieu hoa) thanh cong',
+      message: 'Vai trò đã được xóa (vô hiệu hóa) thành công',
     };
   }
 }

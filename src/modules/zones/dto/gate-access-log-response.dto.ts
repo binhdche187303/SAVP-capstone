@@ -25,7 +25,7 @@ export function toGateAccessLogResponse(
   return {
     id: entity.id,
     zone_id: entity.zoneId,
-    // Log lịch sử: zone có thể đã xoá mềm — vẫn trả tên bình thường (KHÔNG lọc deletedAt).
+    // Log lịch sử: zone có thể đã xóa mềm — vẫn trả tên bình thường (KHÔNG lọc deletedAt).
     zone_name: entity.zone?.zoneName ?? null,
     direction: entity.direction,
     access_time: entity.accessTime,
@@ -61,7 +61,7 @@ export function toAdminGateAccessLogResponse(
   return {
     ...toGateAccessLogResponse(entity),
     zone_code: entity.zone?.zoneCode ?? null,
-    // Log lịch sử: user có thể đã bị vô hiệu hoá/xoá mềm — vẫn trả tên bình thường.
+    // Log lịch sử: user có thể đã bị vô hiệu hoá/xóa mềm — vẫn trả tên bình thường.
     user: entity.user
       ? {
           user_id: entity.user.id,

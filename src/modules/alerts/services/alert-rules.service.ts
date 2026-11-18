@@ -1,3 +1,4 @@
+import { filterWhere } from '../../../common/utils/filter-selection.js';
 import {
   Injectable,
   BadRequestException,
@@ -103,14 +104,14 @@ export class AlertRulesService {
 
     const where: FindOptionsWhere<AlertRuleEntity> = { deletedAt: IsNull() };
     if (query.alertType) {
-      where.alertType = query.alertType;
+      where.alertType = filterWhere(query.alertType);
     }
     if (query.zoneId) {
-      where.zoneId = query.zoneId;
+      where.zoneId = filterWhere(query.zoneId);
     }
     // enabled=false là filter hợp lệ — PHẢI check !== undefined, KHÔNG if-truthy.
     if (query.enabled !== undefined) {
-      where.enabled = query.enabled;
+      where.enabled = filterWhere(query.enabled);
     }
 
     const sortBy = query.sortBy ?? 'createdAt';
@@ -200,7 +201,7 @@ export class AlertRulesService {
 
   /**
    * Luật BẬT gắn khu vực cụ thể của 1 loại (crowd/intrusion) — cache EFFECTIVE_RULE_CACHE_MS,
-   * create/update/remove xoá ngay. Thay `list()` (COUNT + SELECT phân trang) ở đường nóng.
+   * create/update/remove xóa ngay. Thay `list()` (COUNT + SELECT phân trang) ở đường nóng.
    */
   async listEnabledZoneRules(alertType: string): Promise<AlertRuleEntity[]> {
     const now = Date.now();
@@ -262,7 +263,7 @@ export class AlertRulesService {
     zoneId?: string | null,
   ): Promise<EffectiveRuleResult> {
     // Cache EFFECTIVE_RULE_CACHE_MS — luồng cảnh báo gọi mỗi sự kiện; create/update/remove
-    // xoá cache ngay nên đổi luật có hiệu lực tức thì.
+    // xóa cache ngay nên đổi luật có hiệu lực tức thì.
     const key = `${alertType}|${zoneId ?? ''}`;
     const now = Date.now();
     const cached = this.effectiveRuleCache.get(key);
@@ -345,7 +346,7 @@ export class AlertRulesService {
     if (!zone) {
       throw new BadRequestException({
         code: 'ALERT_RULE_ZONE_NOT_FOUND',
-        message: 'Không tìm thấy zone hoặc zone đã bị xoá.',
+        message: 'Không tìm thấy zone hoặc zone đã bị xóa.',
       });
     }
     if (!(PRESENCE_ZONE_TYPES as readonly string[]).includes(zone.zoneType)) {

@@ -1,3 +1,4 @@
+import type { FilterSelection } from '../../../common/utils/filter-selection.js';
 import {
   IsOptional,
   IsString,
@@ -17,33 +18,33 @@ import { Type } from 'class-transformer';
  */
 export class ManageUsersQueryDto {
   @IsOptional()
-  @IsUUID('4', { message: 'departmentId phải là định dạng UUID' })
-  departmentId?: string;
+  @IsUUID('4', { each: true, message: 'departmentId phải là định dạng UUID' })
+  departmentId?: FilterSelection<string>;
 
   @IsOptional()
-  @IsUUID('4', { message: 'roleId phải là định dạng UUID' })
-  roleId?: string;
+  @IsUUID('4', { each: true, message: 'roleId phải là định dạng UUID' })
+  roleId?: FilterSelection<string>;
 
   @IsOptional()
-  @IsIn(['staff', 'student'], {
+  @IsIn(['staff', 'student'], { each: true,
     message: 'accountType chỉ được là staff hoặc student',
   })
-  accountType?: 'staff' | 'student';
+  accountType?: FilterSelection<'staff' | 'student'>;
 
   @IsOptional()
-  @IsString({ message: 'classId phải là chuỗi ký tự' })
-  @MaxLength(100, { message: 'classId không được vượt quá 100 ký tự' })
-  classId?: string;
+  @IsString({ each: true, message: 'classId phải là chuỗi ký tự' })
+  @MaxLength(100, { each: true, message: 'classId không được vượt quá 100 ký tự' })
+  classId?: FilterSelection<string>;
 
   // 'expired' là giá trị filter ảo (không phải giá trị DB thật của account_status):
   // tài khoản đối tác accountStatus='active' nhưng accountExpiresAt đã qua — xem
   // listUsersForManagement().
   @IsOptional()
-  @IsIn(['active', 'inactive', 'locked', 'pending_reset', 'expired'], {
+  @IsIn(['active', 'inactive', 'locked', 'pending_reset', 'expired'], { each: true,
     message:
       'accountStatus chỉ được là active, inactive, locked, pending_reset hoặc expired',
   })
-  accountStatus?: string;
+  accountStatus?: FilterSelection<string>;
 
   @IsOptional()
   @IsString({ message: 'search phải là chuỗi ký tự' })

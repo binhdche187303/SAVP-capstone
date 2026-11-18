@@ -60,7 +60,7 @@ export class GuestOtpService {
       meetingTitle: meeting.title,
       startTime: meeting.startTime,
       endTime: meeting.endTime,
-      hostName: meeting.host?.fullName ?? 'Chua xac dinh',
+      hostName: meeting.host?.fullName ?? 'Chưa xác định',
       maskedEmail: maskEmail(externalParticipant.email ?? ''),
       verificationMode: this.config.getVerificationModeDefault(),
     };
@@ -192,7 +192,7 @@ export class GuestOtpService {
     if (now < lowerBound || now > upperBound) {
       throw new ConflictException({
         success: false,
-        message: 'Ngoai thoi gian cho phep tham gia cuoc hop.',
+        message: 'Ngoài thời gian cho phép tham gia cuộc họp.',
         error: {
           code: GUEST_ACCESS_ERROR_CODES.GUEST_JOIN_WINDOW_CLOSED,
           details: {},
@@ -204,7 +204,7 @@ export class GuestOtpService {
   private otpInvalid(): ConflictException {
     return new ConflictException({
       success: false,
-      message: 'Ma xac nhan khong hop le hoac da het han.',
+      message: 'Mã xác nhận không hợp lệ hoặc đã hết hạn.',
       error: { code: GUEST_ACCESS_ERROR_CODES.GUEST_OTP_INVALID, details: {} },
     });
   }
@@ -213,7 +213,7 @@ export class GuestOtpService {
     return new HttpException(
       {
         success: false,
-        message: 'Loi moi tam thoi bi khoa do nhap sai qua nhieu lan.',
+        message: 'Lời mời tạm thời bị khóa do nhập sai quá nhiều lần.',
         error: {
           code: GUEST_ACCESS_ERROR_CODES.GUEST_OTP_BLOCKED,
           details: {},
@@ -228,7 +228,7 @@ export class GuestOtpService {
       {
         success: false,
         message:
-          'Ban da yeu cau ma xac nhan qua nhieu lan. Vui long thu lai sau.',
+          'Bạn đã yêu cầu mã xác nhận quá nhiều lần. Vui lòng thử lại sau.',
         error: {
           code: GUEST_ACCESS_ERROR_CODES.GUEST_OTP_TOO_MANY_REQUESTS,
           details: {},

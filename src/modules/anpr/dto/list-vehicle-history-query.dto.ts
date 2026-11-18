@@ -1,3 +1,4 @@
+import type { FilterSelection } from '../../../common/utils/filter-selection.js';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsOptional,
@@ -69,8 +70,8 @@ export class ListVehicleHistoryQueryDto {
     enum: ['matched', 'unmatched'],
   })
   @IsOptional()
-  @IsIn(['matched', 'unmatched'])
-  matchState?: string;
+  @IsIn(['matched', 'unmatched'], { each: true })
+  matchState?: FilterSelection<string>;
 
   // Chỉ admin route (listAll) dùng — tìm theo tên chủ xe (users.full_name, ILIKE).
   // listForUser KHÔNG expose owner/userId (privacy-by-design) nên field này vô nghĩa ở đó.
@@ -85,22 +86,22 @@ export class ListVehicleHistoryQueryDto {
 
   @ApiPropertyOptional({ description: 'Lọc theo tên camera' })
   @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  cameraName?: string;
+  @IsString({ each: true })
+  @MaxLength(255, { each: true })
+  cameraName?: FilterSelection<string>;
 
   @ApiPropertyOptional({ description: 'Lọc theo ID khu vực/cổng' })
   @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  zoneId?: string;
+  @IsString({ each: true })
+  @MaxLength(100, { each: true })
+  zoneId?: FilterSelection<string>;
 
   @ApiPropertyOptional({
     description: 'Lọc theo loại xe',
     enum: ['car', 'motorbike', 'motorcycle', 'truck', 'bus'],
   })
   @IsOptional()
-  @IsString()
-  @MaxLength(30)
-  vehicleType?: string;
+  @IsString({ each: true })
+  @MaxLength(30, { each: true })
+  vehicleType?: FilterSelection<string>;
 }

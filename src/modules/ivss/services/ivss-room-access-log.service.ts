@@ -37,6 +37,7 @@ interface CountRow {
 }
 
 export interface RoomAccessLogQueryOptions {
+  roomIds?: string[];
   date?: string;
   meetingId?: string;
   page?: number;
@@ -148,7 +149,7 @@ export class IvssRoomAccessLogService {
     // lệch +7h SAI HƯỚNG, còn tệ hơn bản gốc. Có `::timestamp` thì phép đổi đúng
     // chiều: '00:00 ngày đó giờ VN' → timestamptz '2026-07-28 17:00:00+00'.
     // Đã nghiệm thu bằng psql với SET TIME ZONE 'UTC'.
-    const whereSql = `
+    let whereSql = `
         WHERE e.event_type = ANY($1::text[])
           AND e.event_time >= ($2::date::timestamp AT TIME ZONE '${BUSINESS_TIMEZONE}')
           AND e.event_time <  (($2::date + interval '1 day')::timestamp AT TIME ZONE '${BUSINESS_TIMEZONE}')
@@ -165,7 +166,11 @@ export class IvssRoomAccessLogService {
          LEFT JOIN rooms r ON r.id = e.room_id
          LEFT JOIN iot_devices dv ON dv.id = e.device_id
          LEFT JOIN zones zn ON zn.id = COALESCE(e.zone_id, dv.zone_id) AND zn.deleted_at IS NULL`;
-    const filterParams = [FACE_EVENT_TYPES, day, roomId, search, meetingId];
+    const filterParams: unknown[] = [FACE_EVENT_TYPES, day, roomId, search, meetingId];
+    if (options.roomIds?.length) {
+      filterParams.push(options.roomIds);
+      whereSql += ` AND e.room_id = ANY($${filterParams.length}::uuid[])`;
+    }
 
     // Đếm trên TOÀN BỘ kết quả lọc (không chỉ trang hiện tại) — matched/unmatched phải
     // phản ánh cả ngày, nếu đếm trong trang thì số liệu vô nghĩa khi phân trang.
@@ -209,7 +214,7 @@ export class IvssRoomAccessLogService {
          ${fromSql}
          ${whereSql}
         ORDER BY e.event_time DESC
-        LIMIT $6 OFFSET $7`,
+        LIMIT $${filterParams.length + 1} OFFSET $${filterParams.length + 2}`,
       [...filterParams, limit, offset],
     );
 

@@ -20,7 +20,7 @@ import { QueryZoneAccessLogDto } from '../dto/query-zone-access-log.dto.js';
  * theo NGÀY cho MỘT zone khu vực. Controller RIÊNG (mirror `IvssRoomAccessController`),
  * KHÔNG đụng `ivss-room-access.controller.ts`.
  *
- * 1 route: `GET /ivss/zones/:zoneId/access-log` — 404 nếu zone không tồn tại/đã xoá mềm.
+ * 1 route: `GET /ivss/zones/:zoneId/access-log` — 404 nếu zone không tồn tại/đã xóa mềm.
  *
  * SEC-02: admin-gated bằng permission TÁI DÙNG `ivss.access_log.read` (KHÔNG tạo permission
  * mới — đã seed SYSTEM_ADMIN từ `20260804000001-SeedIvssAccessLogReadPermission.ts`, mở

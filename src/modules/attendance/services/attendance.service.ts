@@ -623,7 +623,7 @@ export class AttendanceService {
       // Build response
       return {
         success: true,
-        message: 'Danh sach diem danh duoc truy xuat thanh cong',
+        message: 'Danh sách điểm danh được truy xuất thành công',
         data: {
           meeting: {
             id: meeting.id,

@@ -1,3 +1,4 @@
+import { filterWhere } from '../../../common/utils/filter-selection.js';
 import {
   ConflictException,
   Injectable,
@@ -8,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import {
   Repository,
   IsNull,
+  In,
   Not,
   Between,
   MoreThanOrEqual,
@@ -387,11 +389,12 @@ export class AlertsService {
     const limit = query.limit ?? 20;
 
     const where: FindOptionsWhere<SecurityAlertEntity> = {};
-    if (query.alertType) where.alertType = query.alertType;
-    if (query.zoneId) where.zoneId = query.zoneId;
-    if (query.severity) where.severity = query.severity;
+    if (query.alertType) where.alertType = filterWhere(query.alertType);
+    if (query.zoneId) where.zoneId = filterWhere(query.zoneId);
+    if (query.severity) where.severity = filterWhere(query.severity);
     // 'open' = chưa đóng (new + acknowledged) — ô "Đang mở" trên trang Cảnh báo.
     if (query.status === 'open') where.status = Not('resolved');
+    else if (Array.isArray(query.status)) where.status = In(query.status.flatMap(status => status === 'open' ? ['new', 'acknowledged'] as const : [status]));
     else if (query.status) where.status = query.status;
     if (query.from && query.to) {
       where.triggeredAt = Between(new Date(query.from), new Date(query.to));
@@ -408,6 +411,7 @@ export class AlertsService {
 
     const [items, total] = await this.repo.findAndCount({
       where,
+      relations: { acknowledgedByUser: true, resolvedByUser: true },
       order: { [sortBy]: sortOrder },
       skip: (page - 1) * limit,
       take: limit,
@@ -423,7 +427,13 @@ export class AlertsService {
   async findDetail(id: string): Promise<SecurityAlertDetail> {
     const alert = await this.repo.findOne({
       where: { id },
-      relations: { zone: true, sourceEvent: true, rule: true },
+      relations: {
+        zone: true,
+        sourceEvent: true,
+        rule: true,
+        acknowledgedByUser: true,
+        resolvedByUser: true,
+      },
     });
     if (!alert) throw alertNotFound();
 

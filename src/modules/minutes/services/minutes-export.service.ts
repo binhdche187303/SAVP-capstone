@@ -61,7 +61,7 @@ export class MinutesExportService {
     if (!minutes || minutes.deletedAt) {
       throw new NotFoundException({
         success: false,
-        message: 'Bien ban hop khong ton tai hoac da bi xoa',
+        message: 'Biên bản họp không tồn tại hoặc đã bị xóa',
         error: { code: 'MINUTES_NOT_FOUND', details: { minutesId } },
       });
     }
@@ -85,7 +85,7 @@ export class MinutesExportService {
       if (!isOwner) {
         throw new ForbiddenException({
           success: false,
-          message: 'Ban khong co quyen xuat bien ban nay',
+          message: 'Bạn không có quyền xuất biên bản này',
           error: { code: 'NOT_MINUTES_OWNER', details: { minutesId } },
         });
       }
@@ -95,7 +95,7 @@ export class MinutesExportService {
     if (minutes.status !== MeetingMinutesStatus.PUBLISHED) {
       throw new ConflictException({
         success: false,
-        message: 'Chi co the xuat bien ban da duoc ban hanh (published)',
+        message: 'Chỉ có thể xuất biên bản đã được ban hành',
         error: {
           code: 'MINUTES_NOT_PUBLISHED',
           details: { minutesId, currentStatus: minutes.status },

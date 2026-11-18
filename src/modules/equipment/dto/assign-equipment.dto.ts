@@ -13,15 +13,15 @@ import {
  * KHÔNG nhận field khác — forbidNonWhitelisted reject.
  */
 export class AssignEquipmentDto {
-  @IsUUID('4', { message: 'roomId phai la dinh dang UUID' })
+  @IsUUID('4', { message: 'roomId phải là định dạng UUID' })
   roomId: string;
 
   @IsOptional()
-  @IsISO8601({}, { message: 'installedAt phai la ngay ISO 8601' })
+  @IsISO8601({}, { message: 'Ngày lắp đặt phải là ngày ISO 8601' })
   installedAt?: string;
 
   @IsOptional()
-  @IsString({ message: 'assignmentNote phai la chuoi ky tu' })
-  @MaxLength(2000, { message: 'assignmentNote toi da 2000 ky tu' })
+  @IsString({ message: 'Ghi chú phân bổ phải là chuỗi ký tự' })
+  @MaxLength(2000, { message: 'Ghi chú phân bổ tối đa 2000 ký tự' })
   assignmentNote?: string;
 }

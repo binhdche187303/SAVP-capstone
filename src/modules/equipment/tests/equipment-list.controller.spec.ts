@@ -39,7 +39,7 @@ describe('EquipmentController.listEquipments (UC-64)', () => {
     expect(mockService.listEquipments).toHaveBeenCalledWith(query);
     expect(result).toEqual({
       success: true,
-      message: 'Danh sach thiet bi',
+      message: 'Danh sách thiết bị',
       data,
       meta: { page: 2, limit: 5, total: 12, totalPages: 3 },
     });

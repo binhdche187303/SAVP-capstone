@@ -20,7 +20,7 @@ import { IvssPortraitSyncService } from '../services/ivss-portrait-sync.service.
  * trong kho chân dung thường trực. CHỈ đánh dấu `sync_status='pending'` —
  * KHÔNG tự enroll ngay (tránh block response chờ SDK call). reconcilePortraits()
  * (cron, mỗi 5 phút) tự nhặt và xử lý ở lượt tick kế tiếp, đi qua đúng
- * enrollPortrait() đã có (tự xoá device_person_id cũ trước khi enroll mới).
+ * enrollPortrait() đã có (tự xóa device_person_id cũ trước khi enroll mới).
  */
 @ApiTags('IVSS - Portrait Admin')
 @Controller('admin/ivss/portrait')

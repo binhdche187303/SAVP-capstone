@@ -54,7 +54,7 @@ export class RoomBookingsController {
 
     return {
       success: true,
-      message: 'Danh sach dat phong',
+      message: 'Danh sách đặt phòng',
       data: result.items,
       meta: {
         page: result.page,

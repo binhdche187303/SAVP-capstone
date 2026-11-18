@@ -31,7 +31,7 @@ export interface ReportFilters {
   from: string;
   to: string;
   q?: string;
-  [key: string]: string | undefined;
+  [key: string]: string | string[] | undefined;
 }
 
 export interface ReportPage {

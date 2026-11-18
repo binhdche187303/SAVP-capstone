@@ -65,7 +65,7 @@ export class DashboardOverviewController {
       const data = await this.dashboardService.getOverview(currentUser, query);
       return {
         success: true,
-        message: 'Dashboard tong quan duoc truy xuat thanh cong',
+        message: 'Dữ liệu tổng quan được truy xuất thành công',
         data,
       };
     } catch (error: unknown) {

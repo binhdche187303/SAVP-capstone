@@ -1,3 +1,4 @@
+import type { FilterSelection } from '../../../common/utils/filter-selection.js';
 import { Type } from 'class-transformer';
 import { IsDateString, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
 
@@ -8,16 +9,16 @@ import { IsDateString, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength
  */
 export class CameraTraceQueryDto {
   @IsOptional()
-  @IsUUID()
-  groupId?: string;
+  @IsUUID('all', { each: true })
+  groupId?: FilterSelection<string>;
 
   @IsOptional()
-  @IsUUID()
-  deviceId?: string;
+  @IsUUID('all', { each: true })
+  deviceId?: FilterSelection<string>;
 
   @IsOptional()
-  @IsUUID()
-  zoneId?: string;
+  @IsUUID('all', { each: true })
+  zoneId?: FilterSelection<string>;
 
   /** Mốc bắt đầu (ISO 8601, có giờ). */
   @IsDateString()
@@ -29,8 +30,8 @@ export class CameraTraceQueryDto {
 
   /** Lọc loại sự kiện trên TOÀN BỘ kết quả (không chỉ trang hiện tại). */
   @IsOptional()
-  @IsIn(['gate', 'meeting', 'zone'])
-  kind?: 'gate' | 'meeting' | 'zone';
+  @IsIn(['gate', 'meeting', 'zone'], { each: true })
+  kind?: FilterSelection<'gate' | 'meeting' | 'zone'>;
 
   /** Tìm theo tên / mã nhân sự / biển số trên toàn bộ kết quả. */
   @IsOptional()

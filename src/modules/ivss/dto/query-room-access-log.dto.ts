@@ -1,7 +1,9 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import {
   IsInt,
+  IsArray,
+  ArrayMaxSize,
   IsOptional,
   IsString,
   IsUUID,
@@ -39,6 +41,13 @@ export class QueryRoomAccessLogDto {
     message: 'date phải theo định dạng YYYY-MM-DD',
   })
   date?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => value === undefined ? undefined : Array.isArray(value) ? value : [value])
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsUUID('4', { each: true })
+  roomIds?: string[];
 
   @ApiPropertyOptional({ description: 'Lọc theo ca họp cụ thể (AND với date)' })
   @IsOptional()

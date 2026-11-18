@@ -1,3 +1,4 @@
+import type { FilterSelection } from '../../../common/utils/filter-selection.js';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsOptional,
@@ -44,22 +45,22 @@ export class QueryAlertRulesDto {
   })
   @Expose({ name: 'alert_type' })
   @IsOptional()
-  @IsIn(ALERT_TYPES)
-  alertType?: AlertType;
+  @IsIn(ALERT_TYPES, { each: true })
+  alertType?: FilterSelection<AlertType>;
 
   @ApiPropertyOptional({ description: 'Lọc theo khu vực áp dụng quy tắc' })
   @Expose({ name: 'zone_id' })
   @IsOptional()
-  @IsUUID()
-  zoneId?: string;
+  @IsUUID('all', { each: true })
+  zoneId?: FilterSelection<string>;
 
   @ApiPropertyOptional({ description: 'Lọc theo trạng thái bật/tắt' })
   @Transform(({ value }) =>
-    value === undefined ? undefined : value === 'true',
+    Array.isArray(value) ? value.map(item => item === 'true' ? true : item === 'false' ? false : item) : value === 'true' ? true : value === 'false' ? false : value,
   )
   @IsOptional()
-  @IsBoolean()
-  enabled?: boolean;
+  @IsBoolean({ each: true })
+  enabled?: FilterSelection<boolean>;
 
   @ApiPropertyOptional({
     description: 'Trường sắp xếp',

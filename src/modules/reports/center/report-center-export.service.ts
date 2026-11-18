@@ -17,7 +17,7 @@ export interface ReportCenterExportJobData {
   backgroundJobId: string;
   type: string;
   format: ReportFormat;
-  filters: Record<string, string | undefined>;
+  filters: Record<string, string | string[] | undefined>;
   scope: { unrestricted: boolean; departmentIds: string[] | null };
   requestedByEmail: string;
   /** Job cũ trong hàng đợi không có hai trường này → coi như bản thường. */

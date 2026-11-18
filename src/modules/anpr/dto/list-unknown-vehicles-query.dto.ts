@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsInt, Min, Max, IsISO8601 } from 'class-validator';
+import { IsOptional, IsInt, Min, Max, IsISO8601, IsIn, IsString, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
 
 /**
@@ -40,4 +40,29 @@ export class ListUnknownVehiclesQueryDto {
   @IsOptional()
   @IsISO8601()
   to?: string;
+
+  @ApiPropertyOptional({ description: 'Tìm theo biển số (bỏ qua dấu gạch, chấm, khoảng trắng)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20, { message: 'Từ khóa biển số tối đa 20 ký tự' })
+  q?: string;
+
+  @ApiPropertyOptional({ description: 'Hướng di chuyển: in (vào) | out (ra)' })
+  @IsOptional()
+  @IsIn(['in', 'out'], { message: 'Hướng phải là in hoặc out' })
+  direction?: 'in' | 'out';
+
+  @ApiPropertyOptional({
+    description: 'Danh sách kiểm soát: controlled (có trong danh sách) | normal (không có)',
+  })
+  @IsOptional()
+  @IsIn(['controlled', 'normal'], { message: 'Bộ lọc danh sách kiểm soát không hợp lệ' })
+  flag?: 'controlled' | 'normal';
+
+  @ApiPropertyOptional({
+    description: 'Gom theo biển: distinct (mỗi biển 1 dòng) | repeat (chỉ biển xuất hiện từ 2 lần)',
+  })
+  @IsOptional()
+  @IsIn(['distinct', 'repeat'], { message: 'Chế độ xem không hợp lệ' })
+  view?: 'distinct' | 'repeat';
 }

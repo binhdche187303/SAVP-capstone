@@ -1,3 +1,4 @@
+import { filterValues, type FilterSelection } from '../../../common/utils/filter-selection.js';
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { resolveNonStaffDepartmentIds } from '../../../common/utils/non-staff-department.util.js';
@@ -13,7 +14,7 @@ const escapeLike = (s: string): string => s.replace(/[\\%_]/g, (c) => `\\${c}`);
 const UUID = /^[0-9a-f-]{36}$/i;
 
 export interface VisitFilter {
-  from?: string; to?: string; departmentId?: string; hostId?: string; q?: string; purpose?: string;
+  from?: string; to?: string; departmentId?: FilterSelection<string>; hostId?: string; q?: string; purpose?: FilterSelection<string>;
   /** Lọc chéo từ trang Thống kê khách (đã kiểm tra qua parseStatsCross). */
   cross?: StatsCross;
 }
@@ -60,9 +61,9 @@ export class VisitQueryService {
     const add = (sql: string, value: unknown) => { params.push(value); conds.push(sql.replace('?', `$${params.length}`)); };
     if (filter.from) add(`${VN_DAY} >= ?::date`, filter.from);
     if (filter.to) add(`${VN_DAY} <= ?::date`, filter.to);
-    if (filter.departmentId && UUID.test(filter.departmentId)) add('v.department_id = ?::uuid', filter.departmentId);
+    if (filter.departmentId) { const ids = filterValues(filter.departmentId).filter(id => UUID.test(id)); if (ids.length) add('v.department_id = ANY(?::uuid[])', ids); }
     if (filter.hostId && UUID.test(filter.hostId)) add('v.host_user_id = ?::uuid', filter.hostId);
-    if (filter.purpose) add('v.purpose = ?', filter.purpose);
+    if (filter.purpose) add('v.purpose = ANY(?::text[])', filterValues(filter.purpose));
     const c = filter.cross;
     if (c?.dim === 'department') add(`COALESCE(v.department_id::text, '') = ANY(?::text[])`, c.values);
     else if (c?.dim === 'purpose') add('v.purpose = ANY(?::text[])', c.values);
@@ -82,7 +83,7 @@ export class VisitQueryService {
   }
 
   async list(
-    params: VisitFilter & { status?: string; page?: number; limit?: number },
+    params: VisitFilter & { status?: FilterSelection<string>; page?: number; limit?: number },
   ): Promise<{ items: VisitView[]; total: number; counts: Record<string, number> }> {
     const cfg = await this.config.get();
     const page = Math.max(1, Number(params.page) || 1);
@@ -103,9 +104,11 @@ export class VisitQueryService {
     const listParams = [...baseParams];
     let statusSql = '';
     const status = params.status;
-    if (status === 'closed') { listParams.push(CLOSED_STATUSES); statusSql = ` AND v.status = ANY($${listParams.length}::text[])`; }
-    else if (status === 'checked_in') statusSql = ` AND v.status IN ('checked_in','must_leave')`;
-    else if (status) { listParams.push(status); statusSql = ` AND v.status = $${listParams.length}`; }
+    if (status) {
+      const states = filterValues(status).flatMap(value => value === 'closed' ? [...CLOSED_STATUSES] : value === 'checked_in' ? ['checked_in', 'must_leave'] : [value]);
+      listParams.push(states);
+      statusSql = ` AND v.status = ANY($${listParams.length}::text[])`;
+    }
 
     const total = status
       ? Number((await this.dataSource.query(
@@ -268,7 +271,7 @@ export class VisitQueryService {
   // ───────────── Thống kê ─────────────
 
   /** Định nghĩa số liệu dùng chung cho màn Thống kê và báo cáo khách. */
-  async computeKpis(filter: { from: string; to: string; departmentId?: string; purpose?: string; cross?: StatsCross }, now: Date = new Date()) {
+  async computeKpis(filter: { from: string; to: string; departmentId?: FilterSelection<string>; purpose?: FilterSelection<string>; cross?: StatsCross }, now: Date = new Date()) {
     const params: unknown[] = [];
     const where = this.where(filter, params);
     params.push(now);
@@ -293,7 +296,7 @@ export class VisitQueryService {
     };
   }
 
-  async stats(input: { from: string; to: string; departmentId?: string; purpose?: string; groupBy?: 'day' | 'week' | 'month'; cross?: string }) {
+  async stats(input: { from: string; to: string; departmentId?: FilterSelection<string>; purpose?: FilterSelection<string>; groupBy?: 'day' | 'week' | 'month'; cross?: string }) {
     if (!input.from || !input.to) throw err(400, 'VALIDATION_ERROR', 'Vui lòng chọn kỳ thống kê');
     if (input.from > input.to) throw err(400, 'VALIDATION_ERROR', 'Ngày bắt đầu phải trước hoặc bằng ngày kết thúc');
     const groupBy = input.groupBy ?? 'day';
@@ -355,15 +358,17 @@ export class VisitQueryService {
    * Không có số giấy tờ và điện thoại. `page = null` → toàn bộ (xuất file).
    */
   async reportRows(
-    filter: { from: string; to: string; departmentId?: string; purpose?: string; status?: string; q?: string },
+    filter: { from: string; to: string; departmentId?: FilterSelection<string>; purpose?: FilterSelection<string>; status?: FilterSelection<string>; q?: string },
     page: { page: number; limit: number; sortKey?: string; sortDir?: 'asc' | 'desc' } | null,
     now: Date = new Date(),
   ): Promise<{ rows: Array<Record<string, unknown>>; total: number }> {
     const params: unknown[] = [];
     let where = `v.deleted_at IS NULL AND (v.check_in_at IS NOT NULL OR v.status = 'expired')${this.where(filter, params)}`;
-    if (filter.status === 'checked_in') where += ` AND v.status IN ('checked_in','must_leave')`;
-    else if (filter.status === 'checked_out') where += ` AND v.status IN ('checked_out','exit_unrecorded')`;
-    else if (filter.status === 'expired') where += ` AND v.status = 'expired'`;
+    if (filter.status) {
+      const states = filterValues(filter.status).flatMap(value => value === 'checked_in' ? ['checked_in', 'must_leave'] : value === 'checked_out' ? ['checked_out', 'exit_unrecorded'] : [value]);
+      params.push(states);
+      where += ` AND v.status = ANY($${params.length}::text[])`;
+    }
     const sortable: Record<string, string> = {
       code: 'v.visit_code', visitorName: 'vis.full_name', organization: 'vis.organization', hostName: 'host.full_name',
       departmentName: 'd.department_name', purpose: 'v.purpose', checkInTime: 'v.check_in_at', checkOutTime: 'v.check_out_at',

@@ -1,3 +1,4 @@
+import { filterValues } from '../../../common/utils/filter-selection.js';
 import {
   Injectable,
   Inject,
@@ -329,12 +330,12 @@ export class IotDevicesService {
   /**
    * Đếm số thiết bị đang gán vào một zone.
    *
-   * API đọc phục vụ UC-92 của module `zones` (kiểm tra trước khi xoá zone) — `iot` KHÔNG
+   * API đọc phục vụ UC-92 của module `zones` (kiểm tra trước khi xóa zone) — `iot` KHÔNG
    * biết gì về nghiệp vụ zone, chỉ trả con số. Module `zones` gọi qua service này thay vì
    * query thẳng bảng `iot_devices` (ARCH-01).
    *
    * Đếm MỌI thiết bị bất kể `status`: thiết bị `disabled`/`offline` vẫn là cấu hình đang trỏ
-   * vào zone, xoá zone sẽ để lại tham chiếu treo. `IoTDeviceEntity` không có soft-delete nên
+   * vào zone, xóa zone sẽ để lại tham chiếu treo. `IoTDeviceEntity` không có soft-delete nên
    * không cần lọc `deleted_at`.
    */
   async countByZoneId(zoneId: string): Promise<number> {
@@ -426,15 +427,15 @@ export class IotDevicesService {
         qb.andWhere("(d.metadata_json IS NULL OR (COALESCE(d.metadata_json->>'mock_camera','false') <> 'true' AND COALESCE(d.metadata_json->>'hidden','false') <> 'true'))");
 
     if (query.status) {
-      qb.andWhere('d.status = :status', { status: query.status });
+      qb.andWhere('d.status IN (:...status)', { status: filterValues(query.status) });
     }
     if (query.deviceType) {
-      qb.andWhere('d.deviceType = :deviceType', {
-        deviceType: query.deviceType,
+      qb.andWhere('d.deviceType IN (:...deviceType)', {
+        deviceType: filterValues(query.deviceType),
       });
     }
     if (query.roomId) {
-      qb.andWhere('d.roomId = :roomId', { roomId: query.roomId });
+      qb.andWhere('d.roomId IN (:...roomId)', { roomId: filterValues(query.roomId) });
     }
     if (query.search) {
       // Bound param chống injection (NFR-002). ILIKE = không phân biệt hoa thường.
@@ -626,7 +627,7 @@ export class IotDevicesService {
       },
     });
 
-    // Dọn bộ đếm của camera không còn trong tập quét (bị xoá/disabled/maintenance).
+    // Dọn bộ đếm của camera không còn trong tập quét (bị xóa/disabled/maintenance).
     const cameraIds = new Set(cameras.map((c) => c.id));
     for (const id of this.probeFailCount.keys()) {
       if (!cameraIds.has(id)) this.probeFailCount.delete(id);
@@ -1239,7 +1240,7 @@ export class IotDevicesService {
       {}) as Record<string, unknown>;
     // [FIX 2026-08-16] Token MỚI sinh ra ở /configure KHÔNG được kế thừa
     // revoked_at/revoked_reason từ lần /revoke trước đó — mirror đúng "delete" đã
-    // có sẵn ở rotateFaceServerToken() (dòng ~1128-1129). Xoá TRƯỚC khi merge field
+    // có sẵn ở rotateFaceServerToken() (dòng ~1128-1129). Xóa TRƯỚC khi merge field
     // callback mới, nếu không assertCallbackToken() sẽ từ chối nhầm token mới vừa
     // sinh là "đã revoked" (CALLBACK_TOKEN_REVOKED) dù token này chưa từng bị revoke.
     delete currentFaceConfig.revoked_at;

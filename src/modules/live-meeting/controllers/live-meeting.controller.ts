@@ -272,12 +272,12 @@ export class LiveMeetingController {
     name: 'meetingId',
     type: String,
     format: 'uuid',
-    description: 'ID cuoc hop',
+    description: 'ID cuộc họp',
   })
-  @ApiResponse({ status: 200, description: 'Phien hop da ket thuc thanh cong' })
+  @ApiResponse({ status: 200, description: 'Phiên họp đã kết thúc thành công' })
   @ApiResponse({ status: 401, description: 'Chua xac thuc' })
   @ApiResponse({ status: 403, description: 'Khong co quyen' })
-  @ApiResponse({ status: 404, description: 'Khong tim thay cuoc hop' })
+  @ApiResponse({ status: 404, description: 'Không tìm thấy cuộc họp' })
   @ApiResponse({
     status: 409,
     description: 'Xung dot nghiep vu (trang thai, da ket thuc, ...)',
@@ -303,7 +303,7 @@ export class LiveMeetingController {
 
     return {
       success: true,
-      message: 'Phien hop da ket thuc thanh cong',
+      message: 'Phiên họp đã kết thúc thành công',
       data: result,
     };
   }
@@ -326,7 +326,7 @@ export class LiveMeetingController {
     name: 'meetingId',
     type: String,
     format: 'uuid',
-    description: 'ID cuoc hop',
+    description: 'ID cuộc họp',
   })
   @ApiQuery({
     name: 'search',
@@ -338,19 +338,19 @@ export class LiveMeetingController {
     name: 'departmentId',
     type: String,
     required: false,
-    description: 'Loc theo phong ban',
+    description: 'Lọc theo phòng ban',
   })
   @ApiQuery({
     name: 'page',
     type: Number,
     required: false,
-    description: 'So trang',
+    description: 'Số trang',
   })
   @ApiQuery({
     name: 'limit',
     type: Number,
     required: false,
-    description: 'So ban ghi moi trang',
+    description: 'Số bản ghi mỗi trang',
   })
   @ApiQuery({
     name: 'sortBy',
@@ -367,15 +367,15 @@ export class LiveMeetingController {
   })
   @ApiResponse({
     status: 200,
-    description: 'Danh sach nguoi tham du dang co mat',
+    description: 'Danh sách người tham dự đang có mặt',
   })
   @ApiResponse({ status: 400, description: 'Tham so truy van khong hop le' })
   @ApiResponse({ status: 401, description: 'Chua xac thuc' })
   @ApiResponse({ status: 403, description: 'Khong co quyen' })
-  @ApiResponse({ status: 404, description: 'Khong tim thay cuoc hop' })
+  @ApiResponse({ status: 404, description: 'Không tìm thấy cuộc họp' })
   @ApiResponse({
     status: 409,
-    description: 'Cuoc hop chua dien ra hoac da ket thuc',
+    description: 'Cuộc họp chưa diễn ra hoặc đã kết thúc',
   })
   async getPresentAttendees(
     @Param('meetingId', ParseUUIDPipe) meetingId: string,
@@ -417,7 +417,7 @@ export class LiveMeetingController {
     if (search && search.length > 100) {
       throw new BadRequestException({
         success: false,
-        message: 'Search query vuot qua 100 ky tu',
+        message: 'Từ khóa tìm kiếm vượt quá 100 ký tự',
         error: {
           code: 'INVALID_QUERY',
           details: { field: 'search', reason: 'max_length_100' },
@@ -431,7 +431,7 @@ export class LiveMeetingController {
     if (departmentId && !uuidRegex.test(departmentId)) {
       throw new BadRequestException({
         success: false,
-        message: 'departmentId khong dung dinh dang UUID',
+        message: 'departmentId không đúng định dạng UUID',
         error: {
           code: 'INVALID_QUERY',
           details: { field: 'departmentId', reason: 'invalid_uuid' },
@@ -455,7 +455,7 @@ export class LiveMeetingController {
 
     return {
       success: true,
-      message: 'Danh sach nguoi tham du dang co mat',
+      message: 'Danh sách người tham dự đang có mặt',
       data: result.data,
       meta: result.meta,
     };
@@ -492,7 +492,7 @@ export class LiveMeetingController {
     name: 'meetingId',
     type: String,
     format: 'uuid',
-    description: 'ID cuoc hop',
+    description: 'ID cuộc họp',
   })
   @ApiQuery({
     name: 'q',
@@ -510,13 +510,13 @@ export class LiveMeetingController {
     name: 'page',
     type: Number,
     required: false,
-    description: 'So trang (default 1)',
+    description: 'Số trang (mặc định 1)',
   })
   @ApiQuery({
     name: 'pageSize',
     type: Number,
     required: false,
-    description: 'So ban ghi moi trang (default 20, max 100)',
+    description: 'Số bản ghi mỗi trang (mặc định 20, tối đa 100)',
   })
   @ApiQuery({
     name: 'sortBy',
@@ -530,13 +530,13 @@ export class LiveMeetingController {
     required: false,
     description: 'asc/desc',
   })
-  @ApiResponse({ status: 200, description: 'Danh sach diem danh cuoc hop' })
+  @ApiResponse({ status: 200, description: 'Danh sách điểm danh cuộc họp' })
   @ApiResponse({ status: 401, description: 'Chua xac thuc' })
   @ApiResponse({ status: 403, description: 'Khong co quyen' })
-  @ApiResponse({ status: 404, description: 'Khong tim thay cuoc hop' })
+  @ApiResponse({ status: 404, description: 'Không tìm thấy cuộc họp' })
   @ApiResponse({
     status: 409,
-    description: 'Cuoc hop khong o trang thai hoat dong hoac da ket thuc',
+    description: 'Cuộc họp không ở trạng thái hoạt động hoặc đã kết thúc',
   })
   @ApiResponse({ status: 422, description: 'Tham so truy van khong hop le' })
   async getAttendance(
@@ -562,7 +562,7 @@ export class LiveMeetingController {
 
     return {
       success: true,
-      message: 'Danh sach diem danh cuoc hop',
+      message: 'Danh sách điểm danh cuộc họp',
       data: result,
     };
   }
@@ -581,7 +581,7 @@ export class LiveMeetingController {
     name: 'meetingId',
     type: String,
     format: 'uuid',
-    description: 'ID cuoc hop',
+    description: 'ID cuộc họp',
   })
   async scanAttendance(
     @Param('meetingId', ParseUUIDPipe) meetingId: string,
@@ -632,19 +632,19 @@ export class LiveMeetingController {
     name: 'meetingId',
     type: String,
     format: 'uuid',
-    description: 'ID cuoc hop',
+    description: 'ID cuộc họp',
   })
-  @ApiResponse({ status: 201, description: 'Tao ghi chu thanh cong' })
+  @ApiResponse({ status: 201, description: 'Tạo ghi chú thành công' })
   @ApiResponse({ status: 400, description: 'Validation error' })
   @ApiResponse({ status: 401, description: 'Chua xac thuc' })
   @ApiResponse({
     status: 403,
     description: 'Khong co quyen hoac NOTE_HOST_ONLY',
   })
-  @ApiResponse({ status: 404, description: 'Khong tim thay cuoc hop' })
+  @ApiResponse({ status: 404, description: 'Không tìm thấy cuộc họp' })
   @ApiResponse({
     status: 409,
-    description: 'Cuoc hop khong o trang thai in_progress',
+    description: 'Cuộc họp không ở trạng thái đang diễn ra',
   })
   @ApiResponse({
     status: 422,
@@ -669,7 +669,7 @@ export class LiveMeetingController {
 
     return {
       success: true,
-      message: 'Tao ghi chu thanh cong',
+      message: 'Tạo ghi chú thành công',
       data: result,
     };
   }
@@ -693,7 +693,7 @@ export class LiveMeetingController {
     name: 'meetingId',
     type: String,
     format: 'uuid',
-    description: 'ID cuoc hop',
+    description: 'ID cuộc họp',
   })
   @ApiQuery({
     name: 'noteType',
@@ -713,7 +713,7 @@ export class LiveMeetingController {
     name: 'pinned',
     type: Boolean,
     required: false,
-    description: 'Loc ghi chu da ghim',
+    description: 'Lọc ghi chú đã ghim',
   })
   @ApiQuery({
     name: 'from',
@@ -737,13 +737,13 @@ export class LiveMeetingController {
     name: 'page',
     type: Number,
     required: false,
-    description: 'So trang (default 1)',
+    description: 'Số trang (mặc định 1)',
   })
   @ApiQuery({
     name: 'limit',
     type: Number,
     required: false,
-    description: 'So ban ghi moi trang (default 20, max 100)',
+    description: 'Số bản ghi mỗi trang (mặc định 20, tối đa 100)',
   })
   @ApiQuery({
     name: 'sort',
@@ -761,7 +761,7 @@ export class LiveMeetingController {
     status: 403,
     description: 'Khong co quyen hoac NOT_A_MEETING_PARTICIPANT',
   })
-  @ApiResponse({ status: 404, description: 'Khong tim thay cuoc hop' })
+  @ApiResponse({ status: 404, description: 'Không tìm thấy cuộc họp' })
   @ApiResponse({
     status: 422,
     description: 'Meeting status khong cho phep xem ghi chu',
@@ -816,7 +816,7 @@ export class LiveMeetingController {
     name: 'meetingId',
     type: String,
     format: 'uuid',
-    description: 'ID cuoc hop',
+    description: 'ID cuộc họp',
   })
   @ApiResponse({ status: 200, description: 'Timeline cuoc hop (phan trang)' })
   @ApiResponse({
@@ -828,7 +828,7 @@ export class LiveMeetingController {
     status: 403,
     description: 'Khong co quyen hoac NOT_A_MEETING_PARTICIPANT',
   })
-  @ApiResponse({ status: 404, description: 'Khong tim thay cuoc hop' })
+  @ApiResponse({ status: 404, description: 'Không tìm thấy cuộc họp' })
   async getMeetingTimeline(
     @Param('meetingId', ParseUUIDPipe) meetingId: string,
     @Query(
@@ -857,7 +857,7 @@ export class LiveMeetingController {
 
     return {
       success: true,
-      message: 'Lay timeline cuoc hop thanh cong',
+      message: 'Lấy dòng thời gian cuộc họp thành công',
       data,
       meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
     };

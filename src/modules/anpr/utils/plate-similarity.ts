@@ -17,7 +17,7 @@
  *    log thật: "699" → "30G699" → "G69946" (cùng 1 xe, plateNumber gốc "699" là substring
  *    của cả 2 lần đọc sau). Levenshtein thuần KHÔNG xử lý được case này (lệch độ dài lớn
  *    → distance vượt ngưỡng dù rõ ràng cùng 1 xe).
- * 2) Levenshtein distance <= ngưỡng theo minLen: xử lý lỗi OCR thay/chèn/xoá vài ký tự
+ * 2) Levenshtein distance <= ngưỡng theo minLen: xử lý lỗi OCR thay/chèn/xóa vài ký tự
  *    GIỮA chuỗi ở 2 lần đọc có độ dài xấp xỉ nhau (không phải quan hệ substring).
  *
  * Ngưỡng theo minLen (đã chốt cùng user 2026-08-08, KHÔNG đổi số):

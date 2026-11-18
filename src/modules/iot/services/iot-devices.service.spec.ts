@@ -1739,7 +1739,7 @@ describe('IotDevicesService', () => {
       });
       const fsc = device.metadataJson!.face_server_config as any;
 
-      // Field KHÔNG thuộc ConfigureFaceServerDto — trước fix bị xoá trắng.
+      // Field KHÔNG thuộc ConfigureFaceServerDto — trước fix bị xóa trắng.
       expect(fsc.base_url).toBe('http://192.168.1.12');
       expect(fsc.username).toBe('admin');
       expect(fsc.password_encrypted).toBe('enc:xyz');

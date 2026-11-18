@@ -51,7 +51,7 @@ export class ViolationRulesService {
         if (!r) continue;
         if (r.is_system) {
           throw new BadRequestException({
-            message: 'Không thể xoá hình thức vi phạm của hệ thống, chỉ có thể tắt',
+            message: 'Không thể xóa hình thức vi phạm của hệ thống, chỉ có thể tắt',
             error: 'SYSTEM_RULE_UNDELETABLE',
           });
         }

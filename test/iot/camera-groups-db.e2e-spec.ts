@@ -80,7 +80,7 @@ describeDb('CAMG-001 nhóm camera + cảnh báo bảo trì (DB thật)', () => {
 
     await groups().remove(g.id);
     await expect(groups().get(g.id)).rejects.toMatchObject({ response: { code: 'CAMERA_GROUP_NOT_FOUND' } });
-    // Xoá nhóm không xoá camera.
+    // Xóa nhóm không xóa camera.
     expect((await AppDataSource.query(`SELECT 1 FROM iot_devices WHERE id=$1`, [staleCam])).length).toBe(1);
   });
 

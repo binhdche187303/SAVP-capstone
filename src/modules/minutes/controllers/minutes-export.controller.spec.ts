@@ -36,7 +36,7 @@ describe('MeetingMinutesListController — export route', () => {
     );
     expect(res).toEqual({
       success: true,
-      message: 'Da tao yeu cau xuat bien ban, dang xu ly',
+      message: 'Đã tạo yêu cầu xuất biên bản, đang xử lý',
       data: expect.objectContaining({ jobId: 'job-1', status: 'queued' }),
     });
   });

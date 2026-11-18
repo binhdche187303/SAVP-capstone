@@ -1,3 +1,4 @@
+import type { FilterSelection } from '../../../common/utils/filter-selection.js';
 import {
   IsOptional,
   IsEnum,
@@ -40,9 +41,9 @@ export class QueryOnTimeRateDto {
   to?: string;
 
   @IsOptional()
-  @IsUUID('4', { message: 'departmentId must be a valid UUID v4' })
+  @IsUUID('4', { each: true, message: 'departmentId must be a valid UUID v4' })
   @ApiPropertyOptional({ description: 'Filter by department UUID' })
-  departmentId?: string;
+  departmentId?: FilterSelection<string>;
 
   @IsOptional()
   @IsUUID('4', { message: 'meetingId must be a valid UUID v4' })

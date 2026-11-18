@@ -1,3 +1,4 @@
+import { filterValues } from '../../../common/utils/filter-selection.js';
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { SearchRoomsQueryDto } from '../dto/search-rooms-query.dto.js';
@@ -133,8 +134,14 @@ export class RoomSearchService {
     const areaName = query.areaName ?? null;
     const onlyAvailable = query.onlyAvailable ?? null;
     const q = query.q?.trim() || null;
-    const status = query.status ?? null;
+    const status = query.status ? filterValues(query.status) : null;
     const siteName = query.siteName ?? null;
+    const locations = query.locations?.map(raw => {
+      let value: { siteName?: unknown; areaName?: unknown };
+      try { value = JSON.parse(raw); } catch { throw new BadRequestException('Vị trí lọc không hợp lệ'); }
+      if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !['siteName', 'areaName'].includes(key)) || Object.values(value).some(item => typeof item !== 'string')) throw new BadRequestException('Vị trí lọc không hợp lệ');
+      return value;
+    });
     const page = query.page ?? 1;
     const limit = query.limit ?? 50;
 
@@ -145,7 +152,7 @@ export class RoomSearchService {
     ) {
       throw new BadRequestException({
         success: false,
-        message: 'capacityMin khong duoc lon hon capacityMax',
+        message: 'Sức chứa tối thiểu không được lớn hơn sức chứa tối đa',
         error: {
           code: 'VALIDATION_ERROR',
           details: { capacityMin, capacityMax },
@@ -166,8 +173,13 @@ export class RoomSearchService {
         AND ($3::text IS NULL OR r.area_name = $3)
         AND ($4::boolean IS NULL OR $4 = false OR ${COMPUTED_STATUS_SQL} = 'available')
         AND ($5::text IS NULL OR r.room_name ILIKE '%' || $5 || '%' OR r.room_code ILIKE '%' || $5 || '%')
-        AND ($6::text IS NULL OR ${COMPUTED_STATUS_SQL} = $6)
+        AND ($6::text[] IS NULL OR ${COMPUTED_STATUS_SQL} = ANY($6::text[]))
         AND ($7::text IS NULL OR r.site_name = $7)
+        AND ($8::jsonb IS NULL OR EXISTS (
+          SELECT 1 FROM jsonb_array_elements($8::jsonb) selected_location
+          WHERE (NOT selected_location ? 'siteName' OR r.site_name = selected_location->>'siteName')
+            AND (NOT selected_location ? 'areaName' OR r.area_name = selected_location->>'areaName')
+        ))
     `;
     const whereParams = [
       capacityMin,
@@ -177,6 +189,7 @@ export class RoomSearchService {
       q,
       status,
       siteName,
+      locations?.length ? JSON.stringify(locations) : null,
     ];
 
     const offset = (page - 1) * limit;
@@ -200,7 +213,7 @@ export class RoomSearchService {
        ) eq ON true
        ${whereClause}
        ORDER BY r.room_code ASC
-       LIMIT $8 OFFSET $9`,
+       LIMIT $9 OFFSET $10`,
       [...whereParams, limit, offset],
     );
 
@@ -217,7 +230,8 @@ export class RoomSearchService {
     if (siteName !== null) appliedFilters.siteName = siteName;
     if (onlyAvailable !== null) appliedFilters.onlyAvailable = onlyAvailable;
     if (q !== null) appliedFilters.q = q;
-    if (status !== null) appliedFilters.status = status;
+    if (status !== null) appliedFilters.status = query.status;
+    if (locations?.length) appliedFilters.locations = locations;
 
     return {
       rooms: rows.map((row) => this.toItem(row)),
@@ -258,14 +272,14 @@ export class RoomSearchService {
     if (Number.isNaN(startTime.getTime()) || Number.isNaN(endTime.getTime())) {
       throw new BadRequestException({
         success: false,
-        message: 'startTime hoac endTime khong dung dinh dang',
+        message: 'startTime hoặc endTime không đúng định dạng',
         error: { code: 'VALIDATION_ERROR', details: {} },
       });
     }
     if (endTime <= startTime) {
       throw new BadRequestException({
         success: false,
-        message: 'endTime phai sau startTime',
+        message: 'Thời gian kết thúc phải sau thời gian bắt đầu',
         error: { code: 'VALIDATION_ERROR', details: {} },
       });
     }

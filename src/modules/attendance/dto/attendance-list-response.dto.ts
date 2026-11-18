@@ -94,7 +94,7 @@ export class AttendanceListResponseDto {
   success: boolean = true;
 
   @ApiProperty()
-  message: string = 'Danh sach diem danh duoc truy xuat thanh cong';
+  message: string = 'Danh sách điểm danh được truy xuất thành công';
 
   @ApiProperty()
   data: AttendanceListDataDto;

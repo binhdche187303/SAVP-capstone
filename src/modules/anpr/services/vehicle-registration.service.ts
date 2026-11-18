@@ -1,3 +1,4 @@
+import { filterWhere, filterValues } from '../../../common/utils/filter-selection.js';
 import {
   Injectable,
   BadRequestException,
@@ -136,10 +137,10 @@ export class VehicleRegistrationService {
       deletedAt: IsNull(),
     };
     if (query.status) {
-      where.status = query.status;
+      where.status = filterWhere(query.status);
     }
     if (query.vehicleType) {
-      where.vehicleType = query.vehicleType;
+      where.vehicleType = filterWhere(query.vehicleType);
     }
     if (query.plate) {
       // normalize trước ILike: '29a-123' → '%29A123%'. normalizePlate strip [^A-Z0-9]
@@ -184,10 +185,10 @@ export class VehicleRegistrationService {
       .where('vr.deletedAt IS NULL');
 
     if (query.status) {
-      qb.andWhere('vr.status = :status', { status: query.status });
+      qb.andWhere('vr.status IN (:...status)', { status: filterValues(query.status) });
     }
     if (query.vehicleType) {
-      qb.andWhere('vr.vehicleType = :vt', { vt: query.vehicleType });
+      qb.andWhere('vr.vehicleType IN (:...vt)', { vt: filterValues(query.vehicleType) });
     }
     if (query.plate) {
       qb.andWhere('vr.plateNumber ILIKE :p', {
@@ -277,8 +278,8 @@ export class VehicleRegistrationService {
 
   /**
    * Admin xóa-mềm bất kỳ biển số nào (VPT-BE-05 / VPT-001).
-   * KHÔNG fold userId — admin xoá hộ, không cần là chủ xe.
-   * id không tồn tại / đã xoá → NotFoundException VEHICLE_NOT_FOUND_OR_FORBIDDEN.
+   * KHÔNG fold userId — admin xóa hộ, không cần là chủ xe.
+   * id không tồn tại / đã xóa → NotFoundException VEHICLE_NOT_FOUND_OR_FORBIDDEN.
    */
   async adminSoftDelete(id: string): Promise<void> {
     const entity = await this.repo.findOne({
