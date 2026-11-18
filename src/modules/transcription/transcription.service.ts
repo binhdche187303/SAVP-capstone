@@ -92,7 +92,7 @@ export class TranscriptionService {
     if (!transcriptionEnabled) {
       throw new ForbiddenException({
         success: false,
-        message: 'Tinh nang transcription dang bi tat.',
+        message: 'Tính năng chuyển giọng nói thành văn bản đang bị tắt.',
         error: {
           code: TRANSCRIPTION_ERROR_CODES.TRANSCRIPTION_DISABLED,
           details: {},
@@ -106,7 +106,7 @@ export class TranscriptionService {
     if (!meeting) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay cuoc hop.',
+        message: 'Không tìm thấy cuộc họp.',
         error: {
           code: TRANSCRIPTION_ERROR_CODES.MEETING_NOT_FOUND,
           details: {},
@@ -122,7 +122,7 @@ export class TranscriptionService {
       if (!this.isAdminRole(roleCodes)) {
         throw new ForbiddenException({
           success: false,
-          message: 'Ban khong co quyen tao job nay.',
+          message: 'Bạn không có quyền tạo tác vụ này.',
           error: { code: 'PERMISSION_DENIED', details: {} },
         });
       }
@@ -134,7 +134,7 @@ export class TranscriptionService {
     if (!recordingSession) {
       throw new NotFoundException({
         success: false,
-        message: 'Recording session khong thuoc cuoc hop.',
+        message: 'Phiên ghi âm không thuộc cuộc họp.',
         error: {
           code: TRANSCRIPTION_ERROR_CODES.RECORDING_SESSION_NOT_FOUND,
           details: {},
@@ -154,7 +154,7 @@ export class TranscriptionService {
     if (sourceMediaFiles.length === 0) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay media file audio hop le.',
+        message: 'Không tìm thấy file âm thanh hợp lệ.',
         error: {
           code: TRANSCRIPTION_ERROR_CODES.SOURCE_MEDIA_NOT_FOUND,
           details: {},
@@ -192,7 +192,7 @@ export class TranscriptionService {
     if (existing && !dto.forceRerun) {
       throw new ConflictException({
         success: false,
-        message: 'Da co job dang xu ly cho recording session nay.',
+        message: 'Đã có tác vụ đang xử lý cho phiên ghi âm này.',
         error: {
           code: TRANSCRIPTION_ERROR_CODES.TRANSCRIPTION_JOB_ALREADY_RUNNING,
           details: {},
@@ -311,7 +311,7 @@ export class TranscriptionService {
     if (!meeting) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay cuoc hop.',
+        message: 'Không tìm thấy cuộc họp.',
         error: {
           code: TRANSCRIPTION_ERROR_CODES.MEETING_NOT_FOUND,
           details: {},
@@ -327,7 +327,7 @@ export class TranscriptionService {
       if (!this.isAdminRole(roleCodes)) {
         throw new ForbiddenException({
           success: false,
-          message: 'Ban khong co quyen xem transcript nay.',
+          message: 'Bạn không có quyền xem transcript này.',
           error: { code: 'PERMISSION_DENIED', details: {} },
         });
       }
@@ -344,7 +344,7 @@ export class TranscriptionService {
     if (!transcript) {
       throw new NotFoundException({
         success: false,
-        message: 'Chua co transcript cho cuoc hop nay.',
+        message: 'Chưa có transcript cho cuộc họp này.',
         error: {
           code: TRANSCRIPTION_ERROR_CODES.TRANSCRIPT_NOT_FOUND,
           details: {},
@@ -548,7 +548,7 @@ export class TranscriptionService {
     if (!transcript) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay transcript.',
+        message: 'Không tìm thấy transcript.',
         error: {
           code: TRANSCRIPTION_ERROR_CODES.TRANSCRIPT_NOT_FOUND,
           details: {},
@@ -569,7 +569,7 @@ export class TranscriptionService {
       if (!this.isAdminRole(roleCodes)) {
         throw new ForbiddenException({
           success: false,
-          message: 'Chi Host hoac Admin duoc sua transcript.',
+          message: 'Chỉ Host hoặc Admin được sửa transcript.',
           error: { code: 'PERMISSION_DENIED', details: {} },
         });
       }
@@ -589,7 +589,7 @@ export class TranscriptionService {
       if (!byId.has(item.segmentId)) {
         throw new NotFoundException({
           success: false,
-          message: 'Segment khong ton tai trong transcript: ' + item.segmentId,
+          message: 'Đoạn không tồn tại trong transcript: ' + item.segmentId,
           error: {
             code: TRANSCRIPTION_ERROR_CODES.SEGMENT_NOT_FOUND,
             details: { segmentId: item.segmentId },
@@ -671,7 +671,7 @@ export class TranscriptionService {
     if (dto.rawText === undefined && dto.cleanedText === undefined) {
       throw new BadRequestException({
         success: false,
-        message: 'Phai truyen it nhat rawText hoac cleanedText.',
+        message: 'Phải truyền ít nhất rawText hoặc cleanedText.',
         error: { code: 'VALIDATION_ERROR', details: {} },
       });
     }
@@ -682,7 +682,7 @@ export class TranscriptionService {
     if (!transcript) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay transcript.',
+        message: 'Không tìm thấy transcript.',
         error: {
           code: TRANSCRIPTION_ERROR_CODES.TRANSCRIPT_NOT_FOUND,
           details: {},
@@ -703,7 +703,7 @@ export class TranscriptionService {
       if (!this.isAdminRole(roleCodes)) {
         throw new ForbiddenException({
           success: false,
-          message: 'Chi Host hoac Admin duoc sua transcript.',
+          message: 'Chỉ Host hoặc Admin được sửa transcript.',
           error: { code: 'PERMISSION_DENIED', details: {} },
         });
       }
@@ -758,7 +758,7 @@ export class TranscriptionService {
     if (!transcript) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay transcript.',
+        message: 'Không tìm thấy transcript.',
         error: {
           code: TRANSCRIPTION_ERROR_CODES.TRANSCRIPT_NOT_FOUND,
           details: {},
@@ -779,7 +779,7 @@ export class TranscriptionService {
       if (!this.isAdminRole(roleCodes)) {
         throw new ForbiddenException({
           success: false,
-          message: 'Chi Host hoac Admin duoc doi trang thai transcript.',
+          message: 'Chỉ Host hoặc Admin được đổi trạng thái transcript.',
           error: { code: 'PERMISSION_DENIED', details: {} },
         });
       }
@@ -804,7 +804,7 @@ export class TranscriptionService {
       throw new ConflictException({
         success: false,
         message:
-          'Khong the chuyen transcript tu trang thai "' +
+          'Không thể chuyển transcript từ trạng thái "' +
           transcript.status +
           '" sang "' +
           target +
@@ -862,7 +862,7 @@ export class TranscriptionService {
     if (!transcript) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay transcript.',
+        message: 'Không tìm thấy transcript.',
         error: {
           code: TRANSCRIPTION_ERROR_CODES.TRANSCRIPT_NOT_FOUND,
           details: {},
@@ -883,7 +883,7 @@ export class TranscriptionService {
       if (!this.isAdminRole(roleCodes)) {
         throw new ForbiddenException({
           success: false,
-          message: 'Chi Host hoac Admin duoc xoa transcript.',
+          message: 'Chỉ Host hoặc Admin được xóa transcript.',
           error: { code: 'PERMISSION_DENIED', details: {} },
         });
       }
@@ -894,7 +894,7 @@ export class TranscriptionService {
       throw new ConflictException({
         success: false,
         message:
-          'Chi co the xoa transcript chua duoc danh dau da xem (draft/failed).',
+          'Chỉ có thể xóa transcript chưa được đánh dấu đã xem (draft/failed).',
         error: {
           code: TRANSCRIPTION_ERROR_CODES.TRANSCRIPT_NOT_DRAFT,
           details: { status: transcript.status },
@@ -948,7 +948,7 @@ export class TranscriptionService {
     if (!meeting) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay cuoc hop.',
+        message: 'Không tìm thấy cuộc họp.',
         error: {
           code: TRANSCRIPTION_ERROR_CODES.MEETING_NOT_FOUND,
           details: {},
@@ -969,7 +969,7 @@ export class TranscriptionService {
       if (!this.isAdminRole(roleCodes)) {
         throw new ForbiddenException({
           success: false,
-          message: 'Ban khong co quyen xem transcription jobs.',
+          message: 'Bạn không có quyền xem các tác vụ chuyển giọng nói.',
           error: { code: 'PERMISSION_DENIED', details: {} },
         });
       }

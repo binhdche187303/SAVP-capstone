@@ -18,18 +18,18 @@ export type ResolvedAssetAction = ReportedAssetAction;
  */
 export class ResolveEquipmentFaultDto {
   @IsIn(['healthy', 'warning'], {
-    message: 'healthStatus bat buoc phai la healthy hoac warning',
+    message: 'Tình trạng bắt buộc phải là healthy hoặc warning',
   })
   healthStatus: HealthStatus;
 
   @IsOptional()
   @IsIn(['active', 'maintenance', 'retired'], {
-    message: 'assetStatus chi nhan active, maintenance hoac retired',
+    message: 'Trạng thái tài sản chỉ nhận active, maintenance hoặc retired',
   })
   assetStatus?: ResolvedAssetAction;
 
-  @IsString({ message: 'resolutionNote phai la chuoi ky tu' })
-  @IsNotEmpty({ message: 'resolutionNote khong duoc de trong' })
-  @MaxLength(2000, { message: 'resolutionNote toi da 2000 ky tu' })
+  @IsString({ message: 'Ghi chú khắc phục phải là chuỗi ký tự' })
+  @IsNotEmpty({ message: 'Ghi chú khắc phục không được để trống' })
+  @MaxLength(2000, { message: 'Ghi chú khắc phục tối đa 2000 ký tự' })
   resolutionNote: string;
 }

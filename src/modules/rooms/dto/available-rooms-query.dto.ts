@@ -8,23 +8,23 @@ import { Type } from 'class-transformer';
  * nhap, khong yeu cau permission rieng (giong SearchRoomsQueryDto).
  */
 export class AvailableRoomsQueryDto {
-  @IsNotEmpty({ message: 'startTime la bat buoc' })
+  @IsNotEmpty({ message: 'Thời gian bắt đầu là bắt buộc' })
   @IsISO8601(
     { strict: true },
-    { message: 'startTime phai dung dinh dang ISO-8601 co timezone' },
+    { message: 'Thời gian bắt đầu phải đúng định dạng ISO-8601 có múi giờ' },
   )
   startTime: string;
 
-  @IsNotEmpty({ message: 'endTime la bat buoc' })
+  @IsNotEmpty({ message: 'Thời gian kết thúc là bắt buộc' })
   @IsISO8601(
     { strict: true },
-    { message: 'endTime phai dung dinh dang ISO-8601 co timezone' },
+    { message: 'Thời gian kết thúc phải đúng định dạng ISO-8601 có múi giờ' },
   )
   endTime: string;
 
   @IsOptional()
   @Type(() => Number)
-  @IsInt({ message: 'minCapacity phai la so nguyen' })
-  @Min(1, { message: 'minCapacity phai tu 1 tro len' })
+  @IsInt({ message: 'Sức chứa tối thiểu phải là số nguyên' })
+  @Min(1, { message: 'Sức chứa tối thiểu phải từ 1 trở lên' })
   minCapacity?: number;
 }

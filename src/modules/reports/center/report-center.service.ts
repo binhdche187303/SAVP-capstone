@@ -1,3 +1,4 @@
+import { filterValues } from '../../../common/utils/filter-selection.js';
 import { ALERT_TYPES } from '../../alerts/dto/create-alert-rule.dto.js';
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -169,10 +170,10 @@ export class ReportCenterService {
       if (!allowed.has(key)) throw reportBadRequest(`Bộ lọc "${key}" không thuộc loại báo cáo này`, 'INVALID_FILTER', { key });
       if (['from', 'to', 'page', 'limit', 'sortKey', 'sortDir', 'format'].includes(key)) continue;
       if (value === undefined || value === null || value === '') continue;
-      if (typeof value !== 'string') throw reportBadRequest(`Bộ lọc "${key}" không hợp lệ`, 'INVALID_FILTER', { key });
+      if (typeof value !== 'string' && (!Array.isArray(value) || value.length > 100 || value.some(item => typeof item !== 'string'))) throw reportBadRequest(`Bộ lọc "${key}" không hợp lệ`, 'INVALID_FILTER', { key });
       const options = definition.filters.find((f) => f.key === key)?.options;
-      if (options && !options.some((o) => o.value === value) && !(definition.type === 'security-alert' && key === 'alertType' && (ALERT_TYPES as readonly string[]).includes(value))) throw reportBadRequest(`Giá trị bộ lọc "${key}" không hợp lệ`, 'INVALID_FILTER', { key });
-      filters[key] = value;
+      if (options && filterValues(value as string | string[]).some(item => !options.some((o) => o.value === item) && !(definition.type === 'security-alert' && key === 'alertType' && (ALERT_TYPES as readonly string[]).includes(item)))) throw reportBadRequest(`Giá trị bộ lọc "${key}" không hợp lệ`, 'INVALID_FILTER', { key });
+      filters[key] = value as string | string[];
     }
     return filters;
   }

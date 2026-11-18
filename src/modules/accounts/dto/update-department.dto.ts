@@ -21,7 +21,7 @@ import { NoEmojiOrControlConstraint } from '../validators/no-emoji-or-control.va
  * `DepartmentsService.updateDepartment()` với điều kiện loại trừ `id` hiện tại.
  *
  * BREAKING CHANGE (2026-08-12, ACCT-DEPT-DEACTIVATE-001):
- * Field `isActive` đã bị XOÁ khỏi DTO này. Việc bật/tắt phòng ban nay
+ * Field `isActive` đã bị XÓA khỏi DTO này. Việc bật/tắt phòng ban nay
  * được thực hiện qua POST /departments/:id/deactivate và /reactivate.
  * Gửi `isActive` trong PATCH body sẽ nhận 400 (forbidNonWhitelisted).
  */

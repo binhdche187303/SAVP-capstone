@@ -8,6 +8,6 @@ export class VerifyGuestOtpDto {
   })
   @IsString()
   @IsNotEmpty()
-  @Matches(/^[0-9]{6}$/, { message: 'Ma OTP chi duoc chua 6 chu so' })
+  @Matches(/^[0-9]{6}$/, { message: 'Mã OTP chỉ được chứa 6 chữ số' })
   otp!: string;
 }

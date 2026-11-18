@@ -35,7 +35,7 @@ export class RolesService {
     if (existing) {
       throw new ConflictException({
         success: false,
-        message: 'Role code ' + dto.roleCode + ' da ton tai trong he thong.',
+        message: 'Role code ' + dto.roleCode + ' đã tồn tại trong hệ thống.',
         error: { code: 'ROLE_CODE_DUPLICATE' },
       });
     }
@@ -100,7 +100,7 @@ export class RolesService {
     if (!entity) {
       throw new NotFoundException({
         success: false,
-        message: 'Role kHong ton tai.',
+        message: 'Vai trò không tồn tại.',
         error: { code: 'ROLE_NOT_FOUND' },
       });
     }
@@ -124,7 +124,7 @@ export class RolesService {
     if (!entity) {
       throw new NotFoundException({
         success: false,
-        message: 'Role khong ton tai.',
+        message: 'Vai trò không tồn tại.',
         error: { code: 'ROLE_NOT_FOUND' },
       });
     }
@@ -132,7 +132,7 @@ export class RolesService {
     if (dto.isActive === false && entity.isSystemRole === true) {
       throw new UnprocessableEntityException({
         success: false,
-        message: 'Khong the vo hie ua role he thong.',
+        message: 'Không thể vô hiệu hóa vai trò hệ thống.',
         error: { code: 'CANNOT_MODIFY_SYSTEM_ROLE' },
       });
     }
@@ -178,7 +178,7 @@ export class RolesService {
     if (!entity) {
       throw new NotFoundException({
         success: false,
-        message: 'Role khong ton tai.',
+        message: 'Vai trò không tồn tại.',
         error: { code: 'ROLE_NOT_FOUND' },
       });
     }
@@ -186,7 +186,7 @@ export class RolesService {
     if (entity.isSystemRole === true) {
       throw new UnprocessableEntityException({
         success: false,
-        message: 'Khong the xoa role he thong.',
+        message: 'Không thể xóa vai trò hệ thống.',
         error: { code: 'CANNOT_DELETE_SYSTEM_ROLE' },
       });
     }
@@ -197,7 +197,7 @@ export class RolesService {
     if (activeUserCount > 0) {
       throw new ConflictException({
         success: false,
-        message: 'Khong the xoa role dang duoc gan cho nguoi dung.',
+        message: 'Không thể xóa vai trò đang được gán cho người dùng.',
         error: { code: 'ROLE_IN_USE' },
       });
     }

@@ -6,7 +6,7 @@ import { IsOptional, IsString, MaxLength } from 'class-validator';
  */
 export class ConfirmEquipmentFaultDto {
   @IsOptional()
-  @IsString({ message: 'confirmationNote phai la chuoi ky tu' })
-  @MaxLength(2000, { message: 'confirmationNote toi da 2000 ky tu' })
+  @IsString({ message: 'Ghi chú xác nhận phải là chuỗi ký tự' })
+  @MaxLength(2000, { message: 'Ghi chú xác nhận tối đa 2000 ký tự' })
   confirmationNote?: string;
 }

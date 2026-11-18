@@ -1,3 +1,4 @@
+import { filterValues } from '../../../../common/utils/filter-selection.js';
 import { DataSource } from 'typeorm';
 import { SESSIONS_CTE } from '../../../gate-access/services/gate-access-history.service.js';
 import type { ReportFilters, ReportPage, ResolvedScope } from '../report-model.js';
@@ -84,14 +85,19 @@ const buildWhere = (o: SessionQueryOptions, withPeriod: boolean): Where => {
     w.add(`COALESCE(check_in_time, check_out_time) < ((?::date) + 1)::timestamp AT TIME ZONE ${TZ}`, f.to);
   }
   if (o.plateOnly) w.add(`plate_number IS NOT NULL AND plate_number <> ''`);
-  if (f['zoneId']) w.add('zone_id = ?::uuid', f['zoneId']);
-  if (f['departmentId']) w.add('department_id = ?::uuid', f['departmentId']);
-  if (f['subjectType']) w.add('subject_type = ?', f['subjectType']);
-  if (f['vehicleType']) w.add('vehicle_class = ?', f['vehicleType']);
+  if (f['zoneId']) w.add('zone_id = ANY(?::uuid[])', filterValues(f['zoneId']));
+  if (f['departmentId']) w.add('department_id = ANY(?::uuid[])', filterValues(f['departmentId']));
+  if (f['subjectType']) w.add('subject_type = ANY(?::text[])', filterValues(f['subjectType']));
+  if (f['vehicleType']) w.add('vehicle_class = ANY(?::text[])', filterValues(f['vehicleType']));
   const reg = f['registrationStatus'];
-  if (reg === 'registered') w.add('registered = true');
-  else if (reg === 'unregistered') w.add('registered = false');
-  else if (reg === 'watchlist') w.add('in_control_list = true');
+  if (reg) {
+    const selected = filterValues(reg);
+    const parts: string[] = [];
+    if (selected.includes('registered')) parts.push('registered = true');
+    if (selected.includes('unregistered')) parts.push('registered = false');
+    if (selected.includes('watchlist')) parts.push('in_control_list = true');
+    if (parts.length) w.add(`(${parts.join(' OR ')})`);
+  }
   if (f.q) {
     w.add(`(unaccent(lower(COALESCE(full_name, ''))) LIKE '%' || unaccent(lower(?)) || '%' OR lower(COALESCE(plate_number, '')) LIKE '%' || lower(?) || '%' OR lower(COALESCE(employee_code, '')) LIKE '%' || lower(?) || '%')`, f.q, f.q, f.q);
   }

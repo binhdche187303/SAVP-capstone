@@ -104,7 +104,7 @@ describe('MeetingRequestReviewController', () => {
       );
       expect(result.success).toBe(true);
       expect(result.message).toBe(
-        'Yeu cau cuoc hop da duoc phe duyet thanh cong',
+        'Yêu cầu cuộc họp đã được phê duyệt thành công',
       );
       expect(result.data).toBeDefined();
       expect(result.data.requestId).toBe('request-uuid');
@@ -164,7 +164,7 @@ describe('MeetingRequestReviewController', () => {
         { ipAddress: '127.0.0.1', userAgent: 'Mozilla/5.0' },
       );
       expect(result.success).toBe(true);
-      expect(result.message).toBe('Yeu cau cuoc hop da bi tu choi');
+      expect(result.message).toBe('Yêu cầu cuộc họp đã bị từ chối');
       expect(result.data).toBeDefined();
       expect(result.data.requestId).toBe('request-uuid');
       expect(result.data.approvalStatus).toBe('rejected');

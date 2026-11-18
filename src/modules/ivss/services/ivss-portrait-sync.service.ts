@@ -39,7 +39,7 @@ const BATCH_LIMIT = 500;
 /**
  * IvssPortraitSyncService (PORTRAIT-001 / UC-109+110) — kho mặt THƯỜNG TRỰC cho camera
  * hành lang/sân, enroll vào `IVSS_PORTRAIT_GROUP`. Đường SONG SONG, độc lập hoàn toàn
- * với IvssPersonSyncService (group `IVSS_DEFAULT_GROUP`, mặt bị xoá sau họp).
+ * với IvssPersonSyncService (group `IVSS_DEFAULT_GROUP`, mặt bị xóa sau họp).
  *
  * Vòng đời: ảnh được DUYỆT (face_profiles.status='active') → enroll; account nghỉ/khoá
  * hoặc ảnh hết active → remove. Không gắn meeting.
@@ -70,7 +70,7 @@ export class IvssPortraitSyncService {
 
   /**
    * Lưới an toàn nền (phương án c, phần 1): mapping 'synced' quá cũ có thể đã
-   * lệch szUID trên thiết bị (xoá/enroll lại tay ngoài BE — không track được).
+   * lệch szUID trên thiết bị (xóa/enroll lại tay ngoài BE — không track được).
    * TTL dài vì đây chỉ là fallback cuối, không phải cơ chế chính.
    */
   private get ttlDays(): number {
@@ -147,7 +147,7 @@ export class IvssPortraitSyncService {
 
     const personUid = this.personUidOf(userId);
 
-    // Idempotent (clone "Nợ #2" của person-sync): xoá person cũ trên portrait group
+    // Idempotent (clone "Nợ #2" của person-sync): xóa person cũ trên portrait group
     // trước khi enroll, tránh 1 user nhiều szUID khi mapping cũ 'failed' hoặc DB lệch IVSS.
     // deleteFace theo device_person_id (UID thiết bị tự sinh) — đối chiếu
     // sep490_ams_be delFaceRecognitionDB (dòng 613-639, production). KHÔNG
@@ -209,7 +209,7 @@ export class IvssPortraitSyncService {
    * Admin force re-sync 1 user: hạ mapping portrait về 'pending' — KHÔNG tự
    * enroll ngay (tránh block HTTP response chờ SDK call). reconcilePortraits()
    * (cron) sẽ tự nhặt ở lượt tick kế tiếp, đi qua đúng enrollPortrait() đã có
-   * (tự xoá device_person_id cũ trước khi enroll mới). Trả false nếu user
+   * (tự xóa device_person_id cũ trước khi enroll mới). Trả false nếu user
    * KHÔNG có mapping portrait nào (chưa từng enroll) — caller trả 404.
    */
   async resyncMapping(userId: string): Promise<boolean> {
@@ -251,7 +251,7 @@ export class IvssPortraitSyncService {
     return this.removeMapping(mp);
   }
 
-  /** Dùng chung cho removePortrait + reconcile: xoá trên IVSS rồi soft-delete mapping. */
+  /** Dùng chung cho removePortrait + reconcile: xóa trên IVSS rồi soft-delete mapping. */
   private async removeMapping(
     mp: PortraitMappingRow,
   ): Promise<PortraitRemoveResult> {
@@ -319,7 +319,7 @@ export class IvssPortraitSyncService {
     // ttlDays kể từ lần sync gần nhất → hạ về 'pending' để bước (1) bên dưới
     // tự nhặt lại (NOT EXISTS ... sync_status='synced' không còn khớp nữa).
     // Tái dùng ĐÚNG cơ chế đã có (xem admin-biometric-review.service.ts) —
-    // KHÔNG tự enroll/xoá gì ở đây, chỉ đánh dấu để (1) xử lý.
+    // KHÔNG tự enroll/xóa gì ở đây, chỉ đánh dấu để (1) xử lý.
     await this.dataSource.manager.query(
       `UPDATE device_user_mappings
           SET sync_status = 'pending',

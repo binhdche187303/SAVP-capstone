@@ -94,7 +94,7 @@ export class SpeakerMappingService {
     if (!transcript) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay transcript.',
+        message: 'Không tìm thấy transcript.',
         error: {
           code: TRANSCRIPTION_ERROR_CODES.TRANSCRIPT_NOT_FOUND,
           details: {},
@@ -166,7 +166,7 @@ export class SpeakerMappingService {
     if (!transcript) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay transcript.',
+        message: 'Không tìm thấy transcript.',
         error: {
           code: TRANSCRIPTION_ERROR_CODES.TRANSCRIPT_NOT_FOUND,
           details: {},
@@ -177,7 +177,7 @@ export class SpeakerMappingService {
       throw new ConflictException({
         success: false,
         message:
-          'Transcript khong co recording session, khong tinh duoc moc dai dien.',
+          'Transcript không có phiên ghi âm, không tính được mốc đại diện.',
         error: {
           code: TRANSCRIPTION_ERROR_CODES.RECORDING_SESSION_MISSING_FOR_TRANSCRIPT,
           details: {},
@@ -187,7 +187,7 @@ export class SpeakerMappingService {
     if (transcript.status === TranscriptStatus.PROCESSING) {
       throw new ConflictException({
         success: false,
-        message: 'Transcript dang xu ly, chua the gan ten.',
+        message: 'Transcript đang xử lý, chưa thể gán tên.',
         error: {
           code: TRANSCRIPTION_ERROR_CODES.TRANSCRIPT_NOT_DRAFT,
           details: {},
@@ -203,7 +203,7 @@ export class SpeakerMappingService {
     if (!recordingSession) {
       throw new ConflictException({
         success: false,
-        message: 'Recording session khong ton tai.',
+        message: 'Phiên ghi âm không tồn tại.',
         error: {
           code: TRANSCRIPTION_ERROR_CODES.RECORDING_SESSION_MISSING_FOR_TRANSCRIPT,
           details: {},
@@ -225,7 +225,7 @@ export class SpeakerMappingService {
       if (hasUser === hasExternal) {
         throw new BadRequestException({
           success: false,
-          message: `Mapping cho "${item.speakerLabel}" phai co dung mot trong speakerUserId hoac externalParticipantId.`,
+          message: `Gán tên cho "${item.speakerLabel}" phải có đúng một trong speakerUserId hoặc externalParticipantId.`,
           error: {
             code: 'VALIDATION_ERROR',
             details: { speakerLabel: item.speakerLabel },
@@ -241,7 +241,7 @@ export class SpeakerMappingService {
     if (invalidLabels.length > 0) {
       throw new BadRequestException({
         success: false,
-        message: 'Mot so speakerLabel khong ton tai trong transcript nay.',
+        message: 'Một số speakerLabel không tồn tại trong transcript này.',
         error: {
           code: TRANSCRIPTION_ERROR_CODES.SPEAKER_LABEL_NOT_FOUND,
           details: { invalidLabels: [...new Set(invalidLabels)] },
@@ -268,7 +268,7 @@ export class SpeakerMappingService {
       throw new BadRequestException({
         success: false,
         message:
-          'Mot speakerLabel duoc gan cho nhieu nguoi khac nhau trong cung 1 yeu cau.',
+          'Một speakerLabel được gán cho nhiều người khác nhau trong cùng một yêu cầu.',
         error: {
           code: TRANSCRIPTION_ERROR_CODES.SPEAKER_MAPPING_CONFLICT,
           details: { conflictingLabels },
@@ -291,7 +291,7 @@ export class SpeakerMappingService {
       if (missing.length > 0) {
         throw new BadRequestException({
           success: false,
-          message: 'Mot so speakerUserId khong ton tai.',
+          message: 'Một số speakerUserId không tồn tại.',
           error: {
             code: TRANSCRIPTION_ERROR_CODES.TARGET_USER_NOT_FOUND,
             details: { missing },
@@ -318,7 +318,7 @@ export class SpeakerMappingService {
         throw new BadRequestException({
           success: false,
           message:
-            'Mot so externalParticipantId khong ton tai hoac khong thuoc cuoc hop nay.',
+            'Một số externalParticipantId không tồn tại hoặc không thuộc cuộc họp này.',
           error: {
             code: TRANSCRIPTION_ERROR_CODES.EXTERNAL_PARTICIPANT_NOT_FOUND,
             details: { missing },
@@ -441,7 +441,7 @@ export class SpeakerMappingService {
       throw new BadRequestException({
         success: false,
         message:
-          'Phai co dung mot trong speakerUserId hoac externalParticipantId.',
+          'Phải có đúng một trong speakerUserId hoặc externalParticipantId.',
         error: { code: 'VALIDATION_ERROR', details: {} },
       });
     }
@@ -452,7 +452,7 @@ export class SpeakerMappingService {
       if (!user) {
         throw new BadRequestException({
           success: false,
-          message: 'speakerUserId khong ton tai.',
+          message: 'speakerUserId không tồn tại.',
           error: {
             code: TRANSCRIPTION_ERROR_CODES.TARGET_USER_NOT_FOUND,
             details: {},
@@ -468,7 +468,7 @@ export class SpeakerMappingService {
         throw new BadRequestException({
           success: false,
           message:
-            'externalParticipantId khong ton tai hoac khong thuoc cuoc hop nay.',
+            'externalParticipantId không tồn tại hoặc không thuộc cuộc họp này.',
           error: {
             code: TRANSCRIPTION_ERROR_CODES.EXTERNAL_PARTICIPANT_NOT_FOUND,
             details: {},
@@ -515,7 +515,7 @@ export class SpeakerMappingService {
     if (!meeting) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay cuoc hop.',
+        message: 'Không tìm thấy cuộc họp.',
         error: {
           code: TRANSCRIPTION_ERROR_CODES.MEETING_NOT_FOUND,
           details: {},
@@ -529,7 +529,7 @@ export class SpeakerMappingService {
       // ERR-LIVE-002 — không cho nhập thời điểm trong tương lai.
       throw new BadRequestException({
         success: false,
-        message: 'Thoi diem nhap khong duoc o tuong lai.',
+        message: 'Thời điểm nhập không được ở tương lai.',
         error: { code: 'VALIDATION_ERROR', details: {} },
       });
     }
@@ -542,7 +542,7 @@ export class SpeakerMappingService {
       // ERR-LIVE-003 — cách xa giờ họp thật quá bất thường, chặn nhập nhầm ngày/giờ.
       throw new BadRequestException({
         success: false,
-        message: `Thoi diem nhap cach qua xa gio hop thuc te (qua nguong ${MANUAL_RECORDING_START_MAX_DRIFT_MS / 3600000} gio).`,
+        message: `Thời điểm nhập cách quá xa giờ họp thực tế (quá ngưỡng ${MANUAL_RECORDING_START_MAX_DRIFT_MS / 3600000} giờ).`,
         error: { code: 'VALIDATION_ERROR', details: {} },
       });
     }
@@ -583,7 +583,7 @@ export class SpeakerMappingService {
       throw new NotFoundException({
         success: false,
         message:
-          'Recording session khong ton tai hoac khong thuoc cuoc hop nay.',
+          'Phiên ghi âm không tồn tại hoặc không thuộc cuộc họp này.',
         error: {
           code: TRANSCRIPTION_ERROR_CODES.RECORDING_SESSION_NOT_FOUND,
           details: {},
@@ -601,7 +601,7 @@ export class SpeakerMappingService {
         throw new BadRequestException({
           success: false,
           message:
-            'Moi mark phai co dung mot trong speakerUserId hoac externalParticipantId.',
+            'Mỗi mốc phải có đúng một trong speakerUserId hoặc externalParticipantId.',
           error: { code: 'VALIDATION_ERROR', details: {} },
         });
       }
@@ -624,7 +624,7 @@ export class SpeakerMappingService {
       throw new BadRequestException({
         success: false,
         message:
-          'Mot so offsetSeconds khong hop le (am hoac vuot qua do dai file).',
+          'Một số offsetSeconds không hợp lệ (âm hoặc vượt quá độ dài file).',
         error: {
           code: TRANSCRIPTION_ERROR_CODES.OFFSET_OUT_OF_RANGE,
           details: { count: outOfRange.length },
@@ -648,7 +648,7 @@ export class SpeakerMappingService {
       if (missing.length > 0) {
         throw new BadRequestException({
           success: false,
-          message: 'Mot so speakerUserId khong ton tai.',
+          message: 'Một số speakerUserId không tồn tại.',
           error: {
             code: TRANSCRIPTION_ERROR_CODES.TARGET_USER_NOT_FOUND,
             details: { missing },
@@ -675,7 +675,7 @@ export class SpeakerMappingService {
         throw new BadRequestException({
           success: false,
           message:
-            'Mot so externalParticipantId khong ton tai hoac khong thuoc cuoc hop nay.',
+            'Một số externalParticipantId không tồn tại hoặc không thuộc cuộc họp này.',
           error: {
             code: TRANSCRIPTION_ERROR_CODES.EXTERNAL_PARTICIPANT_NOT_FOUND,
             details: { missing },
@@ -970,7 +970,7 @@ export class SpeakerMappingService {
     if (!this.isAdminRole(roleCodes)) {
       throw new ForbiddenException({
         success: false,
-        message: 'Chi Host hoac Admin duoc gan ten nguoi noi.',
+        message: 'Chỉ Host hoặc Admin được gán tên người nói.',
         error: { code: 'PERMISSION_DENIED', details: {} },
       });
     }

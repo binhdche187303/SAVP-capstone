@@ -17,7 +17,7 @@ export enum ClassEnrollmentStatus {
 
 /**
  * Danh sách lớp (ACD-001). Unique (class_section_id, student_id) (R6).
- * Rút lớp = status 'dropped', KHÔNG xoá — giữ lịch sử chuyên cần (D6, tiền lệ ADR-008).
+ * Rút lớp = status 'dropped', KHÔNG xóa — giữ lịch sử chuyên cần (D6, tiền lệ ADR-008).
  */
 @Entity('class_enrollments')
 export class ClassEnrollmentEntity {

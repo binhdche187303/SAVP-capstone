@@ -1,3 +1,4 @@
+import { filterValues } from '../../../../common/utils/filter-selection.js';
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { SecurityAlertReportDataService } from '../../services/security-alert-report-data.service.js';
@@ -35,14 +36,14 @@ export class SecurityAlertReportProvider implements ReportProvider {
 
   async build(filters: ReportFilters, _scope: ResolvedScope, page: ReportPage | null, _now: Date): Promise<ReportModel> {
     const def = REPORT_DEFINITIONS['security-alert'];
-    const status = filters['status'] ? STATUS_ALIASES[filters['status']] ?? filters['status'] : null;
+    const status = filters['status'] ? filterValues(filters['status']).flatMap(value => STATUS_ALIASES[value] ?? value) : null;
     const alerts = await this.data.listAllForExport({
       from: vnDayStart(filters.from).toISOString(),
       to: vnDayEnd(filters.to).toISOString(),
       filters: { alertType: null, zoneId: filters['zoneId'] ?? null, status },
     });
-    const types = filters['alertType'] ? TYPE_ALIASES[filters['alertType']] ?? [filters['alertType']] : null;
-    const list = alerts.filter((a) => (!types || types.includes(a.alertType)) && (!filters['severity'] || a.severity === filters['severity']));
+    const types = filters['alertType'] ? filterValues(filters['alertType']).flatMap(value => TYPE_ALIASES[value] ?? [value]) : null;
+    const list = alerts.filter((a) => (!types || types.includes(a.alertType)) && (!filters['severity'] || filterValues(filters['severity']).includes(a.severity)));
 
     const rows = list.map((a) => {
       const exp = this.data.mapToExportRow(a);

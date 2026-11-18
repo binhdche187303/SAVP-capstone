@@ -85,7 +85,7 @@ export type ReleaseResult = {
  * luôn meeting gắn với booking đó — tránh trạng thái "phòng đã giải phóng nhưng meeting
  * vẫn in_progress + ghi hình chạy tiếp cho phòng trống" tới tận scheduled end_time (đã xác
  * nhận qua thực tế, không phải suy đoán). Tái dùng NGUYÊN LiveMeetingService.endMeeting()
- * (đã test kỹ, tự dừng ghi hình + huỷ warning job + notify) — KHÔNG viết lại logic kết
+ * (đã test kỹ, tự dừng ghi hình + hủy warning job + notify) — KHÔNG viết lại logic kết
  * thúc phiên. Có chủ đích đổi lại comment cũ ở autoStartDueMeetings() (live-meeting.service.ts)
  * từng ghi "no-show không chặn vòng đời trạng thái" — quyết định đó CHỈ còn đúng cho bước
  * detect/warn (không đổi), KHÔNG còn đúng cho bước release cuối cùng (nay chủ động kết thúc).
@@ -516,7 +516,7 @@ export class NoShowLifecycleService {
   /**
    * [FIX 2026-08-13] Kết thúc meeting gắn với booking vừa bị no-show giải phóng — best-
    * effort, KHÔNG ném ra ngoài release() (giống notifyNoShow, ARCH-02). Tái dùng nguyên
-   * LiveMeetingService.endMeeting() (đã tự dừng ghi hình/huỷ warning job/notify) — actor
+   * LiveMeetingService.endMeeting() (đã tự dừng ghi hình/hủy warning job/notify) — actor
    * = organizer của chính meeting đó (system gọi thay, giống pattern
    * autoCompleteOverdueMeetings() ở live-meeting.service.ts).
    *

@@ -107,7 +107,7 @@ describe('DeviceEventSnapshotService (F-F)', () => {
     expect(storageMock.downloadFile).not.toHaveBeenCalled();
   });
 
-  it('snapshot_file_id có nhưng media_files row bị xoá/mất → NotFoundException', async () => {
+  it('snapshot_file_id có nhưng media_files row bị xóa/mất → NotFoundException', async () => {
     wire({ media: [] });
     await expect(
       service.getSnapshot(EVENT_ID, ADMIN_CALLER),
@@ -232,7 +232,7 @@ describe('DeviceEventSnapshotService (F-F)', () => {
       expect(storageMock.downloadFile).not.toHaveBeenCalled();
     });
 
-    it('HGVision lỗi/xoá ảnh → 404', async () => {
+    it('HGVision lỗi/xóa ảnh → 404', async () => {
       wire({ event: [remoteEvent] });
       hgClient.fetchImageBase64.mockRejectedValue(new Error('HTTP 404'));
       await expect(

@@ -9,12 +9,12 @@ import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
  */
 export class UpdateRoomAdministrativeStatusDto {
   @IsIn(['available', 'maintenance', 'inactive'], {
-    message: "status phai la 'available', 'maintenance' hoac 'inactive'",
+    message: "Trạng thái phải là 'available', 'maintenance' hoặc 'inactive'",
   })
   status: 'available' | 'maintenance' | 'inactive';
 
   @IsOptional()
-  @IsString({ message: 'reason phai la chuoi ky tu' })
-  @MaxLength(500, { message: 'reason toi da 500 ky tu' })
+  @IsString({ message: 'Lý do phải là chuỗi ký tự' })
+  @MaxLength(500, { message: 'Lý do tối đa 500 ký tự' })
   reason?: string;
 }

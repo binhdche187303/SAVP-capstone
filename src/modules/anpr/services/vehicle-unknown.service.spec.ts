@@ -283,4 +283,101 @@ describe('VehicleUnknownService (VUN-001 / UC6)', () => {
       expect(c.sql).not.toContain('2026-06-01');
     }
   });
+
+  // ── Bộ lọc + thẻ số liệu của tab "Biển số lạ" ──
+  describe('bộ lọc biển số / hướng / danh sách kiểm soát + stats', () => {
+    const statsCall = () => captured.find((c) => c.sql.includes('distinct_plates'));
+
+    it('q: chuẩn hoá biển số (bỏ dấu gạch/chấm, viết hoa) và bind qua tham số', async () => {
+      wire();
+      await service.listUnknown(q({ q: '59m-323.27' }));
+      const c = rowsCall()!;
+      expect(c.sql).toContain("REGEXP_REPLACE(UPPER(COALESCE(iot_device_events.payload_json->>'plateNumber', '')), '[^A-Z0-9]', '', 'g') LIKE $3");
+      expect(c.params[2]).toBe('%59M32327%');
+      expect(c.sql).not.toContain('59M32327');
+    });
+
+    it('direction=in: khớp cả in/enter/entry (gateDirection ưu tiên)', async () => {
+      wire();
+      await service.listUnknown(q({ direction: 'in' }));
+      const c = rowsCall()!;
+      expect(c.sql).toContain('= ANY($3::text[])');
+      expect(c.params[2]).toEqual(['in', 'enter', 'entry']);
+    });
+
+    it('flag=controlled: COUNT có JOIN vehicle_control_list + điều kiện list_type IS NOT NULL', async () => {
+      wire();
+      await service.listUnknown(q({ flag: 'controlled' }));
+      expect(countCall()!.sql).toContain('vehicle_control_list');
+      expect(countCall()!.sql).toContain('vcl.list_type IS NOT NULL');
+      expect(rowsCall()!.sql).toContain('vcl.list_type IS NOT NULL');
+    });
+
+    it('stats tính trên bộ lọc cơ bản (KHÔNG áp flag) và trả về số', async () => {
+      captured = [];
+      dsMock.manager.query.mockImplementation((sql: string, params: any[]) => {
+        captured.push({ sql, params });
+        if (sql.includes('distinct_plates')) {
+          return Promise.resolve([{ total: 8, controlled: 1, distinct_plates: 7, repeat_plates: 1 }]);
+        }
+        if (sql.includes('COUNT(*)')) return Promise.resolve([{ total: 1 }]);
+        return Promise.resolve([row()]);
+      });
+      const r = await service.listUnknown(q({ flag: 'controlled' }));
+      expect(statsCall()!.sql).not.toContain('vcl.list_type IS NOT NULL');
+      expect(r.stats).toEqual({ total: 8, controlled: 1, distinctPlates: 7, repeatPlates: 1 });
+    });
+
+    it('view=distinct: COUNT + rows JOIN bảng con DISTINCT ON biển, trả sightingCount', async () => {
+      // Câu rows ở chế độ gom cũng chứa "COUNT(*) OVER" → phân biệt theo phần mở đầu câu truy vấn.
+      captured = [];
+      dsMock.manager.query.mockImplementation((sql: string, params: any[]) => {
+        captured.push({ sql, params });
+        if (sql.includes('distinct_plates')) return Promise.resolve([{}]);
+        if (sql.trimStart().startsWith('SELECT COUNT(*)::int AS total FROM iot_device_events')) return Promise.resolve([{ total: 1 }]);
+        return Promise.resolve([row({ sighting_count: 2 })]);
+      });
+      const r = await service.listUnknown(q({ view: 'distinct' }));
+      expect(countCall()!.sql).toContain('DISTINCT ON (scoped.plate)');
+      expect(rowsCall()!.sql).toContain('pick ON pick.id = iot_device_events.id');
+      expect(rowsCall()!.sql).not.toContain('scoped.sighting_count > 1');
+      expect(r.items[0].sightingCount).toBe(2);
+    });
+
+    it('view=repeat: chỉ giữ biển xuất hiện từ 2 lần', async () => {
+      wire();
+      await service.listUnknown(q({ view: 'repeat' }));
+      expect(rowsCall()!.sql).toContain('WHERE scoped.sighting_count > 1');
+    });
+
+    it('facets: ô Hướng đếm KHÔNG áp bộ lọc hướng; ô Danh sách kiểm soát lấy từ stats', async () => {
+      captured = [];
+      dsMock.manager.query.mockImplementation((sql: string, params: any[]) => {
+        captured.push({ sql, params });
+        if (sql.includes('dir_in')) return Promise.resolve([{ dir_all: 8, dir_in: 7, dir_out: 1 }]);
+        if (sql.includes('view_distinct')) return Promise.resolve([{ view_all: 7, view_distinct: 6, view_repeat: 1 }]);
+        if (sql.includes('distinct_plates')) {
+          return Promise.resolve([{ total: 8, controlled: 1, distinct_plates: 7, repeat_plates: 1 }]);
+        }
+        if (sql.includes('COUNT(*)')) return Promise.resolve([{ total: 7 }]);
+        return Promise.resolve([row()]);
+      });
+      const r = await service.listUnknown(q({ direction: 'in' }));
+      const dirCall = captured.find((c) => c.sql.includes('dir_in'))!;
+      expect(dirCall.sql).not.toContain('ANY($');
+      expect(dirCall.params).toEqual(['ivss_vehicle_event', 'camera_vehicle_event']);
+      expect(r.facets).toEqual({
+        direction: { all: 8, in: 7, out: 1 },
+        flag: { all: 8, controlled: 1, normal: 7 },
+        view: { all: 7, distinct: 6, repeat: 1 },
+      });
+    });
+
+    it('không có view → không JOIN bảng con, item không có sightingCount', async () => {
+      wire();
+      const r = await service.listUnknown(q());
+      expect(rowsCall()!.sql).not.toContain('DISTINCT ON');
+      expect(r.items[0]).not.toHaveProperty('sightingCount');
+    });
+  });
 });

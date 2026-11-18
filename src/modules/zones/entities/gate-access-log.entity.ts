@@ -16,14 +16,14 @@ import { ZoneEntity } from './zone.entity.js';
  * GateAccessLogEntity (SAVP Zone scope) — log ra/vào cổng theo zone.
  *
  * Schema-only: KHÔNG logic nghiệp vụ (ingestion, ghép cặp in/out, tính duration = UC sau).
- * - KHÔNG soft-delete: đây là audit log, bản ghi không được xoá mềm.
+ * - KHÔNG soft-delete: đây là audit log, bản ghi không được xóa mềm.
  * - `paired_log_id` self-FK: bản ghi `in` trỏ tới bản ghi `out` tương ứng (và ngược lại);
  *   `duration_seconds` chỉ có giá trị khi đã ghép cặp.
  * - `plate_number` (normalized) snapshot tại thời điểm qua cổng — giữ được cả khi biển
  *   chưa/không map được về `vehicle_registrations`.
  * - `zone_id` khai ON DELETE RESTRICT ở DB, nhưng ràng buộc này CHỈ kích hoạt với hard-delete
- *   — mà hard-delete bị DATA-01 cấm. Hệ thống xoá zone bằng soft-delete (`UPDATE deleted_at`)
- *   nên hàng `zones` vẫn tồn tại và FK action KHÔNG BAO GIỜ chạy. Việc chặn hay không chặn xoá
+ *   — mà hard-delete bị DATA-01 cấm. Hệ thống xóa zone bằng soft-delete (`UPDATE deleted_at`)
+ *   nên hàng `zones` vẫn tồn tại và FK action KHÔNG BAO GIỜ chạy. Việc chặn hay không chặn xóa
  *   zone hoàn toàn do tầng application quyết định: UC-92 chốt **chặn theo THIẾT BỊ đang gán,
  *   KHÔNG chặn theo log** (log chỉ tăng, chặn theo log sẽ khiến zone bất tử).
  */

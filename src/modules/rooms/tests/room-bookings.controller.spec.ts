@@ -90,7 +90,7 @@ describe('RoomBookingsController', () => {
         { userId: mockUserId },
       );
       expect(result.success).toBe(true);
-      expect(result.message).toBe('Danh sach dat phong');
+      expect(result.message).toBe('Danh sách đặt phòng');
       expect(result.data).toHaveLength(1);
       expect(result.meta.page).toBe(1);
       expect(result.meta.limit).toBe(20);

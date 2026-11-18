@@ -42,7 +42,7 @@ export class GuestContentController {
       'Chi tra du lieu Muc B: thong tin hop, agenda, danh sach nguoi du (chi ten+to chuc), trang thai phien, ghi chu host chu dong chia se. KHONG transcript/recording/bien ban.',
   })
   @ApiParam({ name: 'meetingId', type: String, format: 'uuid' })
-  @ApiResponse({ status: 200, description: 'Noi dung cuoc hop' })
+  @ApiResponse({ status: 200, description: 'Nội dung cuộc họp' })
   @ApiResponse({ status: 401, description: 'GUEST_SESSION_INVALID' })
   @ApiResponse({
     status: 403,
@@ -56,6 +56,6 @@ export class GuestContentController {
   }> {
     const guest = (request as unknown as { guest: GuestRequestContext }).guest;
     const data = await this.guestContentService.getGuestMeetingView(guest);
-    return { success: true, message: 'Noi dung cuoc hop', data };
+    return { success: true, message: 'Nội dung cuộc họp', data };
   }
 }

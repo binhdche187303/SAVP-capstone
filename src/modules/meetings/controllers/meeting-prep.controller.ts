@@ -148,7 +148,7 @@ export class MeetingPrepController {
 
   @Post('series/cancel')
   @UsePipes(pipe)
-  @ApiOperation({ summary: 'Huỷ lần họp này hoặc lần này và các lần sau' })
+  @ApiOperation({ summary: 'Hủy lần họp này hoặc lần này và các lần sau' })
   async cancelSeries(
     @Param('meetingId', ParseUUIDPipe) meetingId: string,
     @CurrentUser() actor: Actor,
@@ -157,7 +157,7 @@ export class MeetingPrepController {
     @Headers('user-agent') userAgent?: string,
   ) {
     const data = await this.series.cancelSeries(meetingId, dto.scope, actor, { ipAddress, userAgent }, dto.reason);
-    return { success: true, message: `Đã huỷ ${data.updated.length} cuộc họp`, data };
+    return { success: true, message: `Đã hủy ${data.updated.length} cuộc họp`, data };
   }
 
   @Patch('series/time')

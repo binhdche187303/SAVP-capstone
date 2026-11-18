@@ -88,7 +88,7 @@ describe('FloorPlanService', () => {
       });
     });
 
-    it('giữ ảnh của các tầng khác, thay ảnh cũ cùng tầng và xoá file cũ', async () => {
+    it('giữ ảnh của các tầng khác, thay ảnh cũ cùng tầng và xóa file cũ', async () => {
       configRow = {
         id: 'cfg-1',
         config_json: {
@@ -221,7 +221,7 @@ describe('FloorPlanService', () => {
     });
   });
 
-  it('remove: xoá cấu hình của tầng và xoá file', async () => {
+  it('remove: xóa cấu hình của tầng và xóa file', async () => {
     configRow = {
       id: 'cfg-1',
       config_json: {

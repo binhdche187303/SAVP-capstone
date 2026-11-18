@@ -395,7 +395,7 @@ describe('FaceProvisioningService (FMP-001)', () => {
       expect(provider.deletePerson).not.toHaveBeenCalled();
     });
 
-    it('lỗi mạng/thiết bị khi xoá → KHÔNG throw ra ngoài (best-effort, log lỗi)', async () => {
+    it('lỗi mạng/thiết bị khi xóa → KHÔNG throw ra ngoài (best-effort, log lỗi)', async () => {
       dsMock.manager.query.mockImplementation((sql: string) => {
         if (sql.includes('AND user_id = $2 AND sync_status'))
           return Promise.resolve([
@@ -440,7 +440,7 @@ describe('FaceProvisioningService (FMP-001)', () => {
 
   // ── [FIX 2026-08-16] SAFETY NET (deprovisionByMeetingStatus) ──
   describe('deprovisionByMeetingStatus (safety net, độc lập end_time)', () => {
-    it('QUAN TRỌNG NHẤT: meeting status=cancelled + mapping synced → bắt và xoá NGAY (trước đây KHÔNG có lưới nào bắt được)', async () => {
+    it('QUAN TRỌNG NHẤT: meeting status=cancelled + mapping synced → bắt và xóa NGAY (trước đây KHÔNG có lưới nào bắt được)', async () => {
       dsMock.manager.query.mockImplementation((sql: string) => {
         if (sql.includes("me.status IN ('completed', 'cancelled')"))
           return Promise.resolve([
@@ -457,7 +457,7 @@ describe('FaceProvisioningService (FMP-001)', () => {
       expect(String(upd[0][0])).toContain("sync_status = 'deleted'");
     });
 
-    it('meeting status=completed SỚM (bấm Kết thúc trước giờ end_time theo lịch) → bắt và xoá NGAY, không cần đợi end_time trôi qua', async () => {
+    it('meeting status=completed SỚM (bấm Kết thúc trước giờ end_time theo lịch) → bắt và xóa NGAY, không cần đợi end_time trôi qua', async () => {
       dsMock.manager.query.mockImplementation((sql: string) => {
         if (sql.includes("me.status IN ('completed', 'cancelled')"))
           return Promise.resolve([
@@ -499,7 +499,7 @@ describe('FaceProvisioningService (FMP-001)', () => {
       expect(provider.deletePerson).not.toHaveBeenCalled();
     });
 
-    it('lỗi mạng/thiết bị khi xoá 1 dòng → KHÔNG crash cron, dòng khác trong cùng lượt vẫn xử lý, log lỗi rõ ràng', async () => {
+    it('lỗi mạng/thiết bị khi xóa 1 dòng → KHÔNG crash cron, dòng khác trong cùng lượt vẫn xử lý, log lỗi rõ ràng', async () => {
       dsMock.manager.query.mockImplementation((sql: string) => {
         if (sql.includes("me.status IN ('completed', 'cancelled')"))
           return Promise.resolve([
@@ -673,7 +673,7 @@ describe('FaceProvisioningService (FMP-001)', () => {
         return Promise.resolve([
           { id: 'map1', device_id: 'dev1', device_person_id: '64' },
         ]);
-      if (sql.includes('FROM iot_devices WHERE id')) return Promise.resolve([]); // device đã bị xoá
+      if (sql.includes('FROM iot_devices WHERE id')) return Promise.resolve([]); // device đã bị xóa
       return Promise.resolve(undefined);
     });
     await service.deprovisionMeeting(meeting());
@@ -682,7 +682,7 @@ describe('FaceProvisioningService (FMP-001)', () => {
     expect(String(upd[0][0])).toContain("sync_status = 'deleted'");
   });
 
-  it('reconcile dedup: findUidByName trả ĐÚNG uid đang lưu → KHÔNG xoá', async () => {
+  it('reconcile dedup: findUidByName trả ĐÚNG uid đang lưu → KHÔNG xóa', async () => {
     dsMock.manager.query.mockImplementation((sql: string) => {
       if (sql.includes('JOIN meetings me')) return Promise.resolve([]);
       if (
@@ -706,7 +706,7 @@ describe('FaceProvisioningService (FMP-001)', () => {
     expect(provider.deletePerson).not.toHaveBeenCalled();
   });
 
-  it('reconcile dedup: findUidByName trả null → KHÔNG xoá', async () => {
+  it('reconcile dedup: findUidByName trả null → KHÔNG xóa', async () => {
     dsMock.manager.query.mockImplementation((sql: string) => {
       if (sql.includes('JOIN meetings me')) return Promise.resolve([]);
       if (
@@ -773,7 +773,7 @@ describe('FaceProvisioningService (FMP-001)', () => {
     expect(factoryMock.create).not.toHaveBeenCalled();
   });
 
-  it('reconcile dedup: findUidByName trả uid khác → xoá uid cũ', async () => {
+  it('reconcile dedup: findUidByName trả uid khác → xóa uid cũ', async () => {
     dsMock.manager.query.mockImplementation((sql: string) => {
       if (sql.includes('JOIN meetings me')) return Promise.resolve([]); // no stale
       if (

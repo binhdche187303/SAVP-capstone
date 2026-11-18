@@ -22,7 +22,7 @@ export enum ClassSessionStatus {
  * Buổi học (ACD-001 D2) — cầu nối camera → phòng → thời điểm → lớp cho điểm danh (#23).
  * start_time/end_time: snapshot session_date + giờ ca (VN), tính bằng buildSessionTimes() (D5).
  * Unique (lớp, ngày, ca) (R7); unique (phòng, ngày, ca) khi chưa cancelled (R8).
- * Huỷ buổi = status 'cancelled', KHÔNG xoá (D6).
+ * Hủy buổi = status 'cancelled', KHÔNG xóa (D6).
  */
 @Entity('class_sessions')
 export class ClassSessionEntity {

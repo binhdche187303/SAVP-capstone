@@ -334,7 +334,7 @@ export class ChannelMapConfigService {
     }
   }
 
-  /** Kiểm room_id/zone_id tồn tại (chưa xoá mềm) trước khi cho ghi map. */
+  /** Kiểm room_id/zone_id tồn tại (chưa xóa mềm) trước khi cho ghi map. */
   private async validateEntitiesExist(
     entry: ChannelMapConfigEntry,
     normalized: Record<string, string>,
@@ -359,7 +359,7 @@ export class ChannelMapConfigService {
       if (!found.has(id)) {
         throw new BadRequestException({
           success: false,
-          message: `Key cấu hình '${entry.key}': ${entityLabel} '${id}' (channel '${channelIdStr}') không tồn tại hoặc đã xoá.`,
+          message: `Key cấu hình '${entry.key}': ${entityLabel} '${id}' (channel '${channelIdStr}') không tồn tại hoặc đã xóa.`,
           error: {
             code: 'CHANNEL_MAP_ENTITY_NOT_FOUND',
             details: { key: entry.key, field: `value.${channelIdStr}`, id },

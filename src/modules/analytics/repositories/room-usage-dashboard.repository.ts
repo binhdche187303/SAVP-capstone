@@ -1,3 +1,4 @@
+import { filterValues, type FilterSelection } from '../../../common/utils/filter-selection.js';
 import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
@@ -6,7 +7,7 @@ export interface RoomUsageQueryParams {
   to: string;
   scopeRoomIds: string[] | null;
   roomId?: string;
-  siteName?: string;
+  siteName?: FilterSelection<string>;
 }
 
 @Injectable()
@@ -82,8 +83,8 @@ export class RoomUsageDashboardRepository {
 
     // Filter siteName
     if (params.siteName) {
-      conditions.push(`${rAlias}.site_name = $${idx}`);
-      values.push(params.siteName);
+      conditions.push(`${rAlias}.site_name = ANY($${idx}::text[])`);
+      values.push(filterValues(params.siteName));
       idx++;
     }
 
@@ -209,8 +210,8 @@ export class RoomUsageDashboardRepository {
     }
 
     if (params.siteName) {
-      conditions.push(`r.site_name = $${idx}`);
-      values.push(params.siteName);
+      conditions.push(`r.site_name = ANY($${idx}::text[])`);
+      values.push(filterValues(params.siteName));
       idx++;
     }
 

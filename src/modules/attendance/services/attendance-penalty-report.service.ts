@@ -1,3 +1,4 @@
+import { filterValues, type FilterSelection } from '../../../common/utils/filter-selection.js';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { AuthzReadRepository } from '../../../modules/auth/repositories/authz-read.repository.js';
@@ -14,7 +15,7 @@ type Range = { from: Date; to: Date };
 /**
  * Tổng hợp điểm trừ chuyên cần qua nhiều cuộc họp (3 mức: cá nhân / đơn vị / toàn trường).
  *
- * Quy ước: chỉ tính cuộc họp đã kết thúc (status completed hoặc end_time đã qua, không huỷ)
+ * Quy ước: chỉ tính cuộc họp đã kết thúc (status completed hoặc end_time đã qua, không hủy)
  * có bật điểm danh. Mỗi thành viên (không từ chối lời mời) 1 dòng / cuộc họp:
  * lý do đã duyệt ⇒ "Có lý do" 0 điểm; có bản ghi điểm danh hợp lệ ⇒ điểm của bản ghi;
  * không có bản ghi ⇒ Vắng (điểm ABSENT). Lý do chờ duyệt / bị từ chối vẫn giữ điểm trừ.
@@ -94,7 +95,7 @@ export class AttendancePenaltyReportService {
   /** Mức 2 / 3 — bảng tổng hợp theo người (đơn vị của trưởng phòng, hoặc toàn trường). */
   async getSummary(
     actorId: string,
-    q: { from?: string; to?: string; departmentId?: string; search?: string },
+    q: { from?: string; to?: string; departmentId?: FilterSelection<string>; search?: string },
   ) {
     const { scope, departmentId: ownDept } = await this.resolveScope(actorId);
     if (!scope) {
@@ -104,7 +105,7 @@ export class AttendancePenaltyReportService {
       });
     }
     const range = this.parseRange(q.from, q.to);
-    const deptFilter = scope === 'unit' ? ownDept : q.departmentId || null;
+    const deptFilter = scope === 'unit' ? (ownDept ? [ownDept] : []) : q.departmentId ? filterValues(q.departmentId) : null;
     const search = q.search?.trim() ? `%${q.search.trim().toLowerCase()}%` : null;
 
     const rows = await this.dataSource.query(
@@ -123,7 +124,7 @@ export class AttendancePenaltyReportService {
          LEFT JOIN departments d ON d.id = u.department_id
          LEFT JOIN rows r ON r.user_id = u.id
         WHERE u.deleted_at IS NULL AND u.account_status = 'active'
-          AND ($3::uuid IS NULL OR u.department_id = $3::uuid)
+          AND ($3::uuid[] IS NULL OR u.department_id = ANY($3::uuid[]))
           AND ($4::text IS NULL OR lower(u.full_name) LIKE $4 OR lower(u.email) LIKE $4)
         GROUP BY u.id, d.id
        HAVING COUNT(r.meeting_id) > 0
@@ -164,7 +165,7 @@ export class AttendancePenaltyReportService {
    */
   async getMeetingSummary(
     actorId: string,
-    q: { from?: string; to?: string; departmentId?: string; search?: string },
+    q: { from?: string; to?: string; departmentId?: FilterSelection<string>; search?: string },
   ) {
     const { scope, departmentId: ownDept } = await this.resolveScope(actorId);
     if (!scope) {
@@ -174,7 +175,7 @@ export class AttendancePenaltyReportService {
       });
     }
     const range = this.parseRange(q.from, q.to);
-    const deptFilter = scope === 'unit' ? ownDept : q.departmentId || null;
+    const deptFilter = scope === 'unit' ? (ownDept ? [ownDept] : []) : q.departmentId ? filterValues(q.departmentId) : null;
     const search = q.search?.trim() ? `%${q.search.trim().toLowerCase()}%` : null;
 
     const rows = await this.dataSource.query(
@@ -194,7 +195,7 @@ export class AttendancePenaltyReportService {
          JOIN users u ON u.id = r.user_id
          LEFT JOIN users h ON h.id = r.host_id
          LEFT JOIN rooms rm ON rm.id = r.room_id
-        WHERE ($3::uuid IS NULL OR u.department_id = $3::uuid)
+        WHERE ($3::uuid[] IS NULL OR u.department_id = ANY($3::uuid[]))
           AND ($4::text IS NULL OR lower(r.title) LIKE $4 OR lower(COALESCE(r.meeting_code, '')) LIKE $4)
         GROUP BY r.meeting_id, r.meeting_code, r.title, r.start_time, r.end_time, rm.room_name, h.full_name
         ORDER BY r.start_time DESC`,
@@ -222,7 +223,7 @@ export class AttendancePenaltyReportService {
   }
 
   /** Chi tiết 1 cuộc họp: danh sách thành viên + tình trạng + điểm (cùng phạm vi đơn vị như trên). */
-  async getMeetingDetail(actorId: string, meetingId: string, departmentId?: string) {
+  async getMeetingDetail(actorId: string, meetingId: string, departmentId?: FilterSelection<string>) {
     const { scope, departmentId: ownDept } = await this.resolveScope(actorId);
     if (!scope) {
       throw new ForbiddenException({
@@ -230,7 +231,7 @@ export class AttendancePenaltyReportService {
         error: 'PERMISSION_DENIED',
       });
     }
-    const deptFilter = scope === 'unit' ? ownDept : departmentId || null;
+    const deptFilter = scope === 'unit' ? (ownDept ? [ownDept] : []) : departmentId ? filterValues(departmentId) : null;
     const [meeting] = await this.dataSource.query(
       `SELECT m.id, m.meeting_code AS "meetingCode", m.title, m.start_time AS "startTime", m.end_time AS "endTime",
               rm.room_name AS "roomName", h.full_name AS "hostName", s.full_name AS "secretaryName"
@@ -261,7 +262,7 @@ export class AttendancePenaltyReportService {
          JOIN users u ON u.id = r.user_id
          LEFT JOIN departments d ON d.id = u.department_id
         WHERE r.meeting_id = $3::uuid
-          AND ($4::uuid IS NULL OR u.department_id = $4::uuid)
+          AND ($4::uuid[] IS NULL OR u.department_id = ANY($4::uuid[]))
         ORDER BY r.points ASC, u.full_name`,
       [new Date(start - 1000), new Date(start + 1000), meetingId, deptFilter],
     );

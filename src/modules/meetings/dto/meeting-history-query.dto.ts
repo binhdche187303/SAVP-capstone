@@ -30,7 +30,7 @@ export class MeetingHistoryQueryDto {
     ],
     {
       each: true,
-      message: 'status khong hop le',
+      message: 'Trạng thái không hợp lệ',
     },
   )
   status?: string[] = ['completed'];
@@ -51,18 +51,29 @@ export class MeetingHistoryQueryDto {
   @IsOptional()
   @IsDateString(
     {},
-    { message: 'from phai la ISO date string (vd: 2026-06-08T00:00:00+07:00)' },
+    { message: 'Thời điểm bắt đầu phải là chuỗi ngày ISO (vd: 2026-06-08T00:00:00+07:00)' },
   )
   from?: string;
 
   @IsOptional()
   @IsDateString(
     {},
-    { message: 'to phai la ISO date string (vd: 2026-06-08T00:00:00+07:00)' },
+    { message: 'Thời điểm kết thúc phải là chuỗi ngày ISO (vd: 2026-06-08T00:00:00+07:00)' },
   )
   to?: string;
 
   @IsOptional()
-  @MaxLength(200, { message: 'q khong duoc vuot qua 200 ky tu' })
+  @MaxLength(200, { message: 'Từ khóa tìm kiếm không được vượt quá 200 ký tự' })
   q?: string;
+
+  // Lịch tuần UEL: lọc theo nhóm lịch. Chuẩn hoá về array giống `status`.
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === undefined ? undefined : Array.isArray(value) ? value : [value],
+  )
+  @IsEnum(['UNIT', 'SCHOOL_LEADERSHIP', 'SCHOOL_OTHER'], {
+    each: true,
+    message: 'Loại lịch không hợp lệ',
+  })
+  calendarType?: string[];
 }

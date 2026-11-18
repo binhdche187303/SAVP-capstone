@@ -1,3 +1,4 @@
+import { filterValues } from '../../../../common/utils/filter-selection.js';
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { REPORT_DEFINITIONS } from '../report-definition.registry.js';
@@ -154,8 +155,8 @@ export class StudentAttendanceReportProvider implements ReportProvider {
     const eq = (key: string, column: string) => {
       const v = filters[key];
       if (!v) return;
-      params.push(v);
-      where += ` AND ${column}::text = $${params.length}`;
+      params.push(filterValues(v));
+      where += ` AND ${column}::text = ANY($${params.length}::text[])`;
     };
     eq('semesterId', 'cs.semester_id');
     eq('subjectId', 'cs.subject_id');

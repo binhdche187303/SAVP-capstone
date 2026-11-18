@@ -57,7 +57,7 @@ describe('EquipmentController.resolveFault (EQUIP-FAULT-LIFECYCLE-001)', () => {
     );
     expect(result).toEqual({
       success: true,
-      message: 'Cap nhat thiet bi da sua xong thanh cong',
+      message: 'Cập nhật thiết bị đã sửa xong thành công',
       data,
     });
   });

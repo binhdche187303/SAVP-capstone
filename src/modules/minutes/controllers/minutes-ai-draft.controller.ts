@@ -117,7 +117,7 @@ export class MinutesAiDraftController {
   @ApiParam({ name: 'meetingId', type: 'string', format: 'uuid' })
   @ApiResponse({
     status: 200,
-    description: 'Danh sach AI draft job',
+    description: 'Danh sách tác vụ tạo biên bản nháp bằng AI',
     type: AiDraftJobSummaryDto,
     isArray: true,
   })
@@ -138,7 +138,7 @@ export class MinutesAiDraftController {
 
     return {
       success: true,
-      message: 'Danh sach AI draft job',
+      message: 'Danh sách tác vụ tạo biên bản nháp bằng AI',
       data,
     };
   }
@@ -179,7 +179,7 @@ export class MinutesAiDraftController {
 
     return {
       success: true,
-      message: 'Trang thai tinh nang AI draft',
+      message: 'Trạng thái tính năng tạo biên bản nháp bằng AI',
       data,
     };
   }

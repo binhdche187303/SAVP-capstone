@@ -1,3 +1,4 @@
+import { filterValues, type FilterSelection } from '../../../common/utils/filter-selection.js';
 import {
   BadRequestException,
   ForbiddenException,
@@ -991,11 +992,11 @@ export class ClassAttendanceService {
     currentUserId: string,
     query: {
       classId?: string;
-      semester?: string;
+      semester?: FilterSelection<string>;
       mode?: string;
       anchorDate?: string;
-      subjectCode?: string;
-      administrativeClass?: string;
+      subjectCode?: FilterSelection<string>;
+      administrativeClass?: FilterSelection<string>;
       source?: string;
       include?: string;
     },
@@ -1075,8 +1076,8 @@ export class ClassAttendanceService {
    */
   private async buildWeeklyTrend(
     classes: any[],
-    semester: string | undefined,
-    administrativeClass: string | undefined,
+    semester: FilterSelection<string> | undefined,
+    administrativeClass: FilterSelection<string> | undefined,
   ) {
     const range = await this.resolveReportRange(
       'semester',
@@ -1158,9 +1159,9 @@ export class ClassAttendanceService {
     currentUserId: string,
     query: {
       classId?: string;
-      semester?: string;
-      subjectCode?: string;
-      administrativeClass?: string;
+      semester?: FilterSelection<string>;
+      subjectCode?: FilterSelection<string>;
+      administrativeClass?: FilterSelection<string>;
       source?: string;
       mode?: string;
       anchorDate?: string;
@@ -1290,7 +1291,7 @@ export class ClassAttendanceService {
         : 'tat-ca-lop';
     const periodPart =
       mode === 'semester'
-        ? this.safeFilename(query.semester || 'ca-hoc-ky')
+        ? this.safeFilename(filterValues(query.semester).join(', ') || 'ca-hoc-ky')
         : `${start}_${end}`;
     return {
       filename: `bang-chuyen-can-${classPart}-${periodPart}.csv`,
@@ -1498,19 +1499,19 @@ export class ClassAttendanceService {
   private async getReportClasses(
     currentUserId: string,
     classId?: string,
-    semester?: string,
-    subjectCode?: string,
+    semester?: FilterSelection<string>,
+    subjectCode?: FilterSelection<string>,
     source?: string,
   ) {
     let classes = await this.listClasses(currentUserId, undefined, source);
     if (semester && semester !== 'all') {
       classes = classes.filter(
         (klass) =>
-          klass.semester === semester || klass.semesterCode === semester,
+          filterValues(semester).some(value => klass.semester === value || klass.semesterCode === value),
       );
     }
     if (subjectCode && subjectCode !== 'all') {
-      classes = classes.filter((klass) => klass.subjectCode === subjectCode);
+      classes = classes.filter((klass) => filterValues(subjectCode).includes(klass.subjectCode));
     }
     if (classId && classId !== 'all') {
       const resolvedId = await this.assertClassAccess(currentUserId, classId, [
@@ -1534,7 +1535,7 @@ export class ClassAttendanceService {
     classes: any[],
     start: string,
     end: string,
-    administrativeClass?: string,
+    administrativeClass?: FilterSelection<string>,
   ) {
     const classIds = classes.map((klass) => klass.id);
     const [
@@ -1644,8 +1645,8 @@ export class ClassAttendanceService {
     query: {
       mode?: string;
       anchorDate?: string;
-      semester?: string;
-      administrativeClass?: string;
+      semester?: FilterSelection<string>;
+      administrativeClass?: FilterSelection<string>;
     },
   ) {
     const resolvedId = await this.assertClassAccess(
@@ -1723,9 +1724,9 @@ export class ClassAttendanceService {
     currentUserId: string,
     query: {
       classId?: string;
-      semester?: string;
-      subjectCode?: string;
-      administrativeClass?: string;
+      semester?: FilterSelection<string>;
+      subjectCode?: FilterSelection<string>;
+      administrativeClass?: FilterSelection<string>;
     },
   ) {
     const classes = await this.getReportClasses(
@@ -1792,7 +1793,7 @@ export class ClassAttendanceService {
     classIds: string[],
     start: string,
     end: string,
-    adminClass?: string,
+    adminClass?: FilterSelection<string>,
   ) {
     const result = new Map<
       string,
@@ -1820,7 +1821,7 @@ export class ClassAttendanceService {
       any[]
     >;
     const sameAdmin = (value: string | null) =>
-      !adminClass || (value ?? '').toLowerCase() === adminClass.toLowerCase();
+      !adminClass || filterValues(adminClass).some(item => (value ?? '').toLowerCase() === item.toLowerCase());
 
     for (const classId of classIds) {
       const { held, unmarked } = this.splitHeldDates(
@@ -1928,7 +1929,7 @@ export class ClassAttendanceService {
    */
   private async getSemesterWarnings(
     classes: { id: string; semester?: string | null }[],
-    adminClass: string | undefined,
+    adminClass: FilterSelection<string> | undefined,
     threshold: number,
   ) {
     const plans = await this.getSemesterPlans(classes);
@@ -2238,7 +2239,7 @@ export class ClassAttendanceService {
     return result;
   }
 
-  private normalizeAdminClass(value?: string) {
+  private normalizeAdminClass(value?: FilterSelection<string>) {
     return value && value !== 'all' ? value : undefined;
   }
 
@@ -2286,7 +2287,7 @@ export class ClassAttendanceService {
   /** Sĩ số đang học theo lớp học phần (lọc theo lớp hành chính nếu có). */
   private async getEnrollmentCounts(
     classIds: string[],
-    administrativeClass?: string,
+    administrativeClass?: FilterSelection<string>,
   ) {
     const result = new Map<string, number>();
     if (classIds.length === 0) return result;
@@ -2297,13 +2298,13 @@ export class ClassAttendanceService {
         JOIN students st ON st.id = ce.student_id AND st.deleted_at IS NULL
        WHERE ce.class_section_id = ANY($1::uuid[])
          AND ce.status = 'active'
-         AND ($2::varchar IS NULL OR lower(st.administrative_class) = lower($2::varchar))
+         AND ($2::varchar[] IS NULL OR lower(st.administrative_class) = ANY($2::varchar[]))
        GROUP BY 1
       `,
       [
         classIds,
         administrativeClass && administrativeClass !== 'all'
-          ? administrativeClass
+          ? filterValues(administrativeClass).map(value => value.toLowerCase())
           : null,
       ],
     )) as { class_id: string; total: number }[];
@@ -2314,7 +2315,7 @@ export class ClassAttendanceService {
   /** Sĩ số đang học theo (lớp học phần, lớp hành chính) — bỏ qua SV chưa có lớp hành chính. */
   private async getEnrollmentCountsByAdminClass(
     classIds: string[],
-    administrativeClass?: string,
+    administrativeClass?: FilterSelection<string>,
   ) {
     const result = new Map<string, Map<string, number>>();
     if (classIds.length === 0) return result;
@@ -2328,13 +2329,13 @@ export class ClassAttendanceService {
        WHERE ce.class_section_id = ANY($1::uuid[])
          AND ce.status = 'active'
          AND st.administrative_class IS NOT NULL
-         AND ($2::varchar IS NULL OR lower(st.administrative_class) = lower($2::varchar))
+         AND ($2::varchar[] IS NULL OR lower(st.administrative_class) = ANY($2::varchar[]))
        GROUP BY 1, 2
       `,
       [
         classIds,
         administrativeClass && administrativeClass !== 'all'
-          ? administrativeClass
+          ? filterValues(administrativeClass).map(value => value.toLowerCase())
           : null,
       ],
     )) as { class_id: string; name: string; total: number }[];
@@ -2350,13 +2351,13 @@ export class ClassAttendanceService {
   private async resolveReportRange(
     mode: string | undefined,
     anchorDate: string | undefined,
-    semester: string | undefined,
+    semester: FilterSelection<string> | undefined,
     classes: any[],
   ) {
     if (mode !== 'semester') return this.getRangeBounds(mode, anchorDate);
     const names =
       semester && semester !== 'all'
-        ? [semester]
+        ? filterValues(semester)
         : [...new Set(classes.map((klass) => klass.semester).filter(Boolean))];
     if (names.length > 0) {
       const rows = (await this.dataSource.manager.query(
@@ -2380,7 +2381,7 @@ export class ClassAttendanceService {
     classIds: string[],
     start: string,
     end: string,
-    administrativeClass?: string,
+    administrativeClass?: FilterSelection<string>,
   ) {
     if (classIds.length === 0) return [];
     return (await this.dataSource.manager.query(
@@ -2407,7 +2408,7 @@ export class ClassAttendanceService {
         LEFT JOIN rooms room ON room.id = cs.default_room_id
        WHERE car.class_section_id = ANY($1::uuid[])
          AND car.attendance_date BETWEEN $2::date AND $3::date
-         AND ($4::varchar IS NULL OR lower(st.administrative_class) = lower($4::varchar))
+         AND ($4::varchar[] IS NULL OR lower(st.administrative_class) = ANY($4::varchar[]))
        ORDER BY car.attendance_date ASC, cs.class_code ASC, st.student_code ASC
       `,
       [
@@ -2415,7 +2416,7 @@ export class ClassAttendanceService {
         start,
         end,
         administrativeClass && administrativeClass !== 'all'
-          ? administrativeClass
+          ? filterValues(administrativeClass).map(value => value.toLowerCase())
           : null,
       ],
     )) as any[];
@@ -2450,14 +2451,15 @@ export class ClassAttendanceService {
     };
   }
 
-  private getSemesterBounds(semester?: string) {
+  private getSemesterBounds(semester?: FilterSelection<string>) {
     if (!semester || semester === 'all') {
       return { start: '1900-01-01', end: '2999-12-31' };
     }
-    const match = semester.match(/(\d{4})-(\d{4})/);
+    const selectedSemester = filterValues(semester)[0] || '';
+    const match = selectedSemester.match(/(\d{4})-(\d{4})/);
     const startYear = match ? Number(match[1]) : new Date().getFullYear();
     const endYear = match ? Number(match[2]) : startYear + 1;
-    if (semester.toUpperCase().startsWith('HK2')) {
+    if (selectedSemester.toUpperCase().startsWith('HK2')) {
       return {
         start: `${endYear}-01-01`,
         end: `${endYear}-05-31`,

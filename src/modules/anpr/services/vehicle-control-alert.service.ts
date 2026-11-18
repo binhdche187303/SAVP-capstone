@@ -251,7 +251,7 @@ export class VehicleControlAlertService {
     return map[String(channelId)] ?? null;
   }
 
-  /** STT 20 (perf): map vượt trần → xoá plate đã quá cửa sổ throttle (không đổi hành vi throttle). */
+  /** STT 20 (perf): map vượt trần → xóa plate đã quá cửa sổ throttle (không đổi hành vi throttle). */
   private pruneThrottle(now: number, throttleMs: number): void {
     if (this.lastAlertAt.size <= THROTTLE_MAP_MAX) return;
     for (const [plate, at] of this.lastAlertAt) {

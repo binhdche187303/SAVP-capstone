@@ -208,7 +208,7 @@ export class MeetingsController {
     return {
       success: true,
 
-      message: 'Yeu cau tao cuoc hop da duoc gui thanh cong',
+      message: 'Yêu cầu tạo cuộc họp đã được gửi thành công',
 
       data: result,
     };
@@ -263,7 +263,7 @@ export class MeetingsController {
     return {
       success: true,
 
-      message: 'Thoi gian cuoc hop da duoc cap nhat thanh cong',
+      message: 'Thời gian cuộc họp đã được cập nhật thành công',
 
       data: result,
 
@@ -305,7 +305,7 @@ export class MeetingsController {
     );
     return {
       success: true,
-      message: 'Lay danh sach cuoc hop thanh cong',
+      message: 'Lấy danh sách cuộc họp thành công',
       data: result.data,
       meta: result.meta,
     };
@@ -364,7 +364,7 @@ export class MeetingsController {
     status: 403,
     description: 'Khong phai organizer/host cua cuoc hop',
   })
-  @ApiResponse({ status: 404, description: 'Khong tim thay cuoc hop' })
+  @ApiResponse({ status: 404, description: 'Không tìm thấy cuộc họp' })
   @ApiResponse({
     status: 409,
     description: 'Cuoc hop da huy hoac da ket thuc, khong the sua',
@@ -384,7 +384,7 @@ export class MeetingsController {
     });
     return {
       success: true,
-      message: 'Cap nhat cuoc hop thanh cong',
+      message: 'Cập nhật cuộc họp thành công',
       data: result,
     };
   }
@@ -430,7 +430,7 @@ export class MeetingsController {
     return {
       success: true,
 
-      message: 'Danh sach phong kha dung',
+      message: 'Danh sách phòng khả dụng',
 
       data: rooms,
     };
@@ -481,7 +481,7 @@ export class MeetingsController {
     return {
       success: true,
 
-      message: 'Thanh vien noi bo da duoc them vao cuoc hop thanh cong',
+      message: 'Thành viên nội bộ đã được thêm vào cuộc họp thành công',
 
       data: result,
     };
@@ -617,7 +617,7 @@ export class MeetingsController {
     return {
       success: true,
 
-      message: 'Phong hop da duoc cap nhat thanh cong',
+      message: 'Phòng họp đã được cập nhật thành công',
 
       data: result,
     };
@@ -651,13 +651,13 @@ export class MeetingsController {
 
     format: 'uuid',
 
-    description: 'ID cua cuoc hop can huy',
+    description: 'ID của cuộc họp cần hủy',
   })
   @ApiBody({ type: CancelMeetingDto, required: false })
   @ApiResponse({
     status: 200,
 
-    description: 'Cuoc hop da duoc huy thanh cong',
+    description: 'Cuộc họp đã được hủy thành công',
 
     type: CancelMeetingResponseDto,
   })
@@ -698,7 +698,7 @@ export class MeetingsController {
     return {
       success: true,
 
-      message: 'Cuoc hop da duoc huy thanh cong',
+      message: 'Cuộc họp đã được hủy thành công',
 
       data: result,
     };
@@ -718,7 +718,7 @@ export class MeetingsController {
       return {
         success: false,
 
-        message: 'startTime va endTime la bat buoc',
+        message: 'Thời gian bắt đầu và kết thúc là bắt buộc',
 
         data: [],
       };
@@ -732,7 +732,7 @@ export class MeetingsController {
       return {
         success: false,
 
-        message: 'startTime hoac endTime khong dung dinh dang',
+        message: 'startTime hoặc endTime không đúng định dạng',
 
         data: [],
       };
@@ -742,7 +742,7 @@ export class MeetingsController {
       return {
         success: false,
 
-        message: 'endTime phai sau startTime',
+        message: 'Thời gian kết thúc phải sau thời gian bắt đầu',
 
         data: [],
       };
@@ -774,7 +774,7 @@ export class MeetingsController {
     return {
       success: true,
 
-      message: 'Danh sach phong kha dung',
+      message: 'Danh sách phòng khả dụng',
 
       data: rooms.map((room) => ({
         id: room.id,
@@ -847,7 +847,7 @@ export class MeetingsController {
     return {
       success: true,
 
-      message: 'Yeu cau cuoc hop da duoc phe duyet thanh cong',
+      message: 'Yêu cầu cuộc họp đã được phê duyệt thành công',
 
       data: result,
     };
@@ -892,7 +892,7 @@ export class MeetingsController {
     return {
       success: true,
 
-      message: 'Yeu cau cuoc hop da bi tu choi',
+      message: 'Yêu cầu cuộc họp đã bị từ chối',
 
       data: result,
     };
@@ -921,7 +921,7 @@ export class MeetingsController {
     return {
       success: true,
 
-      message: 'Lay lich thanh cong',
+      message: 'Lấy lịch thành công',
 
       data: result,
     };
@@ -957,7 +957,7 @@ export class MeetingsController {
     return {
       success: true,
 
-      message: 'Lay lich su cuoc hop thanh cong',
+      message: 'Lấy lịch sử cuộc họp thành công',
 
       data: result,
     };
@@ -988,7 +988,7 @@ export class MeetingsController {
     return {
       success: true,
 
-      message: 'Chi tiet cuoc hop',
+      message: 'Chi tiết cuộc họp',
 
       data: result,
     };
@@ -1040,7 +1040,7 @@ export class MeetingsController {
     return {
       success: true,
 
-      message: 'Da go bo thanh vien khoi cuoc hop thanh cong',
+      message: 'Đã gỡ bỏ thành viên khỏi cuộc họp thành công',
 
       data: result,
     };
@@ -1169,7 +1169,7 @@ export class MeetingsController {
     return {
       success: true,
 
-      message: 'Lay danh sach agenda thanh cong',
+      message: 'Lấy danh sách chương trình họp thành công',
 
       data: result,
     };
@@ -1240,7 +1240,7 @@ export class MeetingsController {
     return {
       success: true,
 
-      message: 'Luu chuong trinh hop thanh cong',
+      message: 'Lưu chương trình họp thành công',
 
       data: result,
     };
@@ -1319,7 +1319,7 @@ export class MeetingsController {
     return {
       success: true,
 
-      message: 'Cap nhat chuong trinh hop thanh cong',
+      message: 'Cập nhật chương trình họp thành công',
 
       data: result,
     };
@@ -1332,7 +1332,7 @@ export class MeetingsController {
   @ApiParam({ name: 'agendaId', type: 'string', format: 'uuid' })
   @ApiResponse({
     status: 200,
-    description: 'Xoa muc agenda thanh cong',
+    description: 'Xóa mục chương trình họp thành công',
     type: DeleteAgendaItemResponseDto,
   })
   @ApiResponse({ status: 403, description: 'AGENDA_WRITE_FORBIDDEN' })
@@ -1375,7 +1375,7 @@ export class MeetingsController {
     return {
       success: true,
 
-      message: 'Xoa muc agenda thanh cong',
+      message: 'Xóa mục chương trình họp thành công',
 
       data: result,
     };
@@ -1439,7 +1439,7 @@ export class MeetingsController {
 
     return {
       success: true,
-      message: 'Da dinh kem tai lieu thanh cong',
+      message: 'Đã đính kèm tài liệu thành công',
       data: result,
     };
   }
@@ -1482,7 +1482,7 @@ export class MeetingsController {
 
     return {
       success: true,
-      message: 'Da go tai lieu dinh kem',
+      message: 'Đã gỡ tài liệu đính kèm',
       data: result,
     };
   }

@@ -1,3 +1,4 @@
+import { filterValues, type FilterSelection } from '../../../common/utils/filter-selection.js';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
@@ -58,13 +59,13 @@ export class ReportScheduleRunService {
     return this.view(rows[0]);
   }
 
-  async list(q: { scheduleId?: string; status?: string; from?: string; to?: string; page?: number | string; limit?: number | string }) {
+  async list(q: { scheduleId?: FilterSelection<string>; status?: FilterSelection<string>; from?: string; to?: string; page?: number | string; limit?: number | string }) {
     const params: unknown[] = [];
     const where: string[] = [];
-    if (q.scheduleId) { params.push(q.scheduleId); where.push(`schedule_id::text = $${params.length}`); }
+    if (q.scheduleId) { params.push(filterValues(q.scheduleId)); where.push(`schedule_id::text = ANY($${params.length}::text[])`); }
     if (q.status) {
-      if (!['queued', 'running', 'success', 'failed'].includes(q.status)) throw reportBadRequest('Trạng thái không hợp lệ', 'VALIDATION_ERROR');
-      params.push(q.status); where.push(`status = $${params.length}`);
+      if (filterValues(q.status).some(value => !['queued', 'running', 'success', 'failed'].includes(value))) throw reportBadRequest('Trạng thái không hợp lệ', 'VALIDATION_ERROR');
+      params.push(filterValues(q.status)); where.push(`status = ANY($${params.length}::text[])`);
     }
     if (q.from) { params.push(q.from); where.push(`(COALESCE(started_at, created_at) AT TIME ZONE 'Asia/Ho_Chi_Minh')::date >= $${params.length}::date`); }
     if (q.to) { params.push(q.to); where.push(`(COALESCE(started_at, created_at) AT TIME ZONE 'Asia/Ho_Chi_Minh')::date <= $${params.length}::date`); }

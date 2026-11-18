@@ -64,12 +64,24 @@ export class SecurityAlertResponseDto {
 
   @ApiPropertyOptional({
     nullable: true,
+    description: 'Họ tên người tiếp nhận',
+  })
+  acknowledged_by_name: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
     description: 'Thời điểm xác nhận tiếp nhận',
   })
   acknowledged_at: Date | null;
 
   @ApiPropertyOptional({ nullable: true, description: 'ID user đã xử lý xong' })
   resolved_by: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Họ tên người xử lý xong',
+  })
+  resolved_by_name: string | null;
 
   @ApiPropertyOptional({ nullable: true, description: 'Thời điểm xử lý xong' })
   resolved_at: Date | null;
@@ -103,8 +115,10 @@ export function toSecurityAlertResponse(
     rule_id: entity.ruleId,
     payload_json: entity.payloadJson,
     acknowledged_by: entity.acknowledgedBy,
+    acknowledged_by_name: entity.acknowledgedByUser?.fullName ?? null,
     acknowledged_at: entity.acknowledgedAt,
     resolved_by: entity.resolvedBy,
+    resolved_by_name: entity.resolvedByUser?.fullName ?? null,
     resolved_at: entity.resolvedAt,
     resolution_note: entity.resolutionNote,
     created_at: entity.createdAt,

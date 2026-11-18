@@ -105,7 +105,7 @@ export class RoomsService {
     if (existing) {
       throw new ConflictException({
         success: false,
-        message: 'Ma phong da ton tai',
+        message: 'Mã phòng đã tồn tại',
         error: {
           code: 'ROOM_CODE_ALREADY_EXISTS',
           details: { roomCode: code },
@@ -137,7 +137,7 @@ export class RoomsService {
       throw new ConflictException({
         success: false,
         message:
-          'Ten phong hop nay da ton tai. Vui long chon mot ten goi khac.',
+          'Tên phòng họp này đã tồn tại. Vui lòng chọn một tên gọi khác.',
         error: {
           code: 'ROOM_NAME_ALREADY_EXISTS',
           details: { roomName: name },
@@ -241,7 +241,7 @@ export class RoomsService {
     if (!room) {
       throw new NotFoundException({
         success: false,
-        message: 'Phong hop khong ton tai',
+        message: 'Phòng họp không tồn tại',
         error: { code: 'ROOM_NOT_FOUND', details: { roomId } },
         timestamp: new Date().toISOString(),
         path: `/api/v1/rooms/${roomId}`,
@@ -487,7 +487,7 @@ export class RoomsService {
     if (!room) {
       throw new NotFoundException({
         success: false,
-        message: 'Phong hop khong ton tai',
+        message: 'Phòng họp không tồn tại',
         error: { code: 'ROOM_NOT_FOUND', details: { roomId } },
         timestamp: new Date().toISOString(),
         path: `/api/v1/rooms/${roomId}/administrative-status`,
@@ -614,7 +614,7 @@ export class RoomsService {
     if (!room) {
       throw new NotFoundException({
         success: false,
-        message: 'Phong hop khong ton tai',
+        message: 'Phòng họp không tồn tại',
         error: { code: 'ROOM_NOT_FOUND', details: { roomId } },
       });
     }
@@ -683,7 +683,7 @@ export class RoomsService {
     if (!room) {
       throw new NotFoundException({
         success: false,
-        message: 'Phong hop khong ton tai',
+        message: 'Phòng họp không tồn tại',
         error: { code: 'ROOM_NOT_FOUND', details: { roomId } },
       });
     }

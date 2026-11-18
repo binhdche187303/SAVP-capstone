@@ -253,7 +253,7 @@ export class MeetingPrepService {
     if (['completed', 'cancelled', 'in_progress'].includes(m.status)) {
       throw new ConflictException({
         success: false,
-        message: 'Cuộc họp đã diễn ra hoặc đã huỷ, không thể nộp báo cáo',
+        message: 'Cuộc họp đã diễn ra hoặc đã hủy, không thể nộp báo cáo',
         error: { code: 'REPORT_CLOSED', details: { status: m.status } },
       });
     }

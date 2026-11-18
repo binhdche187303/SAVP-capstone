@@ -432,7 +432,7 @@ export class RecordingSessionService {
         baseMetadata: metadata,
       });
 
-      // UC-114/115 (C4): concat OK + finalize xong → xoá segment files + list.txt. (0-pause: noop.)
+      // UC-114/115 (C4): concat OK + finalize xong → xóa segment files + list.txt. (0-pause: noop.)
       cleanupSegments();
 
       return {
@@ -703,7 +703,7 @@ export class RecordingSessionService {
         });
       }
 
-      // E. capturing → cộng khoảng pause vào pausedDurationSeconds + xoá paused_at + recording.
+      // E. capturing → cộng khoảng pause vào pausedDurationSeconds + xóa paused_at + recording.
       const pausedAt =
         typeof meta.paused_at === 'string' ? new Date(meta.paused_at) : null;
       const pausedInc = pausedAt
@@ -789,7 +789,7 @@ export class RecordingSessionService {
 
     const code = await this.runFfmpegConcat(listPath, outConcat);
     if (code !== 0) {
-      // C4: concat lỗi → 500, GIỮ segment + list (không xoá, không finalize).
+      // C4: concat lỗi → 500, GIỮ segment + list (không xóa, không finalize).
       throw new InternalServerErrorException({
         code: 'RECORDING_STOP_FAILED',
         message: 'Failed to concat recording segments.',
@@ -1305,7 +1305,7 @@ export class RecordingSessionService {
     if (meetingRows[0].status !== 'completed') {
       throw new BadRequestException({
         code: 'MEETING_NOT_ENDED',
-        message: 'Chi duoc upload audio track sau khi cuoc hop da ket thuc.',
+        message: 'Chỉ được tải lên bản ghi âm sau khi cuộc họp đã kết thúc.',
       });
     }
 
@@ -1317,7 +1317,7 @@ export class RecordingSessionService {
     if (!participantRows || participantRows.length === 0) {
       throw new ForbiddenException({
         code: 'NOT_A_PARTICIPANT',
-        message: 'Ban khong phai la thanh vien cua cuoc hop nay.',
+        message: 'Bạn không phải là thành viên của cuộc họp này.',
       });
     }
 
@@ -1351,21 +1351,21 @@ export class RecordingSessionService {
     if (existingRows && existingRows.length > 0) {
       throw new ConflictException({
         code: 'AUDIO_TRACK_ALREADY_EXISTS',
-        message: 'Ban da upload audio track cho session nay roi.',
+        message: 'Bạn đã tải lên bản ghi âm cho phiên này rồi.',
       });
     }
 
     if (!file || !file.buffer || file.buffer.length === 0) {
       throw new BadRequestException({
         code: 'EMPTY_AUDIO_FILE',
-        message: 'File audio rong hoac khong hop le.',
+        message: 'File âm thanh rỗng hoặc không hợp lệ.',
       });
     }
     const ext = path.extname(file.originalname).toLowerCase();
     if (!RecordingSessionService.SUPPORTED_AUDIO_EXTENSIONS.includes(ext)) {
       throw new BadRequestException({
         code: 'UNSUPPORTED_MEDIA_FORMAT',
-        message: `Dinh dang "${ext}" khong duoc ho tro. Chap nhan: ${RecordingSessionService.SUPPORTED_AUDIO_EXTENSIONS.join(', ')}`,
+        message: `Định dạng "${ext}" không được hỗ trợ. Chấp nhận: ${RecordingSessionService.SUPPORTED_AUDIO_EXTENSIONS.join(', ')}`,
       });
     }
 
@@ -1503,7 +1503,7 @@ export class RecordingSessionService {
     }
   }
 
-  /** Ghi buffer ra temp file để ffprobe đo duration (audio-only, best-effort), rồi xoá. */
+  /** Ghi buffer ra temp file để ffprobe đo duration (audio-only, best-effort), rồi xóa. */
   private async probeUploadedAudioDuration(
     buffer: Buffer,
     ext: string,
@@ -1523,7 +1523,7 @@ export class RecordingSessionService {
     }
   }
 
-  /** Ghi buffer video ra temp file để ffprobe đo duration (best-effort), rồi xoá. */
+  /** Ghi buffer video ra temp file để ffprobe đo duration (best-effort), rồi xóa. */
   private async probeUploadedVideoDuration(
     buffer: Buffer,
     ext: string,

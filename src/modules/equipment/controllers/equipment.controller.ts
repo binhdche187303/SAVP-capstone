@@ -60,7 +60,7 @@ export class EquipmentController {
   )
   @ApiOperation({ summary: 'Dang ky thiet bi hop moi' })
   @ApiBody({ type: CreateEquipmentDto })
-  @ApiResponse({ status: 201, description: 'Dang ky thiet bi thanh cong' })
+  @ApiResponse({ status: 201, description: 'Đăng ký thiết bị thành công' })
   @ApiResponse({
     status: 400,
     description: 'Thieu truong bat buoc / field cam',
@@ -90,7 +90,7 @@ export class EquipmentController {
 
     return {
       success: true,
-      message: 'Dang ky thiet bi thanh cong',
+      message: 'Đăng ký thiết bị thành công',
       data: result,
     };
   }
@@ -118,7 +118,7 @@ export class EquipmentController {
     status: 403,
     description: 'Khong co quyen equipment.report_fault',
   })
-  @ApiResponse({ status: 404, description: 'Khong tim thay thiet bi' })
+  @ApiResponse({ status: 404, description: 'Không tìm thấy thiết bị' })
   @ApiResponse({
     status: 409,
     description: 'Thiet bi retired/lost khong the bao loi',
@@ -148,7 +148,7 @@ export class EquipmentController {
 
     return {
       success: true,
-      message: 'Cap nhat trang thai loi thiet bi thanh cong',
+      message: 'Cập nhật trạng thái lỗi thiết bị thành công',
       data: result,
     };
   }
@@ -158,10 +158,10 @@ export class EquipmentController {
   @UseGuards(PermissionsGuard)
   @RequirePermissions('equipment.delete')
   @ApiOperation({ summary: 'Xoa mem thiet bi (soft delete)' })
-  @ApiResponse({ status: 200, description: 'Xoa thiet bi thanh cong' })
+  @ApiResponse({ status: 200, description: 'Xóa thiết bị thành công' })
   @ApiResponse({ status: 401, description: 'Chua xac thuc' })
   @ApiResponse({ status: 403, description: 'Khong co quyen equipment.delete' })
-  @ApiResponse({ status: 404, description: 'Khong tim thay thiet bi' })
+  @ApiResponse({ status: 404, description: 'Không tìm thấy thiết bị' })
   async deleteEquipment(
     @Param('equipmentId', ParseUUIDPipe) equipmentId: string,
     @CurrentUser() user: { userId: string } | undefined,
@@ -179,7 +179,7 @@ export class EquipmentController {
 
     return {
       success: true,
-      message: 'Xoa thiet bi thanh cong',
+      message: 'Xóa thiết bị thành công',
     };
   }
 
@@ -195,7 +195,7 @@ export class EquipmentController {
     }),
   )
   @ApiOperation({ summary: 'Tim kiem / loc kho thiet bi (co phan trang)' })
-  @ApiResponse({ status: 200, description: 'Danh sach thiet bi' })
+  @ApiResponse({ status: 200, description: 'Danh sách thiết bị' })
   @ApiResponse({ status: 400, description: 'Query khong hop le' })
   @ApiResponse({ status: 401, description: 'Chua xac thuc' })
   @ApiResponse({ status: 403, description: 'Khong co quyen equipment.read' })
@@ -211,7 +211,7 @@ export class EquipmentController {
 
     return {
       success: true,
-      message: 'Danh sach thiet bi',
+      message: 'Danh sách thiết bị',
       data,
       meta: {
         page,
@@ -229,7 +229,7 @@ export class EquipmentController {
   @ApiOperation({
     summary: 'Danh sach phong da dang ky thiet bi nhung chua duoc gan du',
   })
-  @ApiResponse({ status: 200, description: 'Danh sach phong con thieu thiet bi' })
+  @ApiResponse({ status: 200, description: 'Danh sách phòng còn thiếu thiết bị' })
   @ApiResponse({ status: 401, description: 'Chua xac thuc' })
   @ApiResponse({ status: 403, description: 'Khong co quyen equipment.read' })
   async getRoomsMissingEquipment(): Promise<{
@@ -243,7 +243,7 @@ export class EquipmentController {
 
     return {
       success: true,
-      message: 'Danh sach phong con thieu thiet bi',
+      message: 'Danh sách phòng còn thiếu thiết bị',
       data,
       meta: { totalRoomsMissing },
     };
@@ -295,7 +295,7 @@ export class EquipmentController {
 
     return {
       success: true,
-      message: 'Phan bo thiet bi vao phong thanh cong',
+      message: 'Phân bổ thiết bị vào phòng thành công',
       data: result,
     };
   }
@@ -305,13 +305,13 @@ export class EquipmentController {
   @UseGuards(PermissionsGuard)
   @RequirePermissions('equipment.assign')
   @ApiOperation({ summary: 'Go thiet bi khoi phong dang gan' })
-  @ApiResponse({ status: 200, description: 'Go thiet bi khoi phong thanh cong' })
+  @ApiResponse({ status: 200, description: 'Gỡ thiết bị khỏi phòng thành công' })
   @ApiResponse({ status: 401, description: 'Chua xac thuc' })
   @ApiResponse({ status: 403, description: 'Khong co quyen equipment.assign' })
-  @ApiResponse({ status: 404, description: 'Khong tim thay thiet bi' })
+  @ApiResponse({ status: 404, description: 'Không tìm thấy thiết bị' })
   @ApiResponse({
     status: 409,
-    description: 'Thiet bi hien khong duoc gan vao phong nao',
+    description: 'Thiết bị hiện không được gán vào phòng nào',
   })
   async unassignFromRoom(
     @Param('equipmentId', ParseUUIDPipe) equipmentId: string,
@@ -335,7 +335,7 @@ export class EquipmentController {
 
     return {
       success: true,
-      message: 'Go thiet bi khoi phong thanh cong',
+      message: 'Gỡ thiết bị khỏi phòng thành công',
       data: result,
     };
   }
@@ -355,7 +355,7 @@ export class EquipmentController {
   @ApiBody({ type: ConfirmEquipmentFaultDto })
   @ApiResponse({
     status: 200,
-    description: 'Xac nhan loi thiet bi thanh cong',
+    description: 'Xác nhận lỗi thiết bị thành công',
   })
   @ApiResponse({ status: 400, description: 'Du lieu DTO khong hop le' })
   @ApiResponse({ status: 401, description: 'Chua xac thuc' })
@@ -363,7 +363,7 @@ export class EquipmentController {
     status: 403,
     description: 'Khong co quyen equipment.confirm_fault',
   })
-  @ApiResponse({ status: 404, description: 'Khong tim thay thiet bi' })
+  @ApiResponse({ status: 404, description: 'Không tìm thấy thiết bị' })
   @ApiResponse({
     status: 409,
     description: 'Thiet bi dang o trang thai binh thuong, khong co loi active',
@@ -392,7 +392,7 @@ export class EquipmentController {
 
     return {
       success: true,
-      message: 'Xac nhan loi thiet bi thanh cong',
+      message: 'Xác nhận lỗi thiết bị thành công',
       data: result,
     };
   }
@@ -412,7 +412,7 @@ export class EquipmentController {
   @ApiBody({ type: ResolveEquipmentFaultDto })
   @ApiResponse({
     status: 200,
-    description: 'Cap nhat thiet bi da sua xong thanh cong',
+    description: 'Cập nhật thiết bị đã sửa xong thành công',
   })
   @ApiResponse({ status: 400, description: 'Du lieu DTO khong hop le' })
   @ApiResponse({ status: 401, description: 'Chua xac thuc' })
@@ -420,7 +420,7 @@ export class EquipmentController {
     status: 403,
     description: 'Khong co quyen equipment.resolve_fault',
   })
-  @ApiResponse({ status: 404, description: 'Khong tim thay thiet bi' })
+  @ApiResponse({ status: 404, description: 'Không tìm thấy thiết bị' })
   @ApiResponse({
     status: 409,
     description: 'Thiet bi dang o trang thai binh thuong, khong co loi active',
@@ -449,7 +449,7 @@ export class EquipmentController {
 
     return {
       success: true,
-      message: 'Cap nhat thiet bi da sua xong thanh cong',
+      message: 'Cập nhật thiết bị đã sửa xong thành công',
       data: result,
     };
   }
@@ -461,10 +461,10 @@ export class EquipmentController {
   @ApiOperation({
     summary: 'Lich su bao hong / xac nhan / khac phuc cua 1 thiet bi',
   })
-  @ApiResponse({ status: 200, description: 'Lich su bao hong thiet bi' })
+  @ApiResponse({ status: 200, description: 'Lịch sử báo hỏng thiết bị' })
   @ApiResponse({ status: 401, description: 'Chua xac thuc' })
   @ApiResponse({ status: 403, description: 'Khong co quyen equipment.read' })
-  @ApiResponse({ status: 404, description: 'Khong tim thay thiet bi' })
+  @ApiResponse({ status: 404, description: 'Không tìm thấy thiết bị' })
   async getFaultHistory(
     @Param('equipmentId', ParseUUIDPipe) equipmentId: string,
   ): Promise<{
@@ -476,7 +476,7 @@ export class EquipmentController {
 
     return {
       success: true,
-      message: 'Lich su bao hong thiet bi',
+      message: 'Lịch sử báo hỏng thiết bị',
       data,
     };
   }

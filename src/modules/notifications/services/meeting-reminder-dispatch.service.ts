@@ -94,7 +94,7 @@ export class MeetingReminderDispatchService {
         ) {
           await this.notificationsService.markCancelled(
             n.id,
-            'Cuộc họp đã huỷ hoặc đã bắt đầu trước giờ nhắc',
+            'Cuộc họp đã hủy hoặc đã bắt đầu trước giờ nhắc',
           );
           cancelled++;
           continue;

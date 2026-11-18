@@ -233,7 +233,7 @@ describe('VehicleControlListService (VCL-001 / UC8)', () => {
       expect(repo.find).toHaveBeenCalledTimes(1);
     });
 
-    it('Đợt 3: create/update/softDelete → xoá cache, lần tra sau nạp lại ngay', async () => {
+    it('Đợt 3: create/update/softDelete → xóa cache, lần tra sau nạp lại ngay', async () => {
       await service.checkControlList('A');
       await service.create('u1', {
         plateRaw: '30A-999',

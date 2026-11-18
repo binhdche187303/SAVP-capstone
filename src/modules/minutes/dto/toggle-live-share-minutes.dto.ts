@@ -6,6 +6,6 @@ import { IsBoolean } from 'class-validator';
  * tranh nham lan y dinh cua client.
  */
 export class ToggleLiveShareMinutesDto {
-  @IsBoolean({ message: 'enabled phai la kieu boolean' })
+  @IsBoolean({ message: 'enabled phải là kiểu boolean' })
   enabled: boolean;
 }

@@ -1,3 +1,4 @@
+import { filterValues } from '../../../common/utils/filter-selection.js';
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { AuthzReadRepository } from '../../auth/repositories/authz-read.repository.js';
@@ -39,14 +40,13 @@ export class ReportScopeService {
 
     const managed: string[] = (await this.dataSource.query(`SELECT id FROM departments WHERE (manager_user_id = $1 OR EXISTS (SELECT 1 FROM users bgh WHERE bgh.id = $1 AND bgh.leadership_title IS NOT NULL))`, [userId])).map((r: { id: string }) => r.id);
     const requested = filters['departmentId'];
-    if (requested && !managed.includes(requested)) throw forbid('Phòng ban nằm ngoài phạm vi quản lý của bạn.', 'DEPARTMENT_OUT_OF_SCOPE');
+    if (requested && filterValues(requested).some(id => !managed.includes(id))) throw forbid('Phòng ban nằm ngoài phạm vi quản lý của bạn.', 'DEPARTMENT_OUT_OF_SCOPE');
 
     const staffId = filters['staffId'];
     if (staffId) {
-      const rows: Array<{ department_id: string | null }> = await this.dataSource.query(`SELECT department_id FROM users WHERE id = $1`, [staffId]);
-      const dept = rows[0]?.department_id ?? null;
-      if (!dept || !managed.includes(dept)) throw forbid('Cá nhân nằm ngoài phạm vi quản lý của bạn.', 'DEPARTMENT_OUT_OF_SCOPE');
+      const rows: Array<{ department_id: string | null }> = await this.dataSource.query(`SELECT department_id FROM users WHERE id = ANY($1::uuid[])`, [filterValues(staffId)]);
+      if (rows.length !== filterValues(staffId).length || rows.some(row => !row.department_id || !managed.includes(row.department_id))) throw forbid('Cá nhân nằm ngoài phạm vi quản lý của bạn.', 'DEPARTMENT_OUT_OF_SCOPE');
     }
-    return { unrestricted: false, departmentIds: requested ? [requested] : managed };
+    return { unrestricted: false, departmentIds: requested ? filterValues(requested) : managed };
   }
 }

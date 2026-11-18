@@ -131,14 +131,14 @@ export class GuestManagementService {
     if (!externalParticipant) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay khach trong cuoc hop nay.',
+        message: 'Không tìm thấy khách trong cuộc họp này.',
         error: { code: 'EXTERNAL_PARTICIPANT_NOT_FOUND', details: {} },
       });
     }
     if (!externalParticipant.email) {
       throw new NotFoundException({
         success: false,
-        message: 'Khach chua co email, khong the gui loi moi.',
+        message: 'Khách chưa có email, không thể gửi lời mời.',
         error: {
           code: GUEST_ACCESS_ERROR_CODES.GUEST_EMAIL_MISSING,
           details: {},
@@ -177,7 +177,7 @@ export class GuestManagementService {
       meetingTitle: meeting.title,
       startTime: meeting.startTime,
       endTime: meeting.endTime,
-      hostName: host?.fullName ?? 'Chua xac dinh',
+      hostName: host?.fullName ?? 'Chưa xác định',
       link: issued.link,
     });
 
@@ -228,7 +228,7 @@ export class GuestManagementService {
     if (!meeting || meeting.deletedAt) {
       throw new NotFoundException({
         success: false,
-        message: 'Khong tim thay cuoc hop.',
+        message: 'Không tìm thấy cuộc họp.',
         error: { code: 'MEETING_NOT_FOUND', details: {} },
       });
     }
@@ -241,7 +241,7 @@ export class GuestManagementService {
     if (!isAdmin && !isHost) {
       throw new ForbiddenException({
         success: false,
-        message: 'Ban khong phai host cua cuoc hop nay.',
+        message: 'Bạn không phải chủ trì của cuộc họp này.',
         error: {
           code: GUEST_ACCESS_ERROR_CODES.NOT_MEETING_HOST,
           details: {},
