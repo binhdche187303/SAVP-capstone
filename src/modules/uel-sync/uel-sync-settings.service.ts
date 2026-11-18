@@ -3,7 +3,8 @@ import { DataSource } from 'typeorm';
 import { clean } from './uel-sync.mapper.js';
 import type { UelSyncAllPlan } from './uel-sync.service.js';
 
-export type UelSyncFrequency = 'daily' | 'weekly';
+/** interval = mỗi N ngày (intervalDays) lúc HH:mm. */
+export type UelSyncFrequency = 'daily' | 'weekly' | 'interval';
 export type UelSyncTermMode = 'auto' | 'fixed';
 
 export interface UelSyncSettings {
@@ -19,8 +20,8 @@ export interface UelSyncSettings {
   /** nam_hoc của học kỳ chỉ định, vd "2026-2027" (chỉ dùng khi termMode = fixed). */
   namHoc: string;
   hocKy: string;
-  /** Số ngày lịch học kéo trước tính từ hôm nay (không lấy quá khứ). */
-  sessionDaysAhead: number;
+  /** Chỉ dùng khi frequency = interval: chạy mỗi N ngày (2..90). */
+  intervalDays: number;
 }
 
 export interface StudyPeriod {
@@ -37,12 +38,15 @@ const KEYS = {
   termMode: 'uel_sync.term_mode',
   namHoc: 'uel_sync.nam_hoc',
   hocKy: 'uel_sync.hoc_ky',
-  sessionDaysAhead: 'uel_sync.session_days_ahead',
+  intervalDays: 'uel_sync.interval_days',
 } as const;
 
-export const DEFAULT_SESSION_DAYS_AHEAD = 14;
-export const MAX_SESSION_DAYS_AHEAD = 120;
 export const DEFAULT_SYNC_TIME = '02:00';
+export const DEFAULT_INTERVAL_DAYS = 3;
+export const MIN_INTERVAL_DAYS = 2;
+export const MAX_INTERVAL_DAYS = 90;
+/** Lượt toàn bộ luôn lấy tối thiểu từng này ngày tới (cuối tháng 8 vẫn có lịch năm học mới). */
+export const MIN_SESSION_DAYS_AHEAD = 14;
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -81,24 +85,63 @@ export function vnDate(d: Date, addDays = 0): string {
 }
 
 /**
- * Lượt "đồng bộ toàn bộ" (nút trên trang quản trị + lịch tự động): đủ 6 bước, lịch học CHỈ từ hôm nay
- * (giờ VN) đến hôm nay + sessionDaysAhead − 1 — không kéo lại quá khứ.
+ * Ngày cuối năm học hiện tại (yyyy-MM-dd, giờ VN) = 31/08: tháng ≥ 9 ⇒ 31/08 năm sau, ngược lại
+ * 31/08 năm nay. Luôn ≥ hôm nay + 13 ngày. Không theo năm học chỉ định (năm cũ/xa sẽ cho
+ * khoảng quá ngắn/quá dài; buổi của kỳ khác đã được bỏ qua ở bước sessions).
+ */
+export function schoolYearEndOf(now: Date): string {
+  const today = vnDate(now);
+  const year = Number(today.slice(0, 4));
+  const endYear = Number(today.slice(5, 7)) >= 9 ? year + 1 : year;
+  const end = `${endYear}-08-31`;
+  const min = vnDate(now, MIN_SESSION_DAYS_AHEAD - 1);
+  return end > min ? end : min;
+}
+
+/**
+ * Lượt "đồng bộ toàn bộ" (nút trên trang quản trị + lịch tự động): đủ 6 bước, lịch học từ hôm nay
+ * (giờ VN) đến hết năm học (schoolYearEndOf) — không kéo lại quá khứ.
  */
 export function runAllPlanOf(s: UelSyncSettings, now: Date): UelSyncAllPlan {
-  const days = Math.min(
-    MAX_SESSION_DAYS_AHEAD,
-    Math.max(1, s.sessionDaysAhead || DEFAULT_SESSION_DAYS_AHEAD),
-  );
   const fixed = s.termMode === 'fixed' && !!s.namHoc && !!s.hocKy;
   return {
     fromDate: vnDate(now),
-    toDate: vnDate(now, days - 1),
+    toDate: schoolYearEndOf(now),
     termMode: fixed ? 'fixed' : 'auto',
     terms: fixed ? [{ namHoc: s.namHoc, hocKy: s.hocKy }] : [],
   };
 }
 
-/** Biểu thức cron (có giây) theo cài đặt: hằng ngày / hằng tuần lúc HH:mm. */
+/** Số ngày lịch (giờ VN) từ ngày của a đến ngày của b. */
+function vnDaysBetween(a: Date, b: Date): number {
+  return Math.round(
+    (Date.parse(vnDate(b)) - Date.parse(vnDate(a))) / 86400_000,
+  );
+}
+
+/** Lịch mỗi N ngày: đến hạn khi chưa có lượt tự động nào, hoặc lượt trước cách ≥ N ngày (theo ngày VN). */
+export function intervalDueOf(
+  lastRunAt: string | null,
+  now: Date,
+  days: number,
+): boolean {
+  return !lastRunAt || vnDaysBetween(new Date(lastRunAt), now) >= days;
+}
+
+/** Lần chạy kế tiếp của lịch mỗi N ngày: (ngày lượt trước + N) lúc HH:mm giờ VN, không sớm hơn lần cron kế tiếp. */
+export function nextIntervalRunOf(
+  lastRunAt: string | null,
+  cronNext: Date,
+  days: number,
+  time: string,
+): Date {
+  if (!lastRunAt) return cronNext;
+  const hhmm = HHMM.test(time) ? time : DEFAULT_SYNC_TIME;
+  const due = new Date(`${vnDate(new Date(lastRunAt), days)}T${hhmm}:00+07:00`);
+  return due > cronNext ? due : cronNext;
+}
+
+/** Biểu thức cron (có giây) theo cài đặt: hằng ngày / hằng tuần lúc HH:mm; mỗi N ngày = hằng ngày (bộ hẹn giờ tự bỏ qua ngày chưa đến hạn). */
 export function cronOf(
   s: Pick<UelSyncSettings, 'frequency' | 'weekday' | 'time'>,
 ): string {
@@ -123,15 +166,19 @@ export class UelSyncSettingsService {
       [Object.values(KEYS)],
     );
     const v = new Map(rows.map((r) => [r.config_key, r.config_value]));
-    const days = Number(v.get(KEYS.sessionDaysAhead));
     const weekday = Number(v.get(KEYS.weekday));
     const time = clean(v.get(KEYS.time)) ?? '';
     const namHoc = clean(v.get(KEYS.namHoc)) ?? '';
     const hocKy = clean(v.get(KEYS.hocKy)) ?? '';
     const termMode = clean(v.get(KEYS.termMode));
+    const frequency = v.get(KEYS.frequency);
+    const intervalDays = Number(v.get(KEYS.intervalDays));
     return {
       autoEnabled: v.get(KEYS.autoEnabled) === 'true',
-      frequency: v.get(KEYS.frequency) === 'weekly' ? 'weekly' : 'daily',
+      frequency:
+        frequency === 'weekly' || frequency === 'interval'
+          ? frequency
+          : 'daily',
       weekday:
         Number.isInteger(weekday) && weekday >= 0 && weekday <= 6 ? weekday : 0,
       time: HHMM.test(time) ? time : DEFAULT_SYNC_TIME,
@@ -144,10 +191,12 @@ export class UelSyncSettingsService {
             : 'auto',
       namHoc,
       hocKy,
-      sessionDaysAhead:
-        Number.isInteger(days) && days >= 1 && days <= MAX_SESSION_DAYS_AHEAD
-          ? days
-          : DEFAULT_SESSION_DAYS_AHEAD,
+      intervalDays:
+        Number.isInteger(intervalDays) &&
+        intervalDays >= MIN_INTERVAL_DAYS &&
+        intervalDays <= MAX_INTERVAL_DAYS
+          ? intervalDays
+          : DEFAULT_INTERVAL_DAYS,
     };
   }
 
@@ -168,6 +217,15 @@ export class UelSyncSettingsService {
         'Chế độ học kỳ chỉ định cần nhập năm học và học kỳ.',
       );
     }
+    if (
+      !Number.isInteger(next.intervalDays) ||
+      next.intervalDays < MIN_INTERVAL_DAYS ||
+      next.intervalDays > MAX_INTERVAL_DAYS
+    ) {
+      throw new BadRequestException(
+        `Số ngày giữa 2 lần đồng bộ phải từ ${MIN_INTERVAL_DAYS} đến ${MAX_INTERVAL_DAYS}.`,
+      );
+    }
     if (!HHMM.test(next.time)) {
       throw new BadRequestException('Giờ chạy phải có dạng HH:mm.');
     }
@@ -179,7 +237,7 @@ export class UelSyncSettingsService {
       [KEYS.termMode, next.termMode],
       [KEYS.namHoc, next.namHoc],
       [KEYS.hocKy, next.hocKy],
-      [KEYS.sessionDaysAhead, String(next.sessionDaysAhead)],
+      [KEYS.intervalDays, String(next.intervalDays)],
     ];
     await this.db.transaction(async (m) => {
       for (const [key, value] of values) {

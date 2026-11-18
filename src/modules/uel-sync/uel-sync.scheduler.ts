@@ -10,6 +10,8 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
 import {
   cronOf,
+  intervalDueOf,
+  nextIntervalRunOf,
   runAllPlanOf,
   UelSyncSettingsService,
 } from './uel-sync-settings.service.js';
@@ -24,16 +26,17 @@ const WEEKDAYS = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
 /** Nhãn lịch chạy hiển thị trên trang quản trị, vd "02:00 hằng ngày" / "02:00 T2 hằng tuần". */
 export function scheduleLabelOf(s: UelSyncSettings): string {
   if (!s.autoEnabled) return 'Đang tắt';
+  if (s.frequency === 'interval') return `${s.time} mỗi ${s.intervalDays} ngày`;
   return s.frequency === 'weekly'
     ? `${s.time} ${WEEKDAYS[s.weekday] ?? ''} hằng tuần`
     : `${s.time} hằng ngày`;
 }
 
 /**
- * Đồng bộ UEL tự động theo cài đặt (bật/tắt, hằng ngày/hằng tuần, giờ chạy) — cron động qua
+ * Đồng bộ UEL tự động theo cài đặt (bật/tắt, hằng ngày/hằng tuần/mỗi N ngày, giờ chạy) — cron động qua
  * SchedulerRegistry, đổi cài đặt là áp dụng ngay. Server chỉ cho phép khi
  * SCHEDULER_ENABLED && SCHEDULER_UEL_SYNC_ENABLED (mặc định tắt).
- * Mỗi lượt = "đồng bộ toàn bộ": lịch học từ hôm nay → +sessionDaysAhead, không lấy quá khứ.
+ * Mỗi lượt = "đồng bộ toàn bộ": lịch học từ hôm nay → hết năm học (31/08), không lấy quá khứ.
  * KHÔNG ném lỗi ra cron.
  */
 @Injectable()
@@ -44,6 +47,9 @@ export class UelSyncScheduler
   /** Env cho phép chạy hẹn giờ trên server này. */
   readonly serverAllowed: boolean;
   private job: CronJob | null = null;
+  private current: UelSyncSettings | null = null;
+  /** Giờ bắt đầu lượt tự động gần nhất chạy xong (cho lịch mỗi N ngày). */
+  private lastScheduledAt: string | null = null;
 
   constructor(
     config: ConfigService,
@@ -61,11 +67,26 @@ export class UelSyncScheduler
     return this.job !== null;
   }
 
+  /** Giờ bắt đầu (ISO) lượt tự động gần nhất đã chạy xong, null nếu chưa có. */
+  get lastScheduledRunAt(): string | null {
+    return this.lastScheduledAt;
+  }
+
   /** Lần chạy kế tiếp (ISO) hoặc null khi đang tắt. */
   get nextRunAt(): string | null {
     if (!this.job) return null;
     try {
-      return this.job.nextDate().toJSDate().toISOString();
+      const cronNext = this.job.nextDate().toJSDate();
+      const s = this.current;
+      if (s?.frequency === 'interval') {
+        return nextIntervalRunOf(
+          this.lastScheduledAt,
+          cronNext,
+          s.intervalDays,
+          s.time,
+        ).toISOString();
+      }
+      return cronNext.toISOString();
     } catch {
       return null;
     }
@@ -90,6 +111,8 @@ export class UelSyncScheduler
   apply(s: UelSyncSettings): void {
     this.stop();
     if (!this.serverAllowed || !s.autoEnabled) return;
+    this.current = s;
+    void this.refreshLastScheduled();
     const job = CronJob.from({
       cronTime: cronOf(s),
       onTick: () => void this.tick(),
@@ -104,6 +127,17 @@ export class UelSyncScheduler
     );
   }
 
+  /** Đọc lại lượt tự động gần nhất (lỗi thì giữ giá trị cũ). */
+  async refreshLastScheduled(): Promise<void> {
+    try {
+      this.lastScheduledAt = await this.sync.lastScheduledRunAt();
+    } catch (e) {
+      this.logger.warn(
+        `Không đọc được lượt đồng bộ tự động gần nhất: ${(e as Error).message}`,
+      );
+    }
+  }
+
   private stop(): void {
     if (!this.job) return;
     void this.job.stop();
@@ -113,6 +147,7 @@ export class UelSyncScheduler
       // chưa đăng ký
     }
     this.job = null;
+    this.current = null;
   }
 
   async tick(): Promise<void> {
@@ -126,6 +161,10 @@ export class UelSyncScheduler
     try {
       const s = await this.settings.getSettings();
       if (!s.autoEnabled) return;
+      if (s.frequency === 'interval') {
+        const last = await this.sync.lastScheduledRunAt();
+        if (!intervalDueOf(last, new Date(), s.intervalDays)) return;
+      }
       await this.sync.startAll(runAllPlanOf(s, new Date()), {
         trigger: 'schedule',
       });
@@ -136,5 +175,6 @@ export class UelSyncScheduler
         this.logger.error(`Đồng bộ UEL tự động lỗi: ${(e as Error).message}`);
       }
     }
+    await this.refreshLastScheduled();
   }
 }

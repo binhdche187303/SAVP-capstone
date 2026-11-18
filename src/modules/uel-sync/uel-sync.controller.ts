@@ -9,11 +9,13 @@ import {
   Post,
   Put,
   Query,
+  Res,
   UseGuards,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { PermissionsGuard } from '../auth/guards/permissions.guard.js';
@@ -75,7 +77,7 @@ export class UelSyncController {
     summary: 'Đồng bộ toàn bộ UEL (1 nút, chạy nền)',
     description:
       'Chạy đủ 6 bước. Học kỳ: tự nhận từ TKB các ngày tới (termMode=auto) hoặc học kỳ chỉ định trong cài đặt. ' +
-      'Lịch học chỉ lấy từ hôm nay đến hôm nay + sessionDaysAhead − 1 (không lấy quá khứ). 409 khi đang có lượt khác.',
+      'Lịch học lấy từ hôm nay đến hết năm học (31/08; không lấy quá khứ). 409 khi đang có lượt khác.',
   })
   async runAll(@CurrentUser() user?: { userId?: string }) {
     const plan = runAllPlanOf(await this.settings.getSettings(), new Date());
@@ -96,13 +98,16 @@ export class UelSyncController {
       this.settings.getPeriods(),
       this.sync.history(1),
     ]);
+    const { fromDate, toDate } = runAllPlanOf(settings, new Date());
     return {
+      plan: { fromDate, toDate },
       configured: this.sync.configured,
       running: this.sync.isRunning,
       schedule: {
         enabled: this.scheduler.enabled,
         serverAllowed: this.scheduler.serverAllowed,
         nextRunAt: this.scheduler.nextRunAt,
+        lastRunAt: this.scheduler.lastScheduledRunAt,
         label: scheduleLabelOf(settings),
       },
       settings,
@@ -117,10 +122,38 @@ export class UelSyncController {
     return this.sync.history(limit);
   }
 
+  @Get('gaps')
+  @ApiOperation({
+    summary:
+      'Dữ liệu cần bổ sung hiện tại: SV / cán bộ chưa có email (theo khóa), lớp HP chưa có GV (theo lý do)',
+  })
+  gaps() {
+    return this.sync.gaps();
+  }
+
+  @Get('gaps/export')
+  @ApiOperation({
+    summary:
+      'Xuất Excel: Tổng hợp, SV chưa có email, cán bộ chưa có email, lớp HP chưa có GV (cột trống để bổ sung)',
+  })
+  async exportGaps(@Res() res: Response): Promise<void> {
+    const buffer = await this.sync.gapsXlsx();
+    const day = new Date().toISOString().slice(0, 10);
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="uel-du-lieu-can-bo-sung-${day}.xlsx"`,
+    );
+    res.send(buffer);
+  }
+
   @Get('settings')
   @ApiOperation({
     summary:
-      'Cài đặt đồng bộ tự động (bật/tắt, tần suất, giờ, cách chọn học kỳ, số ngày lịch học)',
+      'Cài đặt đồng bộ tự động (bật/tắt, tần suất, giờ, cách chọn học kỳ)',
   })
   getSettings() {
     return this.settings.getSettings();
@@ -132,7 +165,12 @@ export class UelSyncController {
     @Body() dto: UelSyncSettingsDto,
     @CurrentUser() user?: { userId?: string },
   ) {
-    const saved = await this.settings.updateSettings(dto, user?.userId ?? null);
+    const patch = { ...dto };
+    delete patch.sessionDaysAhead; // trường cũ của FE, bỏ qua
+    const saved = await this.settings.updateSettings(
+      patch,
+      user?.userId ?? null,
+    );
     this.scheduler.apply(saved); // đổi lịch chạy có hiệu lực ngay
     return saved;
   }

@@ -151,6 +151,53 @@ export function sessionTimesFromClock(
   return { start: `${isoDate}T${a}+07:00`, end: `${isoDate}T${b}+07:00` };
 }
 
+/** Thời lượng 1 tiết UEL (phút) khi chưa có buổi cùng tiết để suy ra. */
+export const UEL_PERIOD_MINUTES = 50;
+
+/**
+ * Giờ buổi học khi API chỉ có giờ bắt đầu đúng (giờ kết thúc thiếu / sớm hơn bắt đầu — UEL
+ * trả 17:45→17:35 cho buổi tối 1 tiết). Kết thúc = bắt đầu + thời lượng học được từ các buổi
+ * cùng "tiết bắt đầu|số tiết" (`learned`, phút), không có thì số tiết × 50 phút.
+ * Null khi thiếu dữ liệu hoặc vượt quá nửa đêm.
+ */
+export function sessionTimesFromStart(
+  isoDate: string,
+  gioBatDau: string | null | undefined,
+  tietBatDau: number | null,
+  soTiet: number | null,
+  learned: ReadonlyMap<string, number>,
+): { start: string; end: string } | null {
+  const a = clockOf(gioBatDau);
+  if (!a || !soTiet || soTiet < 1) return null;
+  const minutes =
+    learned.get(`${tietBatDau}|${soTiet}`) ?? soTiet * UEL_PERIOD_MINUTES;
+  const [h, m, s] = a.split(':').map(Number);
+  const endMin = h * 60 + m + minutes;
+  if (endMin >= 24 * 60) return null;
+  const p = (n: number) => String(n).padStart(2, '0');
+  const b = `${p(Math.floor(endMin / 60))}:${p(endMin % 60)}:${p(s)}`;
+  return { start: `${isoDate}T${a}+07:00`, end: `${isoDate}T${b}+07:00` };
+}
+
+/** Họ tên để so khớp: NFC, chữ thường, gộp khoảng trắng. */
+export function personNameKey(s: string | null | undefined): string {
+  return (s ?? '').normalize('NFC').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/** Học hàm/học vị đứng đầu tên GV ở tkb_ds_lophp ("TS.", "PGS.TS.", "ThS.", "GS. TSKH."…). */
+const ACADEMIC_TITLE = /^(?:(?:gs|pgs|tskh|ts|ths|ncs|cn|ks|ls|bs)\.\s*)+/;
+
+/**
+ * tkb_ds_lophp.giang_vien là họ tên kèm học vị (vd "TS. Lê Thanh Hòa"), có thể nhiều GV
+ * cách nhau dấu phẩy/chấm phẩy ⇒ danh sách tên đã chuẩn hóa (personNameKey), bỏ học vị.
+ */
+export function lecturerNamesOf(v: string | null | undefined): string[] {
+  return String(v ?? '')
+    .split(/[,;]/)
+    .map((s) => personNameKey(s).replace(ACADEMIC_TITLE, '').trim())
+    .filter(Boolean);
+}
+
 /** Danh sách mã nhập tay: tách dấu phẩy/khoảng trắng/xuống dòng, bỏ trùng, giữ thứ tự. */
 export function codeListOf(
   v: readonly string[] | string | null | undefined,

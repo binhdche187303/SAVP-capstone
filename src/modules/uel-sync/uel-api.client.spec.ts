@@ -116,7 +116,6 @@ describe('UelApiClient', () => {
   });
 });
 
-
 describe('UelApiClient pagination safety', () => {
   it('rejects malformed pagination rather than applying a partial snapshot', async () => {
     const { client } = make([json(200, { items: [1], page: 1, total: 2 })]);
@@ -128,5 +127,66 @@ describe('UelApiClient pagination safety', () => {
       json(404, { error: { code: 'Data.NotFound' } }),
     ]);
     await expect(client.all('x/y')).rejects.toThrow('phân trang UEL');
+  });
+});
+
+describe('UelApiClient phân trang không ổn định', () => {
+  const pg = (items: unknown[], p: number) => ({
+    items,
+    total: 3,
+    page: p,
+    limit: 2,
+    totalPages: 2,
+  });
+
+  it('trang trả trùng/sót (UEL sắp xếp không ổn định) ⇒ tải lại tới khi đủ tổng số, bỏ trùng', async () => {
+    const a = { ma: 'A' };
+    const b = { ma: 'B' };
+    const c = { ma: 'C' };
+    const { client, calls } = make([
+      json(200, pg([a, b], 1)),
+      json(200, pg([b], 2)), // B lặp, C bị sót
+      json(200, pg([a, c], 1)),
+      json(200, pg([b], 2)),
+    ]);
+    expect(await client.all('x/y')).toEqual([a, b, c]);
+    expect(calls.map((x) => bodyOf(x.init).page)).toEqual([1, 2, 1, 2]);
+  });
+
+  it('tải lại nhiều lần vẫn thiếu ⇒ ném lỗi (không áp dụng danh sách thiếu)', async () => {
+    const a = { ma: 'A' };
+    const b = { ma: 'B' };
+    const { client } = make(
+      Array.from({ length: 10 }, (_, i) =>
+        json(200, pg(i % 2 === 0 ? [a, b] : [b], (i % 2) + 1)),
+      ),
+    );
+    await expect(client.all('x/y')).rejects.toThrow('trả thiếu');
+  });
+  it('UEL trả dòng trùng y hệt trong cùng 1 trang (total đếm cả dòng trùng) ⇒ không báo thiếu, không tải lại', async () => {
+    const a = { ma: 'A' };
+    const b = { ma: 'B' };
+    const { client, calls } = make([
+      json(200, {
+        items: [a, a, b],
+        total: 3,
+        page: 1,
+        limit: 1000,
+        totalPages: 1,
+      }),
+    ]);
+    expect(await client.all('x/y')).toEqual([a, b]);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('nhiều trang, dòng trùng trong cùng 1 trang được tính vào tổng ⇒ đủ sau 1 lượt', async () => {
+    const a = { ma: 'A' };
+    const b = { ma: 'B' };
+    const { client, calls } = make([
+      json(200, pg([a, a], 1)),
+      json(200, pg([b], 2)),
+    ]);
+    expect(await client.all('x/y')).toEqual([a, b]);
+    expect(calls).toHaveLength(2);
   });
 });

@@ -43,6 +43,8 @@ export class UelApiError extends Error {
 
 /** limit tối đa mọi API theo tài liệu. */
 export const UEL_MAX_LIMIT = 1000;
+/** Số lượt tải lại toàn bộ trang khi UEL trả trùng/sót giữa các trang. */
+export const UEL_PAGE_ROUNDS = 5;
 const RETRYABLE = new Set([429, 502, 503, 504]);
 
 export class UelApiClient {
@@ -73,11 +75,19 @@ export class UelApiClient {
       const res = await this.post(api, body);
       if (res.ok) {
         const data = (await res.json()) as UelPage<T>;
-        if (!Array.isArray(data.items) || data.page !== page ||
-            !Number.isInteger(data.totalPages) || data.totalPages < 0 ||
-            !Number.isInteger(data.total) || data.total < 0 ||
-            (data.total > 0 && data.totalPages < page)) {
-          throw new UelApiError('UEL API trả phân trang không hợp lệ; dừng đồng bộ để bảo vệ dữ liệu.', 200);
+        if (
+          !Array.isArray(data.items) ||
+          data.page !== page ||
+          !Number.isInteger(data.totalPages) ||
+          data.totalPages < 0 ||
+          !Number.isInteger(data.total) ||
+          data.total < 0 ||
+          (data.total > 0 && data.totalPages < page)
+        ) {
+          throw new UelApiError(
+            'UEL API trả phân trang không hợp lệ; dừng đồng bộ để bảo vệ dữ liệu.',
+            200,
+          );
         }
         return data;
       }
@@ -99,21 +109,59 @@ export class UelApiClient {
     }
   }
 
-  /** Gọi hết các trang (page = 1..totalPages, cùng limit). */
+  /**
+   * Gọi hết các trang (page = 1..totalPages, cùng limit).
+   * UEL sắp xếp không ổn định giữa các trang (lớp HP ~2.900 SV: 67 dòng lặp, 67 dòng sót) ⇒
+   * gom theo bản ghi, thiếu thì tải lại cả lượt trang tới khi đủ `total` (tối đa UEL_PAGE_ROUNDS lượt).
+   * UEL còn trả dòng trùng y hệt ngay trong 1 trang (lớp ghép chung mã lịch học) và `total` đếm
+   * cả các dòng đó ⇒ số dòng thật của 1 bản ghi = số lần xuất hiện nhiều nhất trong 1 trang.
+   * Kết quả trả về đã bỏ dòng trùng y hệt.
+   */
   async all<T>(api: string, filter: UelFilter = {}): Promise<T[]> {
     const first = await this.page<T>(api, filter, 1);
-    const out = [...first.items];
-    for (let p = 2; p <= first.totalPages; p++) {
-      const next = await this.page<T>(api, filter, p);
-      if (next.totalPages !== first.totalPages || next.total !== first.total || !next.items.length) {
-        throw new UelApiError('Dữ liệu phân trang UEL thay đổi hoặc thiếu; cần chạy lại đồng bộ.', 200);
+    const seen = new Map<string, { item: T; n: number }>();
+    let count = 0; // tổng số dòng đã thấy, tính cả dòng trùng trong cùng trang
+    const add = (items: T[]) => {
+      const inPage = new Map<string, number>();
+      for (const it of items) {
+        const k = JSON.stringify(it);
+        const n = (inPage.get(k) ?? 0) + 1;
+        inPage.set(k, n);
+        const prev = seen.get(k);
+        if (!prev) {
+          seen.set(k, { item: it, n });
+          count++;
+        } else if (n > prev.n) {
+          prev.n = n;
+          count++;
+        }
       }
-      out.push(...next.items);
+    };
+    add(first.items);
+    for (let round = 0; round < UEL_PAGE_ROUNDS; round++) {
+      for (let p = round === 0 ? 2 : 1; p <= first.totalPages; p++) {
+        const next = await this.page<T>(api, filter, p);
+        if (
+          next.totalPages !== first.totalPages ||
+          next.total !== first.total ||
+          !next.items.length
+        ) {
+          throw new UelApiError(
+            'Dữ liệu phân trang UEL thay đổi hoặc thiếu; cần chạy lại đồng bộ.',
+            200,
+          );
+        }
+        add(next.items);
+      }
+      if (count >= first.total || first.totalPages <= 1) break;
     }
-    if (out.length !== first.total) {
-      throw new UelApiError('UEL API trả thiếu dữ liệu so với tổng số bản ghi.', 200);
+    if (count < first.total) {
+      throw new UelApiError(
+        `UEL API trả thiếu dữ liệu so với tổng số bản ghi (${count}/${first.total} sau ${UEL_PAGE_ROUNDS} lượt tải).`,
+        200,
+      );
     }
-    return out;
+    return [...seen.values()].map((v) => v.item);
   }
 
   private async post(api: string, body: string): Promise<Response> {
