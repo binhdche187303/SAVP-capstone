@@ -235,4 +235,27 @@ describe('HgvisionClient — camera / định danh', () => {
     );
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it('fetchPublicMedia source=hls đi tới HGVISION_HLS_BASE_URL, không gắn Bearer', async () => {
+    const c = new HgvisionClient({
+      baseUrl: 'http://hg.local:8113',
+      hlsBaseUrl: 'http://hg.local:8888',
+      clientId: 'cli_x',
+      clientSecret: 'sk_x',
+      timeoutMs: 1000,
+    });
+    fetchMock.mockResolvedValueOnce(new Response('#EXTM3U\n', { status: 200 }));
+    const out = await c.fetchPublicMedia('/abc/index.m3u8', undefined, 'hls');
+    const [url, init] = fetchMock.mock.calls[0] as FetchCall;
+    expect(String(url)).toBe('http://hg.local:8888/abc/index.m3u8');
+    expect(JSON.stringify(init.headers ?? {})).not.toContain('Bearer');
+    expect(out.body.toString()).toBe('#EXTM3U\n');
+  });
+
+  it('fetchPublicMedia source=hls khi chưa cấu hình HLS base → lỗi status 0', async () => {
+    await expect(
+      mk().fetchPublicMedia('/abc/index.m3u8', undefined, 'hls'),
+    ).rejects.toMatchObject({ status: 0 });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });
