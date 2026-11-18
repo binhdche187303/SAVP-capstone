@@ -19,4 +19,20 @@ export interface ZoneTimelineResponseDto {
   /** Số lượt "bắt gặp" (event appear) của user trong khoảng thời gian; null khi không truyền userId. */
   sightingCount: number | null;
   message?: string;
+  /**
+   * Chỉ có khi khoảng > 31 ngày: BE tổng hợp sẵn (không trả sự kiện thô — có thể hàng triệu
+   * dòng). Khi đó `events` chỉ là RECENT_LIMIT sự kiện appear/disappear gần nhất.
+   */
+  summary?: ZoneTimelineSummaryDto;
+  /** Số đếm cho nút lọc (cả khoảng, không áp `status`); chỉ có khi khoảng có dữ liệu. */
+  statusCounts?: { all: number; matched: number; stranger: number };
+}
+
+export interface ZoneTimelineSummaryDto {
+  /** Tổng số sự kiện trong khoảng (mọi loại). */
+  total: number;
+  appearTotal: number;
+  disappearTotal: number;
+  /** 24 phần tử, index = giờ VN 0..23. */
+  hourly: Array<{ hour: number; appear: number; disappear: number }>;
 }

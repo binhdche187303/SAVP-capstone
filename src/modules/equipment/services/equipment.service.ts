@@ -124,10 +124,12 @@ export class EquipmentService {
    */
   private getRoomRegisteredTypeLabels(room: RoomEntity): string[] {
     const labels: string[] = [];
-    if (room.hasCamera) labels.push(ROOM_EQUIPMENT_TYPE_LABELS[EquipmentType.CAMERA]!);
+    if (room.hasCamera)
+      labels.push(ROOM_EQUIPMENT_TYPE_LABELS[EquipmentType.CAMERA]!);
     if (room.hasMicrophone)
       labels.push(ROOM_EQUIPMENT_TYPE_LABELS[EquipmentType.MICROPHONE]!);
-    if (room.hasDisplay) labels.push(ROOM_EQUIPMENT_TYPE_LABELS[EquipmentType.DISPLAY]!);
+    if (room.hasDisplay)
+      labels.push(ROOM_EQUIPMENT_TYPE_LABELS[EquipmentType.DISPLAY]!);
     return labels;
   }
 
@@ -273,7 +275,9 @@ export class EquipmentService {
         purchaseDate: dto.purchaseDate ?? null,
         specificationJson: dto.specification ?? null,
         // server set cứng — không nhận từ input
-        assetStatus: assignedRoom ? AssetStatus.ASSIGNED : AssetStatus.AVAILABLE,
+        assetStatus: assignedRoom
+          ? AssetStatus.ASSIGNED
+          : AssetStatus.AVAILABLE,
         healthStatus: dto.healthStatus ?? HealthStatus.UNKNOWN,
         currentRoomId: assignedRoom ? assignedRoom.id : null,
         assignedBy: assignedRoom ? userId : null,
@@ -886,7 +890,7 @@ export class EquipmentService {
 
     const events: EquipmentFaultHistoryItemDto[] = [];
     for (const row of rows) {
-      const nv = (row.newValueJson ?? {}) as Record<string, unknown>;
+      const nv = row.newValueJson ?? {};
       let eventType: EquipmentFaultEventType | null = null;
       let note: string | null = null;
       let location: EquipmentFaultLocation | null = null;
@@ -1039,8 +1043,8 @@ export class EquipmentService {
       });
     }
     if (query.currentRoomId) {
-      qb.andWhere('e.currentRoomId = :currentRoomId', {
-        currentRoomId: query.currentRoomId,
+      qb.andWhere('e.currentRoomId IN (:...currentRoomId)', {
+        currentRoomId: filterValues(query.currentRoomId),
       });
     }
 
@@ -1192,7 +1196,7 @@ export class EquipmentService {
     // thiết bị phòng đã đăng ký.
     this.assertRoomRegisteredForEquipmentType(
       room,
-      equipment.equipmentType as EquipmentType,
+      equipment.equipmentType,
       `${EQUIPMENTS_PATH}/${equipmentId}/assignment`,
     );
 

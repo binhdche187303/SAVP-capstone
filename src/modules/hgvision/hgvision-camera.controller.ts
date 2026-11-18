@@ -5,6 +5,8 @@ import {
   Headers,
   Param,
   ParseIntPipe,
+  ParseUUIDPipe,
+  Post,
   Query,
   Res,
   UseGuards,
@@ -14,7 +16,9 @@ import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { PermissionsGuard } from '../auth/guards/permissions.guard.js';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator.js';
+import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import { HgvisionCameraService } from './hgvision-camera.service.js';
+import { HgvisionSnapshotService } from './hgvision-snapshot.service.js';
 
 export const HGVISION_CAMERA_READ = 'hgvision.camera.read';
 export const HGVISION_SYSTEM_READ = 'hgvision.system.read';
@@ -28,7 +32,58 @@ export const HGVISION_SYSTEM_READ = 'hgvision.system.read';
 @Controller('hgvision')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class HgvisionCameraController {
-  constructor(private readonly cameras: HgvisionCameraService) {}
+  constructor(
+    private readonly cameras: HgvisionCameraService,
+    private readonly snapshots: HgvisionSnapshotService,
+  ) {}
+
+  @Post('cameras/:name/snapshot')
+  @RequirePermissions(HGVISION_CAMERA_READ)
+  @ApiOperation({
+    summary:
+      'Chụp ảnh màn hình camera (BE lấy 1 khung hình từ luồng live, lưu lịch sử)',
+  })
+  async snapshot(
+    @Param('name') name: string,
+    @CurrentUser() user: { userId: string } | undefined,
+  ) {
+    return {
+      success: true,
+      data: await this.snapshots.capture(name, user?.userId ?? null),
+    };
+  }
+
+  @Get('snapshots')
+  @RequirePermissions(HGVISION_CAMERA_READ)
+  @ApiOperation({
+    summary: 'Lịch sử ảnh chụp camera (mới nhất trước), lọc theo tên camera',
+  })
+  async listSnapshots(
+    @Query('camera') camera: string | undefined,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    return {
+      success: true,
+      data: await this.snapshots.list({ camera, limit }),
+    };
+  }
+
+  @Get('snapshots/:id/file')
+  @RequirePermissions(HGVISION_CAMERA_READ)
+  @ApiOperation({ summary: 'Tải file ảnh chụp camera (PNG)' })
+  async snapshotFile(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const f = await this.snapshots.file(id);
+    res.status(200).set({
+      'Content-Type': 'image/png',
+      'Content-Disposition': `attachment; filename="${f.fileName}"`,
+      'Cache-Control': 'private, max-age=300',
+      ...(f.sizeBytes ? { 'Content-Length': String(f.sizeBytes) } : {}),
+    });
+    f.stream.pipe(res);
+  }
 
   @Get('status')
   @RequirePermissions(HGVISION_SYSTEM_READ)

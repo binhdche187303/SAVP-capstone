@@ -30,6 +30,12 @@ const VEHICLE_EVENT_TYPE_SQL = VEHICLE_EVENT_TYPES.map(
   (_, idx) => `$${idx + 1}`,
 ).join(', ');
 
+/**
+ * Camera nhận diện cả người đi bộ (vehicleType = 'pedestrian') — không có biển số nên loại khỏi
+ * mọi màn kiểm soát xe (danh sách, số đếm, phân trang). Chuỗi cố định, không có input người dùng.
+ */
+const NOT_PEDESTRIAN_SQL = `LOWER(COALESCE(iot_device_events.payload_json->>'vehicleType', '')) <> 'pedestrian'`;
+
 export interface PaginationMeta {
   page: number;
   limit: number;
@@ -99,9 +105,7 @@ export interface UnknownVehicleItem {
 export class VehicleUnknownService {
   constructor(private readonly dataSource: DataSource) {}
 
-  async listUnknown(
-    query: ListUnknownVehiclesQueryDto,
-  ): Promise<{
+  async listUnknown(query: ListUnknownVehiclesQueryDto): Promise<{
     items: UnknownVehicleItem[];
     meta: PaginationMeta;
     stats: UnknownVehicleStats;
@@ -116,7 +120,7 @@ export class VehicleUnknownService {
     // COUNT (không JOIN) lẫn rows (có LATERAL vehicle_control_list tham chiếu thẳng
     // iot_device_events.*). Xem VehicleHistoryService cho lý do đầy đủ.
     const params: unknown[] = [...VEHICLE_EVENT_TYPES];
-    let where = `iot_device_events.event_type IN (${VEHICLE_EVENT_TYPE_SQL}) AND iot_device_events.payload_json->>'matchState' = 'unmatched'`;
+    let where = `iot_device_events.event_type IN (${VEHICLE_EVENT_TYPE_SQL}) AND ${NOT_PEDESTRIAN_SQL} AND iot_device_events.payload_json->>'matchState' = 'unmatched'`;
     if (query.from) {
       params.push(query.from);
       where += ` AND iot_device_events.event_time >= $${params.length}`;
@@ -144,8 +148,10 @@ export class VehicleUnknownService {
     // Bộ lọc danh sách kiểm soát cần JOIN vehicle_control_list (cột vcl.list_type).
     const needsFlagJoin = !!query.flag;
     const flagCondition =
-      query.flag === 'controlled' ? ' AND vcl.list_type IS NOT NULL'
-        : query.flag === 'normal' ? ' AND vcl.list_type IS NULL'
+      query.flag === 'controlled'
+        ? ' AND vcl.list_type IS NOT NULL'
+        : query.flag === 'normal'
+          ? ' AND vcl.list_type IS NULL'
           : '';
     where += flagCondition;
 
@@ -223,8 +229,9 @@ export class VehicleUnknownService {
     );
 
     // Thẻ số liệu: tổng lượt, lượt thuộc danh sách kiểm soát, số biển khác nhau, số biển lặp lại.
-    const statRows: Array<Record<string, number | string | null>> = await this.dataSource.manager.query(
-      `SELECT COUNT(*)::int AS total,
+    const statRows: Array<Record<string, number | string | null>> =
+      await this.dataSource.manager.query(
+        `SELECT COUNT(*)::int AS total,
               COUNT(*) FILTER (WHERE base.list_type IS NOT NULL)::int AS controlled,
               COUNT(DISTINCT base.plate)::int AS distinct_plates,
               COUNT(DISTINCT base.plate) FILTER (WHERE base.plate_count > 1)::int AS repeat_plates
@@ -236,8 +243,8 @@ export class VehicleUnknownService {
              ${CONTROL_LIST_FLAG_JOIN}
             WHERE ${baseWhere}
          ) base`,
-      baseParams,
-    );
+        baseParams,
+      );
     const stat = statRows[0] ?? {};
     const stats: UnknownVehicleStats = {
       total: Number(stat.total ?? 0),
@@ -250,17 +257,19 @@ export class VehicleUnknownService {
     // Mảng hướng là hằng số trong code (không phải dữ liệu người dùng).
     const inValues = DIRECTION_VALUES.in.map((v) => `'${v}'`).join(', ');
     const outValues = DIRECTION_VALUES.out.map((v) => `'${v}'`).join(', ');
-    const directionRows: Array<Record<string, number | null>> = await this.dataSource.manager.query(
-      `SELECT COUNT(*)::int AS dir_all,
+    const directionRows: Array<Record<string, number | null>> =
+      await this.dataSource.manager.query(
+        `SELECT COUNT(*)::int AS dir_all,
               COUNT(*) FILTER (WHERE ${DIRECTION_SQL} IN (${inValues}))::int AS dir_in,
               COUNT(*) FILTER (WHERE ${DIRECTION_SQL} IN (${outValues}))::int AS dir_out
          FROM iot_device_events
          ${needsFlagJoin ? CONTROL_LIST_FLAG_JOIN : ''}
         WHERE ${preDirectionWhere}${flagCondition}`,
-      preDirectionParams,
-    );
-    const viewRows: Array<Record<string, number | null>> = await this.dataSource.manager.query(
-      `SELECT COUNT(*)::int AS view_all,
+        preDirectionParams,
+      );
+    const viewRows: Array<Record<string, number | null>> =
+      await this.dataSource.manager.query(
+        `SELECT COUNT(*)::int AS view_all,
               COUNT(DISTINCT scoped.plate)::int AS view_distinct,
               COUNT(DISTINCT scoped.plate) FILTER (WHERE scoped.plate_count > 1)::int AS view_repeat
          FROM (
@@ -270,14 +279,26 @@ export class VehicleUnknownService {
              ${needsFlagJoin ? CONTROL_LIST_FLAG_JOIN : ''}
             WHERE ${where}
          ) scoped`,
-      params,
-    );
+        params,
+      );
     const dir = directionRows[0] ?? {};
     const vw = viewRows[0] ?? {};
     const facets: UnknownVehicleFacets = {
-      direction: { all: Number(dir.dir_all ?? 0), in: Number(dir.dir_in ?? 0), out: Number(dir.dir_out ?? 0) },
-      flag: { all: stats.total, controlled: stats.controlled, normal: Math.max(0, stats.total - stats.controlled) },
-      view: { all: Number(vw.view_all ?? 0), distinct: Number(vw.view_distinct ?? 0), repeat: Number(vw.view_repeat ?? 0) },
+      direction: {
+        all: Number(dir.dir_all ?? 0),
+        in: Number(dir.dir_in ?? 0),
+        out: Number(dir.dir_out ?? 0),
+      },
+      flag: {
+        all: stats.total,
+        controlled: stats.controlled,
+        normal: Math.max(0, stats.total - stats.controlled),
+      },
+      view: {
+        all: Number(vw.view_all ?? 0),
+        distinct: Number(vw.view_distinct ?? 0),
+        repeat: Number(vw.view_repeat ?? 0),
+      },
     };
 
     return {

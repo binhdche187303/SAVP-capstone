@@ -75,6 +75,18 @@ describe('VehicleHistoryService (VHI-001 / UC7)', () => {
     expect(r.items[0].userId).toBe('u1');
   });
 
+  it('loại người đi bộ (vehicleType = pedestrian) ở cả listAll, listForUser và câu đếm', async () => {
+    const cond =
+      "LOWER(COALESCE(iot_device_events.payload_json->>'vehicleType', '')) <> 'pedestrian'";
+    wire();
+    await service.listAll(q());
+    expect(rowsCall()!.sql).toContain(cond);
+    expect(countCall()!.sql).toContain(cond);
+    wire();
+    await service.listForUser('u1', q());
+    expect(rowsCall()!.sql).toContain(cond);
+  });
+
   it('C1-isolation: event_type IN (ivss/camera_vehicle_event) (KHÔNG face)', async () => {
     wire();
     await service.listAll(q());

@@ -87,9 +87,17 @@ describe('AlertsController (ASC-001 / UC-123)', () => {
     );
   });
 
-  it('POST acknowledge → service.acknowledge(id, userId)', async () => {
+  it('POST acknowledge → service.acknowledge(id, userId, note?)', async () => {
     const r = await controller.acknowledge({ userId: 'u1' }, 'a1');
-    expect(service.acknowledge).toHaveBeenCalledWith('a1', 'u1');
+    expect(service.acknowledge).toHaveBeenCalledWith('a1', 'u1', undefined);
+    await controller.acknowledge({ userId: 'u1' }, 'a1', {
+      acknowledgeNote: 'Đang ra cổng',
+    });
+    expect(service.acknowledge).toHaveBeenLastCalledWith(
+      'a1',
+      'u1',
+      'Đang ra cổng',
+    );
     expect(r.message).toBe('Security alert acknowledged successfully');
   });
 

@@ -1,3 +1,4 @@
+import { DataSource } from 'typeorm';
 import { BadRequestException, HttpException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HgvisionClient, HgvisionError } from './hgvision.client';
@@ -66,6 +67,53 @@ describe('HgvisionCameraService', () => {
       liveUrl: '/api/v1/hgvision/live/Cong%20chinh/index.m3u8',
     });
     expect(list[1]).toMatchObject({ status: 'offline', health: null });
+  });
+
+  it('gắn khu vực SAVP: thiết bị gán trực tiếp ưu tiên hơn ánh xạ kênh', async () => {
+    const query = jest.fn((sql: string) => {
+      if (sql.includes('system_configs'))
+        return [
+          {
+            config_key: 'hgvision.camera_channel_map',
+            config_json: { 'Cong chinh': 3, B: 4 },
+          },
+          {
+            config_key: 'ivss.channel_presence_zone_map',
+            config_json: { '3': 'z-gate', '4': 'z-gate' },
+          },
+        ];
+      if (sql.includes('iot_devices'))
+        return [{ camera_name: ' b ', zone_id: 'z-lobby' }];
+      return [
+        { id: 'z-gate', zone_name: 'Cổng chính' },
+        { id: 'z-lobby', zone_name: 'Sảnh bảo vệ' },
+      ];
+    });
+    const ds = { manager: { query } } as unknown as DataSource;
+    const svc = new HgvisionCameraService(
+      mkClient() as unknown as HgvisionClient,
+      cfg(),
+      ds,
+    );
+    const list = await svc.listCameras();
+    expect(list.map((c) => [c.name, c.zoneId, c.zoneName])).toEqual([
+      ['Cong chinh', 'z-gate', 'Cổng chính'],
+      ['B', 'z-lobby', 'Sảnh bảo vệ'],
+    ]);
+  });
+
+  it('lỗi đọc khu vực vẫn trả danh sách camera', async () => {
+    const ds = {
+      manager: { query: jest.fn().mockRejectedValue(new Error('db down')) },
+    } as unknown as DataSource;
+    const svc = new HgvisionCameraService(
+      mkClient() as unknown as HgvisionClient,
+      cfg(),
+      ds,
+    );
+    const list = await svc.listCameras();
+    expect(list).toHaveLength(2);
+    expect(list[0]).toMatchObject({ zoneId: null, zoneName: null });
   });
 
   it('cache danh sách trong TTL', async () => {

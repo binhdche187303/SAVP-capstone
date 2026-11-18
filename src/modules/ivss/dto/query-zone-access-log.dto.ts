@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsString,
   Matches,
+  IsIn,
   MaxLength,
   Max,
   Min,
@@ -29,6 +30,25 @@ export class QueryZoneAccessLogDto {
     message: 'date phải theo định dạng YYYY-MM-DD',
   })
   date?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Từ ngày (YYYY-MM-DD, giờ VN) — dùng cùng `to` để xem khoảng ngày',
+  })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
+    message: 'from phải theo định dạng YYYY-MM-DD',
+  })
+  from?: string;
+
+  @ApiPropertyOptional({
+    description: 'Đến ngày (YYYY-MM-DD, giờ VN, gồm cả ngày này)',
+  })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
+    message: 'to phải theo định dạng YYYY-MM-DD',
+  })
+  to?: string;
 
   @ApiPropertyOptional({ description: 'Số trang', default: 1 })
   @IsOptional()
@@ -56,4 +76,15 @@ export class QueryZoneAccessLogDto {
   @IsString()
   @MaxLength(200, { message: 'search tối đa 200 ký tự' })
   search?: string;
+
+  @ApiPropertyOptional({
+    enum: ['matched', 'stranger'],
+    description:
+      'Lọc: matched = người quen (khớp danh tính), stranger = người lạ',
+  })
+  @IsOptional()
+  @IsIn(['matched', 'stranger'], {
+    message: 'status phải là matched hoặc stranger',
+  })
+  status?: 'matched' | 'stranger';
 }

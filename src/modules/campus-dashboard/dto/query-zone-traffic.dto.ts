@@ -1,5 +1,12 @@
 import type { FilterSelection } from '../../../common/utils/filter-selection.js';
-import { IsDateString, IsIn, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import {
+  IsDateString,
+  IsIn,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+} from 'class-validator';
 
 /** QueryZoneTrafficDto (ZTH-001 / UC-120) — query cho `GET /campus-dashboard/zones/traffic`. */
 export class QueryZoneTrafficDto {

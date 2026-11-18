@@ -120,7 +120,21 @@ describe('EquipmentService.listEquipments (UC-64)', () => {
   it('[S5] currentRoomId → andWhere e.currentRoomId', async () => {
     const { service, qb } = setup();
     await service.listEquipments(q({ currentRoomId: 'room-1' }));
-    expect(andWhereStrings(qb)).toContain('e.currentRoomId = :currentRoomId');
+    expect(andWhereStrings(qb)).toContain(
+      'e.currentRoomId IN (:...currentRoomId)',
+    );
+  });
+
+  it('[S5b] currentRoomId nhiều phòng → IN danh sách phòng, bỏ trùng', async () => {
+    const { service, qb } = setup();
+    await service.listEquipments(
+      q({ currentRoomId: ['room-1', 'room-2', 'room-1'] }),
+    );
+    const calls = qb.andWhere.mock.calls as [string, unknown][];
+    const call = calls.find(
+      ([sql]) => sql === 'e.currentRoomId IN (:...currentRoomId)',
+    );
+    expect(call?.[1]).toEqual({ currentRoomId: ['room-1', 'room-2'] });
   });
 
   it('[S6] search → andWhere(Brackets) ILIKE 3 cot', async () => {

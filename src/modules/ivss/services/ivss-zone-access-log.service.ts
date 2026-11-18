@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import type {
   ZoneAccessLogEventDto,
@@ -34,9 +38,14 @@ interface CountRow {
 
 export interface ZoneAccessLogQueryOptions {
   date?: string;
+  /** Khoảng ngày (YYYY-MM-DD, giờ VN, gồm cả 2 đầu) — ưu tiên hơn `date` khi có. */
+  from?: string;
+  to?: string;
   page?: number;
   limit?: number;
   search?: string;
+  /** 'matched' = người quen (khớp danh tính), 'stranger' = người lạ; bỏ trống = tất cả. */
+  status?: 'matched' | 'stranger';
 }
 
 const FACE_EVENT_TYPE = 'ivss_face_event';
@@ -98,6 +107,14 @@ export class IvssZoneAccessLogService {
     options: ZoneAccessLogQueryOptions = {},
   ): Promise<ZoneAccessLogResponseDto> {
     const day = options.date ?? this.todayStr();
+    const fromDay = options.from ?? options.to ?? day;
+    const toDay = options.to ?? options.from ?? day;
+    if (fromDay > toDay) {
+      throw new BadRequestException({
+        code: 'INVALID_DATE_RANGE',
+        message: 'Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.',
+      });
+    }
     const page = options.page ?? DEFAULT_PAGE;
     const limit = options.limit ?? DEFAULT_LIMIT;
     const search = options.search?.trim() ? options.search.trim() : null;
@@ -124,7 +141,7 @@ export class IvssZoneAccessLogService {
     const whereSql = `
         WHERE e.event_type = $1
           AND e.event_time >= ($2::date::timestamp AT TIME ZONE '${BUSINESS_TIMEZONE}')
-          AND e.event_time <  (($2::date + interval '1 day')::timestamp AT TIME ZONE '${BUSINESS_TIMEZONE}')
+          AND e.event_time <  (($5::date + interval '1 day')::timestamp AT TIME ZONE '${BUSINESS_TIMEZONE}')
           AND e.zone_id = $3::uuid
           AND ($4::text IS NULL OR u.full_name ILIKE '%' || $4::text || '%')`;
     const fromSql = `
@@ -133,7 +150,7 @@ export class IvssZoneAccessLogService {
                 ON u.id = NULLIF(e.payload_json->>'userId', '')::uuid
          LEFT JOIN departments d ON d.id = u.department_id
          LEFT JOIN iot_devices dv ON dv.id = e.device_id`;
-    const filterParams = [FACE_EVENT_TYPE, day, zoneId, search];
+    const filterParams = [FACE_EVENT_TYPE, fromDay, zoneId, search, toDay];
 
     // Đếm trên TOÀN BỘ kết quả lọc (không chỉ trang hiện tại) — matched/unmatched phải
     // phản ánh cả ngày, nếu đếm trong trang thì số liệu vô nghĩa khi phân trang.
@@ -149,9 +166,23 @@ export class IvssZoneAccessLogService {
          ${whereSql}`,
       filterParams,
     );
-    const total = parseInt(countRows[0]?.total ?? '0', 10);
+    const allCount = parseInt(countRows[0]?.total ?? '0', 10);
     const matchedCount = parseInt(countRows[0]?.matched ?? '0', 10);
     const unmatchedCount = parseInt(countRows[0]?.unmatched ?? '0', 10);
+    // Bộ đếm khớp/người lạ luôn tính trên cả ngày (để FE hiện số cho từng nút lọc);
+    // chỉ danh sách + tổng phân trang bị lọc theo `status`.
+    const statusSql =
+      options.status === 'matched'
+        ? ` AND e.payload_json->>'matchState' = 'matched'`
+        : options.status === 'stranger'
+          ? ` AND e.payload_json->>'matchState' LIKE 'unmatched%'`
+          : '';
+    const total =
+      options.status === 'matched'
+        ? matchedCount
+        : options.status === 'stranger'
+          ? unmatchedCount
+          : allCount;
 
     const rows: AccessLogRow[] = await this.dataSource.manager.query(
       `SELECT e.id,
@@ -171,9 +202,9 @@ export class IvssZoneAccessLogService {
                  FROM camera_group_members cgm JOIN camera_groups cg ON cg.id = cgm.group_id
                 WHERE cgm.device_id = e.device_id) AS group_names
          ${fromSql}
-         ${whereSql}
+         ${whereSql}${statusSql}
         ORDER BY e.event_time DESC
-        LIMIT $5 OFFSET $6`,
+        LIMIT $6 OFFSET $7`,
       [...filterParams, limit, offset],
     );
 
@@ -208,7 +239,9 @@ export class IvssZoneAccessLogService {
     return {
       zoneId,
       zoneName,
-      date: day,
+      date: fromDay,
+      from: fromDay,
+      to: toDay,
       totalEvents: total,
       matchedCount,
       unmatchedCount,

@@ -23,7 +23,8 @@ import {
  */
 export class ListEquipmentsQueryDto {
   @IsOptional()
-  @IsEnum(EquipmentType, { each: true,
+  @IsEnum(EquipmentType, {
+    each: true,
     message:
       'Loại thiết bị không hợp lệ. Giá trị: camera, microphone, display, speaker, capture_agent, sensor, other',
   })
@@ -37,15 +38,16 @@ export class ListEquipmentsQueryDto {
   assetStatus?: AssetStatus;
 
   @IsOptional()
-  @IsEnum(HealthStatus, { each: true,
+  @IsEnum(HealthStatus, {
+    each: true,
     message:
       'Tình trạng không hợp lệ. Giá trị: healthy, warning, faulty, offline, unknown',
   })
   healthStatus?: FilterSelection<HealthStatus>;
 
   @IsOptional()
-  @IsUUID('4', { message: 'currentRoomId phải là định dạng UUID' })
-  currentRoomId?: string;
+  @IsUUID('4', { each: true, message: 'currentRoomId phải là định dạng UUID' })
+  currentRoomId?: FilterSelection<string>;
 
   @IsOptional()
   @IsString({ message: 'Từ khóa tìm kiếm phải là chuỗi ký tự' })
