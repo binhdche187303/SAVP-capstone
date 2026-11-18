@@ -28,9 +28,7 @@
     "migration:run:tsx": "tsx scripts/run-migrations.ts",
     "cleanup:ivss-group1": "tsx scripts/cleanup-ivss-group1-mappings.ts",
     "seed:demo": "tsx scripts/seed-clean-demo.ts",
-    "hgvision:mock": "node scripts/hgvision-mock/server.mjs",
-    "hgvision:mock:media": "node scripts/hgvision-mock/prepare-media.mjs",
-    "hgvision:capture": "node scripts/hgvision-mock/capture-real.mjs"
+    "hgvision:capture": "node scripts/hgvision/capture-real.mjs"
   },
   "dependencies": {
     "@nestjs/bullmq": "^11.0.4",

@@ -96,6 +96,4 @@ clean_demo_seed.sql
 /test/.superpowers/
 
 # HGVision mock server (dev only) - generated state & media
-scripts/hgvision-mock/.state/
-scripts/hgvision-mock/.media/
-scripts/hgvision-mock/.capture/
+scripts/hgvision/.capture/

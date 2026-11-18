@@ -1,4 +1,8 @@
-import { HgvisionClient, HgvisionError } from './hgvision.client';
+import {
+  HgvisionClient,
+  HgvisionError,
+  stripCameraSecrets,
+} from './hgvision.client';
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -119,6 +123,115 @@ describe('HgvisionClient', () => {
     });
     await expect(c.searchHistory({ startTime: 1, endTime: 2 })).rejects.toThrow(
       'HGVISION_BASE_URL chưa cấu hình.',
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('HgvisionClient — camera / định danh', () => {
+  let fetchMock: jest.Mock;
+  const mk = (writeEnabled = false) =>
+    new HgvisionClient({
+      baseUrl: 'http://hg.local:8113',
+      clientId: 'cli_x',
+      clientSecret: 'sk_x',
+      timeoutMs: 1000,
+      writeEnabled,
+    });
+
+  beforeEach(() => {
+    fetchMock = jest.fn();
+    global.fetch = fetchMock;
+  });
+
+  it('stripCameraSecrets bỏ tài khoản + URL RTSP', () => {
+    const out = stripCameraSecrets({
+      camera_name: 'A',
+      username: 'admin',
+      password: 'p',
+      camera_url: 'rtsp://admin:p@x',
+      url_playback: 'rtsp://y',
+      main_url: 'rtsp://m',
+      sub_url: 'rtsp://s',
+      fps: 25,
+    });
+    expect(out).toEqual({ camera_name: 'A', fps: 25 });
+  });
+
+  it('listCameras không trả password/RTSP', async () => {
+    fetchMock
+      .mockResolvedValueOnce(tokenRes())
+      .mockResolvedValueOnce(
+        json(200, [{ camera_name: 'A', password: 'p', camera_url: 'rtsp://' }]),
+      );
+    const cams = await mk().listCameras();
+    expect(JSON.stringify(cams)).not.toMatch(/password|rtsp/);
+  });
+
+  it.each([
+    [
+      'registerFace',
+      (c: HgvisionClient) => c.registerFace({ faceIdent: 'U1', images: [] }),
+    ],
+    ['deleteFace', (c: HgvisionClient) => c.deleteFace('U1')],
+    [
+      'createPlate',
+      (c: HgvisionClient) =>
+        c.createPlate({ licensePlate: '51A', ident: 'U1' }),
+    ],
+    [
+      'setPlateBlacklist',
+      (c: HgvisionClient) => c.setPlateBlacklist('51A', true),
+    ],
+  ])('%s bị chặn khi HGVISION_WRITE_ENABLED=false', async (_n, call) => {
+    await expect(call(mk(false))).rejects.toMatchObject({
+      code: 'WRITE_DISABLED',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('registerFace gửi multipart field file + face_ident', async () => {
+    fetchMock
+      .mockResolvedValueOnce(tokenRes())
+      .mockResolvedValueOnce(json(200, { success: true }));
+    await mk(true).registerFace({
+      faceIdent: 'U1',
+      images: [{ data: Buffer.from('jpg') }],
+    });
+    const [url, init] = fetchMock.mock.calls[1] as FetchCall;
+    expect(String(url)).toBe('http://hg.local:8113/api/identification/faces');
+    expect(init.method).toBe('POST');
+    const form = init.body as FormData;
+    expect(form.get('face_ident')).toBe('U1');
+    expect(form.getAll('file')).toHaveLength(1);
+  });
+
+  it('setPlateBlacklist gửi PATCH JSON, biển số được encode', async () => {
+    fetchMock
+      .mockResolvedValueOnce(tokenRes())
+      .mockResolvedValueOnce(json(200, {}));
+    await mk(true).setPlateBlacklist('51A 123', true);
+    const [url, init] = fetchMock.mock.calls[1] as FetchCall;
+    expect(String(url)).toBe(
+      'http://hg.local:8113/api/identification/license-plates/51A%20123',
+    );
+    expect(init.method).toBe('PATCH');
+    expect(JSON.parse(init.body as string)).toEqual({ is_blacklist: true });
+  });
+
+  it('findFace 404 → null', async () => {
+    fetchMock
+      .mockResolvedValueOnce(tokenRes())
+      .mockResolvedValueOnce(json(404, { error: 'not found' }));
+    await expect(mk().findFace('U9')).resolves.toBeNull();
+  });
+
+  it('fetchPublicMedia chặn path không bắt đầu bằng / hoặc //host', async () => {
+    await expect(mk().fetchPublicMedia('//evil/x')).rejects.toBeInstanceOf(
+      HgvisionError,
+    );
+    await expect(mk().fetchPublicMedia('http://evil/x')).rejects.toBeInstanceOf(
+      HgvisionError,
     );
     expect(fetchMock).not.toHaveBeenCalled();
   });

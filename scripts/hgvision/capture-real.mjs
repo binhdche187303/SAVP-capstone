@@ -1,14 +1,13 @@
 #!/usr/bin/env node
 /**
- * Captures real JSON from HGVision (READ ONLY, never writes anything) so it can be compared with the mock.
+ * Captures real JSON from HGVision (READ ONLY, never writes anything) to check the field
+ * shapes the SAVP backend assumes (see docs/hgvision).
  *
  * On the school machine (where HGVision runs):
  *   npm run hgvision:capture                      → reads HGVISION_BASE_URL / CLIENT_ID / CLIENT_SECRET from .env
- *   npm run hgvision:capture -- --label that      → saved to scripts/hgvision-mock/.capture/that/
- * On the dev machine, capture the mock to compare against:
- *   npm run hgvision:capture -- --base http://localhost:8199 --id cli_mock --secret sk_mock --label mock
- * Compare the structure (field names/types, not values):
- *   npm run hgvision:capture -- --compare real mock
+ *   npm run hgvision:capture -- --label that      → saved to scripts/hgvision/.capture/that/
+ * Compare two captures (field names/types, not values), e.g. before/after an HGVision upgrade:
+ *   npm run hgvision:capture -- --compare real that
  *
  * Camera username/password fields are replaced with "***" before saving.
  * The .capture/ folder is gitignored: copy it back to the dev machine via AnyDesk; do not commit it.
