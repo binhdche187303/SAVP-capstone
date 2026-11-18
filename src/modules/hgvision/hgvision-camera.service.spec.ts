@@ -3,8 +3,10 @@ import { BadRequestException, HttpException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HgvisionClient, HgvisionError } from './hgvision.client';
 import {
+  assertHlsPlaylist,
   assertMediaPath,
   maskUrlCredentials,
+  resolveLiveSource,
   HgvisionCameraService,
   rewritePlaylist,
   toUpstreamPath,
@@ -173,9 +175,84 @@ describe('HgvisionCameraService', () => {
     const out = await mkSvc(client, cfg()).livePlaylist('Cong chinh');
     expect(client.fetchPublicMedia).toHaveBeenCalledWith(
       '/live/Cong%20chinh/index.m3u8',
+      undefined,
+      'api',
     );
     expect(out).toContain(
       '/api/v1/hgvision/stream?path=%2Flive%2FCong%2520chinh%2Fseg1.ts',
+    );
+  });
+
+  it('livePlaylist: live_hls_path là TÊN luồng MediaMTX → gọi nguồn hls, segment gắn src=hls', async () => {
+    const client = mkClient({
+      listCameras: jest.fn().mockResolvedValue([
+        {
+          camera_name: 'Camera 2',
+          status: 'Online',
+          live_hls_path: 'afcd30ac-d287',
+        },
+      ]),
+      fetchPublicMedia: jest.fn().mockResolvedValue({
+        status: 200,
+        headers: new Headers(),
+        body: Buffer.from(
+          '#EXTM3U\n#EXT-X-MAP:URI="init.mp4"\nvideo1_stream.m3u8\n',
+        ),
+      }),
+    });
+    const out = await mkSvc(client, cfg()).livePlaylist('Camera 2');
+    expect(client.fetchPublicMedia).toHaveBeenCalledWith(
+      '/afcd30ac-d287/index.m3u8',
+      undefined,
+      'hls',
+    );
+    expect(out).toContain(
+      'URI="/api/v1/hgvision/stream?path=%2Fafcd30ac-d287%2Finit.mp4&src=hls"',
+    );
+    expect(out).toContain(
+      '/api/v1/hgvision/stream?path=%2Fafcd30ac-d287%2Fvideo1_stream.m3u8&src=hls',
+    );
+  });
+
+  it('livePlaylist: HGVision trả HTML thay vì playlist → 502 HGVISION_LIVE_NOT_HLS', async () => {
+    const client = mkClient({
+      fetchPublicMedia: jest.fn().mockResolvedValue({
+        status: 200,
+        headers: new Headers({ 'content-type': 'text/html' }),
+        body: Buffer.from('<!DOCTYPE html><html><head><title>HGVision'),
+      }),
+    });
+    const err = (await mkSvc(client, cfg())
+      .livePlaylist('Cong chinh')
+      .catch((e: unknown) => e)) as HttpException;
+    expect(err.getStatus()).toBe(502);
+    expect(err.getResponse()).toMatchObject({
+      error: { code: 'HGVISION_LIVE_NOT_HLS' },
+    });
+  });
+
+  it('media: src=hls chuyển nguồn xuống client và giữ src=hls khi viết lại playlist con', async () => {
+    const client = mkClient({
+      fetchPublicMedia: jest.fn().mockResolvedValue({
+        status: 200,
+        headers: new Headers({
+          'content-type': 'application/vnd.apple.mpegurl',
+        }),
+        body: Buffer.from('#EXTM3U\nseg7.mp4\n'),
+      }),
+    });
+    const out = await mkSvc(client, cfg()).media(
+      '/cam/video1_stream.m3u8',
+      undefined,
+      'hls',
+    );
+    expect(client.fetchPublicMedia).toHaveBeenCalledWith(
+      '/cam/video1_stream.m3u8',
+      undefined,
+      'hls',
+    );
+    expect(out.body.toString()).toContain(
+      '/api/v1/hgvision/stream?path=%2Fcam%2Fseg7.mp4&src=hls',
     );
   });
 
@@ -237,6 +314,28 @@ describe('helpers', () => {
     '/api/cameras',
   ])('assertMediaPath chặn %s', (p) => {
     expect(() => assertMediaPath(p)).toThrow(BadRequestException);
+  });
+
+  it('resolveLiveSource: tên luồng → hls, path/URL → api, trống → /live/<tên>', () => {
+    const base = 'http://hg.local:8113';
+    expect(resolveLiveSource('abc_sub', 'Cam A', base)).toEqual({
+      source: 'hls',
+      path: '/abc_sub/index.m3u8',
+    });
+    expect(resolveLiveSource('/live/x/index.m3u8', 'Cam A', base)).toEqual({
+      source: 'api',
+      path: '/live/x/index.m3u8',
+    });
+    expect(resolveLiveSource(undefined, 'Cam A', base)).toEqual({
+      source: 'api',
+      path: '/live/Cam%20A/index.m3u8',
+    });
+  });
+
+  it('assertHlsPlaylist: chấp nhận #EXTM3U (kể cả BOM/khoảng trắng), chặn HTML', () => {
+    expect(() => assertHlsPlaylist('﻿  #EXTM3U\n')).not.toThrow();
+    expect(() => assertHlsPlaylist('<!DOCTYPE html>')).toThrow(HttpException);
+    expect(() => assertHlsPlaylist('')).toThrow(HttpException);
   });
 
   it('toUpstreamPath: URL cùng host → path, khác host → lỗi', () => {

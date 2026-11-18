@@ -33,10 +33,13 @@ const row = {
   captured_by_name: 'Bảo vệ A',
 };
 
-function setup(opts: { online?: boolean; grab?: jest.Mock } = {}) {
+function setup(
+  opts: { online?: boolean; grab?: jest.Mock; source?: 'api' | 'hls' } = {},
+) {
   const cameras = {
     liveSource: jest.fn().mockResolvedValue({
       upstream: '/live/abc/index.m3u8',
+      source: opts.source ?? 'api',
       online: opts.online ?? true,
       zone: { id: 'z1', name: 'Cổng chính' },
     }),
@@ -54,7 +57,13 @@ function setup(opts: { online?: boolean; grab?: jest.Mock } = {}) {
     if (sql.startsWith('INSERT')) return Promise.resolve([{ id: row.id }]);
     return Promise.resolve([row]);
   });
-  const config = { get: jest.fn().mockReturnValue('http://hg.local:8113/') };
+  const config = {
+    get: jest.fn((key: string) =>
+      key === 'HGVISION_HLS_BASE_URL'
+        ? 'http://mtx.local:8888'
+        : 'http://hg.local:8113/',
+    ),
+  };
   const grab = opts.grab ?? jest.fn().mockResolvedValue(PNG);
   const svc = new HgvisionSnapshotService(
     cameras as unknown as HgvisionCameraService,
@@ -94,6 +103,15 @@ describe('HgvisionSnapshotService', () => {
       capturedByName: 'Bảo vệ A',
       fileUrl: `/api/v1/hgvision/snapshots/${row.id}/file`,
     });
+  });
+
+  it('live qua MediaMTX (source=hls) → chụp từ HGVISION_HLS_BASE_URL', async () => {
+    const { svc, grab } = setup({ source: 'hls' });
+    await svc.capture('Cong chinh', 'u1');
+    expect(grab).toHaveBeenCalledWith(
+      'http://mtx.local:8888/live/abc/index.m3u8',
+      expect.any(Number),
+    );
   });
 
   it('camera mất kết nối → 409, không gọi ffmpeg', async () => {

@@ -244,6 +244,9 @@ export const envValidationSchema = Joi.object({
   HGVISION_MOCK_FALLBACK_ENABLED: Joi.boolean().default(false),
   HGVISION_SCOPE: Joi.string().default('faces:read plates:read cameras:read'),
   HGVISION_TIMEOUT_MS: Joi.number().integer().min(1000).default(8000),
+  // Máy chủ HLS live (MediaMTX của HGVision, thường :8888). live_hls_path của HGVision là TÊN luồng,
+  // BE ghép thành <HGVISION_HLS_BASE_URL>/<tên>/index.m3u8. Trống = không phát live được.
+  HGVISION_HLS_BASE_URL: Joi.string().uri().allow('').default(''),
   // Cho phép BE GHI định danh (khuôn mặt/biển số/danh sách đen) sang HGVision. Tắt mặc định.
   HGVISION_WRITE_ENABLED: Joi.boolean().default(false),
   HGVISION_POLL_INTERVAL_MS: Joi.number()

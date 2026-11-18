@@ -29,6 +29,7 @@ import { HgvisionSnapshotService } from './hgvision-snapshot.service.js';
           clientId: config.get<string>('HGVISION_CLIENT_ID', ''),
           clientSecret: config.get<string>('HGVISION_CLIENT_SECRET', ''),
           timeoutMs: config.get<number>('HGVISION_TIMEOUT_MS', 8000),
+          hlsBaseUrl: config.get<string>('HGVISION_HLS_BASE_URL', ''),
           writeEnabled:
             String(config.get('HGVISION_WRITE_ENABLED', 'false')) === 'true',
         }),

@@ -139,7 +139,7 @@ export class HgvisionSnapshotService {
     cameraName: string,
     userId: string | null,
   ): Promise<CameraSnapshot> {
-    const { upstream, online, zone } =
+    const { upstream, source, online, zone } =
       await this.cameras.liveSource(cameraName);
     if (!online)
       throw new ConflictException({
@@ -147,8 +147,12 @@ export class HgvisionSnapshotService {
         message: 'Camera đang mất kết nối, không chụp được ảnh.',
       });
 
+    // Live đi qua MediaMTX (source=hls) thì chụp từ HGVISION_HLS_BASE_URL.
     const base = this.config
-      .get<string>('HGVISION_BASE_URL', '')
+      .get<string>(
+        source === 'hls' ? 'HGVISION_HLS_BASE_URL' : 'HGVISION_BASE_URL',
+        '',
+      )
       .replace(/\/+$/, '');
     let png: Buffer;
     try {

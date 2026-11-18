@@ -12,6 +12,8 @@ export interface HgvisionClientDeps {
   clientId: string;
   clientSecret: string;
   timeoutMs: number;
+  /** HGVISION_HLS_BASE_URL — MediaMTX phát live (vd http://192.168.1.10:8888). */
+  hlsBaseUrl?: string;
   /** HGVISION_WRITE_ENABLED — tắt mặc định để máy trường không bị ghi nhầm khi mới pull code. */
   writeEnabled?: boolean;
 }
@@ -47,6 +49,9 @@ export interface HgvisionHistoryQuery {
 }
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+
+/** Nguồn media: 'api' = HGVision :8113 (playback/recording), 'hls' = MediaMTX live. */
+export type MediaSource = 'api' | 'hls';
 
 /** Field nhạy cảm của CameraObject (tài khoản camera, URL RTSP) — luôn bỏ trước khi trả ra ngoài BE. */
 export const CAMERA_SECRET_FIELDS = [
@@ -275,14 +280,25 @@ export class HgvisionClient {
   async fetchPublicMedia(
     path: string,
     range?: string,
+    source: MediaSource = 'api',
   ): Promise<{ status: number; headers: Headers; body: Buffer }> {
     if (!path.startsWith('/') || path.startsWith('//')) {
       throw new HgvisionError('Đường dẫn media không hợp lệ.', 400);
     }
-    const res = await this.fetchWithTimeout(path, {
-      method: 'GET',
-      headers: range ? { Range: range } : {},
-    });
+    const base = source === 'hls' ? this.deps.hlsBaseUrl : this.deps.baseUrl;
+    if (!base) {
+      throw new HgvisionError(
+        source === 'hls'
+          ? 'HGVISION_HLS_BASE_URL chưa cấu hình.'
+          : 'HGVISION_BASE_URL chưa cấu hình.',
+        0,
+      );
+    }
+    const res = await this.fetchWithTimeout(
+      path,
+      { method: 'GET', headers: range ? { Range: range } : {} },
+      base,
+    );
     if (!res.ok) throw await this.toError(res);
     return {
       status: res.status,
@@ -628,12 +644,13 @@ export class HgvisionClient {
   private async fetchWithTimeout(
     path: string,
     init: RequestInit,
+    base: string = this.deps.baseUrl,
   ): Promise<Response> {
-    if (!this.deps.baseUrl) {
+    if (!base) {
       throw new HgvisionError('HGVISION_BASE_URL chưa cấu hình.', 0);
     }
     try {
-      return await fetch(new URL(path, this.deps.baseUrl), {
+      return await fetch(new URL(path, base), {
         ...init,
         signal: AbortSignal.timeout(this.deps.timeoutMs),
       });

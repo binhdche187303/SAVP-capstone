@@ -185,10 +185,15 @@ export class HgvisionCameraController {
   @ApiOperation({ summary: 'Proxy segment/playlist HLS của HGVision' })
   async stream(
     @Query('path') path: string,
+    @Query('src') src: string | undefined,
     @Headers('range') range: string | undefined,
     @Res() res: Response,
   ): Promise<void> {
-    const out = await this.cameras.media(path ?? '', range);
+    const out = await this.cameras.media(
+      path ?? '',
+      range,
+      src === 'hls' ? 'hls' : 'api',
+    );
     res
       .status(out.status)
       .set({ ...out.headers, 'Content-Type': out.contentType })

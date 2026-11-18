@@ -15,6 +15,7 @@ import {
   HgvisionCameraHealth,
   HgvisionClient,
   HgvisionError,
+  MediaSource,
 } from './hgvision.client.js';
 import { HGVISION_CLIENT } from './hgvision.constants.js';
 
@@ -237,46 +238,59 @@ export class HgvisionCameraService {
     );
   }
 
-  /** Playlist live của 1 camera, đã viết lại mọi URI để đi qua proxy BE. */
   /** Path playlist live trên HGVision (tương đối HGVISION_BASE_URL) + trạng thái camera. */
   async liveSource(
     name: string,
-  ): Promise<{ upstream: string; online: boolean; zone: CameraZone | null }> {
+  ): Promise<{
+    upstream: string;
+    source: MediaSource;
+    online: boolean;
+    zone: CameraZone | null;
+  }> {
     const cams = await this.cached('cameras', LIST_TTL_MS, () =>
       this.client.listCameras(),
     );
     const cam = cams.find((c) => c.camera_name === name);
     if (!cam) throw new NotFoundException('Camera không tồn tại trên HGVision');
-    const upstream = toUpstreamPath(
-      cam.live_hls_path || `/live/${encodeURIComponent(name)}/index.m3u8`,
+    const { source, path: upstream } = resolveLiveSource(
+      cam.live_hls_path,
+      name,
       this.config.get<string>('HGVISION_BASE_URL', ''),
     );
     const zones = await this.zoneMap();
     return {
       upstream,
+      source,
       online: String(cam.status ?? '').toLowerCase() === 'online',
       zone: zones.get(normName(name)) ?? null,
     };
   }
 
+  /** Playlist live của 1 camera, đã viết lại mọi URI để đi qua proxy BE. */
   async livePlaylist(name: string): Promise<string> {
-    const { upstream } = await this.liveSource(name);
-    const res = await this.call(() => this.client.fetchPublicMedia(upstream));
-    return rewritePlaylist(res.body.toString('utf8'), upstream);
+    const { upstream, source } = await this.liveSource(name);
+    const res = await this.call(() =>
+      this.client.fetchPublicMedia(upstream, undefined, source),
+    );
+    const body = res.body.toString('utf8');
+    assertHlsPlaylist(body);
+    return rewritePlaylist(body, upstream, source);
   }
 
-  /** Proxy 1 file media (segment .ts, playlist con). Chặn mọi path API ngoài playback. */
-  async media(path: string, range?: string) {
+  /** Proxy 1 file media (segment, playlist con). Chặn mọi path API ngoài playback. */
+  async media(path: string, range?: string, source: MediaSource = 'api') {
     assertMediaPath(path);
     const res = await this.call(() =>
-      this.client.fetchPublicMedia(path, range),
+      this.client.fetchPublicMedia(path, range, source),
     );
     const type = res.headers.get('content-type') ?? 'application/octet-stream';
     if (/mpegurl/i.test(type) || /\.m3u8(\?|$)/i.test(path)) {
+      const body = res.body.toString('utf8');
+      assertHlsPlaylist(body);
       return {
         status: 200,
         contentType: 'application/vnd.apple.mpegurl',
-        body: Buffer.from(rewritePlaylist(res.body.toString('utf8'), path)),
+        body: Buffer.from(rewritePlaylist(body, path, source)),
         headers: {} as Record<string, string>,
       };
     }
@@ -399,13 +413,56 @@ export function assertMediaPath(path: string): void {
   if (!ok) throw new BadRequestException('Đường dẫn media không hợp lệ');
 }
 
+/**
+ * Xác định luồng live của camera. HGVision (OpenAPI) trả `live_hls_path` là TÊN path trên
+ * MediaMTX (vd `afcd30ac-…` hoặc `…_sub`), không phải URL ⇒ phát qua HGVISION_HLS_BASE_URL
+ * tại `/<tên>/index.m3u8`. Giá trị có dấu `/` hoặc URL đầy đủ thì coi là path trên :8113.
+ */
+export function resolveLiveSource(
+  livePath: string | undefined,
+  cameraName: string,
+  baseUrl: string,
+): { source: MediaSource; path: string } {
+  const v = (livePath ?? '').trim();
+  if (v && !v.includes('/')) {
+    return { source: 'hls', path: `/${encodeURIComponent(v)}/index.m3u8` };
+  }
+  return {
+    source: 'api',
+    path: toUpstreamPath(
+      v || `/live/${encodeURIComponent(cameraName)}/index.m3u8`,
+      baseUrl,
+    ),
+  };
+}
+
+/** Nội dung phải là playlist HLS; HGVision trả trang HTML/đăng nhập khi sai path ⇒ báo 502 rõ ràng. */
+export function assertHlsPlaylist(body: string): void {
+  // trimStart() bỏ cả BOM U+FEFF.
+  if (!body.trimStart().startsWith('#EXTM3U')) {
+    throw new HttpException(
+      {
+        success: false,
+        message: 'HGVision không trả luồng video (nội dung không phải HLS).',
+        error: { code: 'HGVISION_LIVE_NOT_HLS', details: {} },
+      },
+      HttpStatus.BAD_GATEWAY,
+    );
+  }
+}
+
 /** Viết lại URI trong playlist HLS (dòng segment + URI="…") sang proxy BE /hgvision/stream. */
-export function rewritePlaylist(body: string, playlistPath: string): string {
+export function rewritePlaylist(
+  body: string,
+  playlistPath: string,
+  source: MediaSource = 'api',
+): string {
   const base = new URL(playlistPath, 'http://hg.local');
+  const src = source === 'hls' ? '&src=hls' : '';
   const proxied = (uri: string) => {
     const u = new URL(uri, base);
     if (u.host !== 'hg.local') return uri; // URL ngoài: giữ nguyên, không proxy
-    return `${API_PREFIX}/hgvision/stream?path=${encodeURIComponent(u.pathname + u.search)}`;
+    return `${API_PREFIX}/hgvision/stream?path=${encodeURIComponent(u.pathname + u.search)}${src}`;
   };
   return body
     .split(/\r?\n/)

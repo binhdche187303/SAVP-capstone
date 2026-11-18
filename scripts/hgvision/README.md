@@ -3,6 +3,7 @@
 ## 📝 CHANGELOG & REVISION HISTORY
 | Ngày cập nhật | Tóm tắt thay đổi | Các dòng thay đổi |
 | :--- | :--- | :--- |
+| 2026-11-18 | Sửa giả định #1: `live_hls_path` là tên luồng MediaMTX, video lấy từ `HGVISION_HLS_BASE_URL` (:8888). Thêm biến này vào mẫu `.env` máy trường. | Mục "Cấu hình BE trên máy trường", "Giả định" #1 |
 | 2026-11-18 | Xóa mock HGVision (`server.mjs`, `prepare-media.mjs`, npm `hgvision:mock*`) sau khi test xong API camera cho FE. Chuyển thư mục `scripts/hgvision-mock/` → `scripts/hgvision/`, chỉ giữ `capture-real.mjs`. Thêm mục cấu hình máy trường. Mock vẫn lấy lại được từ commit `f0830a2`. | Toàn bộ file |
 | 2026-11-18 | Thêm script `capture-real.mjs` (lấy JSON thật, chỉ đọc) và mục "Lấy JSON thật trên máy trường" | Mục mới cuối file |
 | 2026-11-18 | Tạo mock HGVision (giả lập OpenAPI 1.0.0) để dev SAVP khi không truy cập được máy HGVision thật ở trường | Toàn bộ file |
@@ -15,6 +16,7 @@
 CAMERA_PROVIDER=hgvision          # bật poller lịch sử (cần scope history:read)
 HGVISION_ENABLED=true
 HGVISION_BASE_URL=http://localhost:8113
+HGVISION_HLS_BASE_URL=http://localhost:8888   # MediaMTX — nguồn video live (không cần token)
 HGVISION_CLIENT_ID=<tạo ở trang "Tích hợp API" của HGVision>
 HGVISION_CLIENT_SECRET=<như trên>
 HGVISION_WRITE_ENABLED=false      # chỉ bật khi đã thử ghi định danh trên máy thật
@@ -38,7 +40,7 @@ Thư mục `.capture/` đã nằm trong gitignore và **không được commit**
 
 ## Giả định cần kiểm lại trên server thật
 
-1. `live_hls_path` là đường dẫn tương đối trên `:8113` (BE proxy lại qua `/api/v1/hgvision/live/...`). Nếu là URL đầy đủ thì phải cùng host với `HGVISION_BASE_URL`, nếu không BE sẽ từ chối.
+1. ~~`live_hls_path` là đường dẫn tương đối trên `:8113`~~ — **đã kiểm 2026-11-18: SAI.** Máy thật trả *tên luồng MediaMTX* (vd `afcd30ac-…`, `…_sub`). `:8113/<tên>/index.m3u8` trả trang đăng nhập (307) còn `:8888/<tên>/index.m3u8` trả `#EXTM3U`, nên BE đọc từ `HGVISION_HLS_BASE_URL`. Nếu giá trị có dấu `/` thì BE vẫn coi là path trên `HGVISION_BASE_URL` như cũ. Nếu HGVision trả nội dung không phải HLS, BE trả 502 `HGVISION_LIVE_NOT_HLS`.
 2. Mức `level` trong `cameras/health`: FE hiển thị `good` / `weak` / `offline`; mức khác sẽ hiện theo trạng thái online/offline.
 3. Sự kiện vạch đếm: `direction` 1 = vào, −1 = ra (OpenAPI không ghi rõ).
 4. POST faces với `face_ident` đã tồn tại: server thật có thể gộp ảnh vào định danh cũ thay vì trả 400.
