@@ -87,6 +87,12 @@ const VEHICLE_EVENT_TYPE_SQL = VEHICLE_EVENT_TYPES.map(
 ).join(', ');
 
 /**
+ * Camera nhận diện cả người đi bộ (vehicleType = 'pedestrian') — không có biển số nên loại khỏi
+ * mọi màn kiểm soát xe (danh sách, số đếm, phân trang). Chuỗi cố định, không có input người dùng.
+ */
+const NOT_PEDESTRIAN_SQL = `LOWER(COALESCE(iot_device_events.payload_json->>'vehicleType', '')) <> 'pedestrian'`;
+
+/**
  * VehicleHistoryService (VHI-001 / UC7) — lịch sử ra/vào cổng (read-only).
  *
  * 2 method: listForUser (xe CỦA MÌNH, payload_json->>'userId'=current) / listAll (admin, tất cả).
@@ -120,7 +126,7 @@ export class VehicleHistoryService {
     query: ListVehicleHistoryQueryDto,
   ): Promise<{ items: VehicleHistoryItem[]; meta: PaginationMeta }> {
     const params: unknown[] = [...VEHICLE_EVENT_TYPES, userId];
-    let where = `iot_device_events.event_type IN (${VEHICLE_EVENT_TYPE_SQL}) AND iot_device_events.payload_json->>'userId' = $${params.length}`;
+    let where = `iot_device_events.event_type IN (${VEHICLE_EVENT_TYPE_SQL}) AND ${NOT_PEDESTRIAN_SQL} AND iot_device_events.payload_json->>'userId' = $${params.length}`;
     where = this.applyFilters(query, params, where);
     return this.paginate(where, params, query, false);
   }
@@ -130,7 +136,7 @@ export class VehicleHistoryService {
     query: ListVehicleHistoryQueryDto,
   ): Promise<{ items: VehicleHistoryItem[]; meta: PaginationMeta }> {
     const params: unknown[] = [...VEHICLE_EVENT_TYPES];
-    let where = `iot_device_events.event_type IN (${VEHICLE_EVENT_TYPE_SQL})`;
+    let where = `iot_device_events.event_type IN (${VEHICLE_EVENT_TYPE_SQL}) AND ${NOT_PEDESTRIAN_SQL}`;
     if (query.matchState) {
       params.push(filterValues(query.matchState));
       where += ` AND iot_device_events.payload_json->>'matchState' = ANY($${params.length}::text[])`;
@@ -170,7 +176,9 @@ export class VehicleHistoryService {
       where += ` AND iot_device_events.payload_json->>'plateNumber' = $${params.length}`;
     }
     if (query.vehicleType) {
-      params.push(filterValues(query.vehicleType).map(value => value.toLowerCase()));
+      params.push(
+        filterValues(query.vehicleType).map((value) => value.toLowerCase()),
+      );
       where += ` AND LOWER(COALESCE(NULLIF(iot_device_events.payload_json->>'vehicleType', ''), vr.vehicle_type)) = ANY($${params.length}::text[])`;
     }
     if (query.cameraName) {

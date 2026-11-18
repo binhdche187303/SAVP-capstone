@@ -8,6 +8,7 @@ import { HGVISION_CLIENT } from './hgvision.constants.js';
 import { HgvisionPollerService } from './hgvision-poller.service.js';
 import { HgvisionCameraService } from './hgvision-camera.service.js';
 import { HgvisionCameraController } from './hgvision-camera.controller.js';
+import { HgvisionSnapshotService } from './hgvision-snapshot.service.js';
 
 /**
  * HgvisionModule — nguồn camera AI HGVision, chạy SONG SONG với IVSS.
@@ -34,6 +35,7 @@ import { HgvisionCameraController } from './hgvision-camera.controller.js';
     },
     HgvisionPollerService,
     HgvisionCameraService,
+    HgvisionSnapshotService,
   ],
   exports: [HGVISION_CLIENT, HgvisionCameraService],
 })

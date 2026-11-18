@@ -92,6 +92,13 @@ export class DashboardOverviewService {
       occupancy,
       gateTraffic: { entriesToday, exitsToday },
       cameraStatus,
+      cameras: devicesInZone.map((d) => ({
+        id: d.id,
+        name: d.deviceName,
+        code: d.deviceCode,
+        status: d.status,
+        lastSeenAt: d.lastSeenAt ? new Date(d.lastSeenAt).toISOString() : null,
+      })),
     };
   }
 

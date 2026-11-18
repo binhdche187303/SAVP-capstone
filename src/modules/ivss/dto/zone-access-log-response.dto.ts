@@ -44,6 +44,9 @@ export interface ZoneAccessLogResponseDto {
   zoneId: string;
   zoneName: string | null;
   date: string;
+  /** Khoảng ngày thực tế đã lọc (YYYY-MM-DD). */
+  from?: string;
+  to?: string;
   /** Tổng số event khớp bộ lọc (TOÀN BỘ, không chỉ trang hiện tại) — bằng `pagination.total`. */
   totalEvents: number;
   /** Đếm trên TOÀN BỘ kết quả lọc, không phải chỉ trang hiện tại. */

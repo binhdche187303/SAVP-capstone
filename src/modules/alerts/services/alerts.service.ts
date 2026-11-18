@@ -394,7 +394,12 @@ export class AlertsService {
     if (query.severity) where.severity = filterWhere(query.severity);
     // 'open' = chưa đóng (new + acknowledged) — ô "Đang mở" trên trang Cảnh báo.
     if (query.status === 'open') where.status = Not('resolved');
-    else if (Array.isArray(query.status)) where.status = In(query.status.flatMap(status => status === 'open' ? ['new', 'acknowledged'] as const : [status]));
+    else if (Array.isArray(query.status))
+      where.status = In(
+        query.status.flatMap((status) =>
+          status === 'open' ? (['new', 'acknowledged'] as const) : [status],
+        ),
+      );
     else if (query.status) where.status = query.status;
     if (query.from && query.to) {
       where.triggeredAt = Between(new Date(query.from), new Date(query.to));
@@ -468,7 +473,9 @@ export class AlertsService {
   async acknowledge(
     id: string,
     actorUserId: string,
+    note?: string,
   ): Promise<SecurityAlertEntity> {
+    const trimmed = note?.trim();
     const result = await this.repo.update(
       { id, status: 'new' },
       {
@@ -479,6 +486,16 @@ export class AlertsService {
     );
     if (!result.affected) {
       throw this.alreadyProcessedConflict(await this.getOrThrow(id));
+    }
+    if (trimmed) {
+      // Ghi chú tiếp nhận (không bắt buộc) — không có cột riêng nên gộp vào payload_json.
+      await this.repo.query(
+        `UPDATE security_alerts
+            SET payload_json = COALESCE(payload_json, '{}'::jsonb)
+                               || jsonb_build_object('acknowledgeNote', $2::text)
+          WHERE id = $1`,
+        [id, trimmed],
+      );
     }
     return this.getOrThrow(id);
   }

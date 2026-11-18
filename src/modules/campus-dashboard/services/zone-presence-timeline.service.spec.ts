@@ -22,7 +22,13 @@ describe('ZonePresenceTimelineService (ZPT-001 / UC-119)', () => {
 
   const build = () => {
     zoneRepo = { findOne: jest.fn().mockResolvedValue({ id: 'zone-1' }) };
-    presenceRepo = { find: jest.fn().mockResolvedValue([]) };
+    presenceRepo = {
+      find: jest.fn().mockResolvedValue([]),
+      // countByStatus (nút lọc) — mặc định khoảng rỗng.
+      query: jest
+        .fn()
+        .mockResolvedValue([{ all: '0', matched: '0', stranger: '0' }]),
+    };
   };
 
   const compile = async () => {
@@ -54,11 +60,122 @@ describe('ZonePresenceTimelineService (ZPT-001 / UC-119)', () => {
     );
   });
 
-  it('range >31 ngày → 400 INVALID_TIMELINE_RANGE', async () => {
-    const farTo = new Date('2026-09-30T00:00:00Z'); // > 31 ngày kể từ from
+  it('status=stranger → chỉ lượt appear không gắn người; statusCounts vẫn tính cả khoảng', async () => {
+    presenceRepo.query.mockResolvedValue([
+      { all: '50', matched: '10', stranger: '25' },
+    ]);
+    presenceRepo.find.mockResolvedValue([event()]);
+    const r = await service.getTimeline(
+      'zone-1',
+      from,
+      to,
+      undefined,
+      'stranger',
+    );
+    const where = presenceRepo.find.mock.calls[0][0].where;
+    expect(where.eventType).toBe('appear');
+    expect(where.userId).toEqual(expect.objectContaining({ _type: 'isNull' }));
+    expect(r.statusCounts).toEqual({ all: 50, matched: 10, stranger: 25 });
+  });
+
+  it('status=matched → userId khác NULL; lọc ra rỗng vẫn trả statusCounts để FE hiện số', async () => {
+    presenceRepo.query.mockResolvedValue([
+      { all: '50', matched: '0', stranger: '25' },
+    ]);
+    presenceRepo.find.mockResolvedValue([]);
+    const r = await service.getTimeline(
+      'zone-1',
+      from,
+      to,
+      undefined,
+      'matched',
+    );
+    const where = presenceRepo.find.mock.calls[0][0].where;
+    expect(where.userId).toEqual(expect.objectContaining({ _type: 'not' }));
+    expect(r.events).toEqual([]);
+    expect(r.statusCounts).toEqual({ all: 50, matched: 0, stranger: 25 });
+  });
+
+  it('range > 1 năm → 400 INVALID_TIMELINE_RANGE', async () => {
+    const farTo = new Date('2027-08-30T00:00:00Z'); // > 366 ngày kể từ from
     await expect(service.getTimeline('zone-1', from, farTo)).rejects.toThrow(
       BadRequestException,
     );
+  });
+
+  it('range > 31 ngày → trả tổng hợp theo giờ (SQL GROUP BY) + 30 sự kiện gần nhất, không kéo sự kiện thô', async () => {
+    const hourlyRows = [
+      {
+        hour: 8,
+        total: '120',
+        appear: '70',
+        disappear: '30',
+        has_person: true,
+      },
+      {
+        hour: 17,
+        total: '15',
+        appear: '10',
+        disappear: '5',
+        has_person: false,
+      },
+    ];
+    presenceRepo.query = jest.fn((sql: string) =>
+      Promise.resolve(
+        sql.includes('GROUP BY 1')
+          ? hourlyRows
+          : [{ all: '135', matched: '40', stranger: '60' }],
+      ),
+    );
+    presenceRepo.find.mockResolvedValue([
+      event({ id: 'b', eventTime: new Date('2026-09-01T09:00:00Z') }),
+      event({ id: 'a', eventTime: new Date('2026-08-01T09:00:00Z') }),
+    ]);
+    const farTo = new Date('2026-12-31T23:59:59Z');
+    const r = await service.getTimeline('zone-1', from, farTo);
+    expect(
+      presenceRepo.query.mock.calls.some((c: any[]) =>
+        String(c[0]).includes('GROUP BY 1'),
+      ),
+    ).toBe(true);
+    expect(r.statusCounts).toEqual({ all: 135, matched: 40, stranger: 60 });
+    expect(presenceRepo.find).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 30, order: { eventTime: 'DESC' } }),
+    );
+    expect(r.summary).toMatchObject({
+      total: 135,
+      appearTotal: 80,
+      disappearTotal: 35,
+    });
+    expect(r.summary!.hourly).toHaveLength(24);
+    expect(r.summary!.hourly[8]).toEqual({
+      hour: 8,
+      appear: 70,
+      disappear: 30,
+    });
+    expect(r.events.map((e) => e.eventTime)).toEqual([
+      '2026-08-01T09:00:00.000Z',
+      '2026-09-01T09:00:00.000Z',
+    ]);
+    expect(r.personDataAvailable).toBe(true);
+  });
+
+  it('range > 31 ngày nhưng không có dữ liệu → message rỗng như cũ', async () => {
+    presenceRepo.query = jest.fn((sql: string) =>
+      Promise.resolve(
+        sql.includes('GROUP BY 1')
+          ? []
+          : [{ all: '0', matched: '0', stranger: '0' }],
+      ),
+    );
+    const r = await service.getTimeline(
+      'zone-1',
+      from,
+      new Date('2026-12-31T00:00:00Z'),
+    );
+    expect(r.events).toEqual([]);
+    expect(r.summary).toBeUndefined();
+    expect(r.message).toContain('Không có dữ liệu');
   });
 
   it('không có event nào → EX1 rỗng kèm message, KHÔNG lỗi', async () => {

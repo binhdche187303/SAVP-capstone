@@ -41,6 +41,7 @@ describe('ZonePresenceTimelineController (ZPT-001 / UC-119)', () => {
       new Date('2026-07-01T00:00:00Z'),
       new Date('2026-07-02T00:00:00Z'),
       'u1',
+      undefined, // status (không lọc)
     );
     expect(result).toEqual({
       success: true,

@@ -6,8 +6,10 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { DataSource } from 'typeorm';
 import {
   HgvisionCamera,
   HgvisionCameraHealth,
@@ -25,6 +27,9 @@ export interface CameraOverviewItem {
   name: string;
   index: number | null;
   group: string | null;
+  /** Khu vực SAVP của camera (gán ở thiết bị hoặc qua ánh xạ camera → kênh → khu vực); null nếu chưa gán. */
+  zoneId: string | null;
+  zoneName: string | null;
   status: 'online' | 'offline';
   usingAi: boolean;
   usingFace: boolean;
@@ -70,7 +75,77 @@ export class HgvisionCameraService {
   constructor(
     @Inject(HGVISION_CLIENT) private readonly client: HgvisionClient,
     private readonly config: ConfigService,
+    @Optional() private readonly dataSource?: DataSource,
   ) {}
+
+  private zoneCache: {
+    at: number;
+    value: Promise<Map<string, CameraZone>>;
+  } | null = null;
+
+  /**
+   * Tên camera HGVision → khu vực SAVP. Ưu tiên khu vực gán trực tiếp cho thiết bị
+   * (iot_devices.metadata_json.camera_name, source = hgvision), sau đó tới ánh xạ
+   * hgvision.camera_channel_map → ivss.channel_presence_zone_map / ivss.channel_zone_map.
+   * Lỗi DB không làm hỏng danh sách camera: trả map rỗng.
+   */
+  private zoneMap(): Promise<Map<string, CameraZone>> {
+    if (this.zoneCache && Date.now() - this.zoneCache.at < STATIC_TTL_MS)
+      return this.zoneCache.value;
+    const value = this.loadZoneMap().catch((e: unknown) => {
+      this.logger.warn(`Không đọc được khu vực camera: ${String(e)}`);
+      this.zoneCache = null;
+      return new Map<string, CameraZone>();
+    });
+    this.zoneCache = { at: Date.now(), value };
+    return value;
+  }
+
+  private async loadZoneMap(): Promise<Map<string, CameraZone>> {
+    const out = new Map<string, CameraZone>();
+    if (!this.dataSource) return out;
+    const q = this.dataSource.manager;
+    const configs: { config_key: string; config_json: unknown }[] =
+      await q.query(
+        `SELECT config_key, config_json FROM system_configs
+        WHERE is_active = true AND config_key IN
+          ('hgvision.camera_channel_map', 'ivss.channel_presence_zone_map', 'ivss.channel_zone_map')`,
+      );
+    const cfg = (key: string) =>
+      (configs.find((c) => c.config_key === key)?.config_json ?? {}) as Record<
+        string,
+        unknown
+      >;
+    const channelZone = {
+      ...cfg('ivss.channel_zone_map'),
+      ...cfg('ivss.channel_presence_zone_map'),
+    };
+    const byName = new Map<string, string>();
+    for (const [name, channel] of Object.entries(
+      cfg('hgvision.camera_channel_map'),
+    )) {
+      const zoneId = channelZone[String(channel)];
+      if (typeof zoneId === 'string' && zoneId)
+        byName.set(normName(name), zoneId);
+    }
+    const devices: { camera_name: string; zone_id: string }[] = await q.query(
+      `SELECT metadata_json->>'camera_name' AS camera_name, zone_id::text AS zone_id
+         FROM iot_devices
+        WHERE zone_id IS NOT NULL AND metadata_json->>'source' = 'hgvision'
+          AND COALESCE(metadata_json->>'camera_name', '') <> ''`,
+    );
+    for (const d of devices) byName.set(normName(d.camera_name), d.zone_id);
+    if (byName.size === 0) return out;
+    const zones: { id: string; zone_name: string }[] = await q.query(
+      `SELECT id::text AS id, zone_name FROM zones WHERE deleted_at IS NULL AND id::text = ANY($1)`,
+      [[...new Set(byName.values())]],
+    );
+    const zoneName = new Map(zones.map((z) => [z.id, z.zone_name]));
+    for (const [name, id] of byName) {
+      if (zoneName.has(id)) out.set(name, { id, name: zoneName.get(id)! });
+    }
+    return out;
+  }
 
   private get configured(): boolean {
     return !!(
@@ -119,8 +194,15 @@ export class HgvisionCameraService {
       }),
     ]);
     const byName = new Map(health.map((h) => [h.camera_name, h]));
+    const zones = await this.zoneMap();
     return cams
-      .map((c) => toOverview(c, byName.get(c.camera_name)))
+      .map((c) =>
+        toOverview(
+          c,
+          byName.get(c.camera_name),
+          zones.get(normName(c.camera_name)),
+        ),
+      )
       .sort((a, b) => (a.index ?? 1e9) - (b.index ?? 1e9));
   }
 
@@ -156,7 +238,10 @@ export class HgvisionCameraService {
   }
 
   /** Playlist live của 1 camera, đã viết lại mọi URI để đi qua proxy BE. */
-  async livePlaylist(name: string): Promise<string> {
+  /** Path playlist live trên HGVision (tương đối HGVISION_BASE_URL) + trạng thái camera. */
+  async liveSource(
+    name: string,
+  ): Promise<{ upstream: string; online: boolean; zone: CameraZone | null }> {
     const cams = await this.cached('cameras', LIST_TTL_MS, () =>
       this.client.listCameras(),
     );
@@ -166,6 +251,16 @@ export class HgvisionCameraService {
       cam.live_hls_path || `/live/${encodeURIComponent(name)}/index.m3u8`,
       this.config.get<string>('HGVISION_BASE_URL', ''),
     );
+    const zones = await this.zoneMap();
+    return {
+      upstream,
+      online: String(cam.status ?? '').toLowerCase() === 'online',
+      zone: zones.get(normName(name)) ?? null,
+    };
+  }
+
+  async livePlaylist(name: string): Promise<string> {
+    const { upstream } = await this.liveSource(name);
     const res = await this.call(() => this.client.fetchPublicMedia(upstream));
     return rewritePlaylist(res.body.toString('utf8'), upstream);
   }
@@ -226,15 +321,30 @@ export class HgvisionCameraService {
   }
 }
 
+export interface CameraZone {
+  id: string;
+  name: string;
+}
+
+/** So khớp tên camera không phân biệt hoa thường/khoảng trắng thừa. */
+export const normName = (name: string) =>
+  String(name ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+
 function toOverview(
   c: HgvisionCamera,
   h?: HgvisionCameraHealth,
+  zone?: CameraZone,
 ): CameraOverviewItem {
   const online = String(c.status ?? '').toLowerCase() === 'online';
   return {
     name: c.camera_name,
     index: c.camera_index ?? null,
     group: c.camera_group || null,
+    zoneId: zone?.id ?? null,
+    zoneName: zone?.name ?? null,
     status: online ? 'online' : 'offline',
     usingAi: !!c.using_ai,
     usingFace: !!c.using_face_recognition,

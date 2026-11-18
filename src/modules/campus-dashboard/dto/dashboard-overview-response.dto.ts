@@ -31,6 +31,16 @@ export interface ZoneOverviewDto {
   occupancy: ZoneOccupancyDto;
   gateTraffic: ZoneGateTrafficDto;
   cameraStatus: ZoneCameraStatusDto;
+  /** Từng thiết bị gắn khu vực (để FE chỉ ra camera nào mất kết nối). */
+  cameras: ZoneCameraDto[];
+}
+
+export interface ZoneCameraDto {
+  id: string;
+  name: string;
+  code: string;
+  status: string;
+  lastSeenAt: string | null;
 }
 
 export interface FloorOverviewDto {

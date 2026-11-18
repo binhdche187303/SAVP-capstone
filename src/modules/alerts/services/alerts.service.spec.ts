@@ -948,18 +948,38 @@ describe('AlertsService (ASC-001 / UC-123)', () => {
       const from = '2026-11-14T00:00:00+07:00';
       const to = '2026-11-14T23:59:59.999+07:00';
       await service.list({ page: 1, limit: 10, from, to } as any);
-      expect(repo.findAndCount.mock.calls.at(-1)[0].where.triggeredAt.type).toBe('between');
-      expect(repo.findAndCount.mock.calls.at(-1)[0].where.triggeredAt.value).toEqual([new Date(from), new Date(to)]);
+      expect(
+        repo.findAndCount.mock.calls.at(-1)[0].where.triggeredAt.type,
+      ).toBe('between');
+      expect(
+        repo.findAndCount.mock.calls.at(-1)[0].where.triggeredAt.value,
+      ).toEqual([new Date(from), new Date(to)]);
       await service.list({ page: 1, limit: 10, from } as any);
-      expect(repo.findAndCount.mock.calls.at(-1)[0].where.triggeredAt.type).toBe('moreThanOrEqual');
+      expect(
+        repo.findAndCount.mock.calls.at(-1)[0].where.triggeredAt.type,
+      ).toBe('moreThanOrEqual');
       await service.list({ page: 1, limit: 10, to } as any);
-      expect(repo.findAndCount.mock.calls.at(-1)[0].where.triggeredAt.type).toBe('lessThanOrEqual');
+      expect(
+        repo.findAndCount.mock.calls.at(-1)[0].where.triggeredAt.type,
+      ).toBe('lessThanOrEqual');
     });
 
     it('combines severity, zone and status before paging', async () => {
       repo.findAndCount.mockResolvedValue([[], 0]);
-      await service.list({ page: 2, limit: 10, severity: 'high', zoneId: 'zone-1', status: 'new' } as any);
-      expect(repo.findAndCount).toHaveBeenCalledWith(expect.objectContaining({ where: { severity: 'high', zoneId: 'zone-1', status: 'new' }, skip: 10, take: 10 }));
+      await service.list({
+        page: 2,
+        limit: 10,
+        severity: 'high',
+        zoneId: 'zone-1',
+        status: 'new',
+      } as any);
+      expect(repo.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { severity: 'high', zoneId: 'zone-1', status: 'new' },
+          skip: 10,
+          take: 10,
+        }),
+      );
     });
 
     it('R3: không truyền status → where KHÔNG có status (trả mọi trạng thái)', async () => {
@@ -1029,6 +1049,22 @@ describe('AlertsService (ASC-001 / UC-123)', () => {
         }),
       );
       expect(r.status).toBe('acknowledged');
+    });
+
+    it('có ghi chú tiếp nhận → lưu payload_json.acknowledgeNote bằng câu lệnh có tham số; không có thì không ghi', async () => {
+      repo.update.mockResolvedValue({ affected: 1 });
+      repo.findOne.mockResolvedValue({ id: 'a1', status: 'acknowledged' });
+      repo.query = jest.fn().mockResolvedValue([]);
+      await service.acknowledge('a1', 'u1', '  Đang ra cổng kiểm tra  ');
+      expect(repo.query).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "jsonb_build_object('acknowledgeNote', $2::text)",
+        ),
+        ['a1', 'Đang ra cổng kiểm tra'],
+      );
+      repo.query.mockClear();
+      await service.acknowledge('a1', 'u1', '   ');
+      expect(repo.query).not.toHaveBeenCalled();
     });
 
     it('EX1: status KHÔNG PHẢI new (đã bị xử lý) → 409 kèm đúng người/thời điểm', async () => {

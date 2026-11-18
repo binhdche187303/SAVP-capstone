@@ -38,6 +38,7 @@ export class ZonePresenceTimelineController {
       new Date(query.from),
       new Date(query.to),
       query.userId,
+      query.status,
     );
 
     return {

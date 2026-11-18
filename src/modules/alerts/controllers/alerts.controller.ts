@@ -19,6 +19,7 @@ import { AlertsService } from '../services/alerts.service.js';
 import { QuerySecurityAlertsDto } from '../dto/query-security-alerts.dto.js';
 import { ResolveSecurityAlertDto } from '../dto/resolve-security-alert.dto.js';
 import { BulkAcknowledgeSecurityAlertsDto } from '../dto/bulk-acknowledge-security-alerts.dto.js';
+import { AcknowledgeSecurityAlertDto } from '../dto/acknowledge-security-alert.dto.js';
 import {
   toSecurityAlertResponse,
   toZoneSummary,
@@ -86,8 +87,13 @@ export class AlertsController {
   async acknowledge(
     @CurrentUser() user: { userId: string },
     @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AcknowledgeSecurityAlertDto = {},
   ) {
-    const entity = await this.alertsService.acknowledge(id, user.userId);
+    const entity = await this.alertsService.acknowledge(
+      id,
+      user.userId,
+      dto?.acknowledgeNote,
+    );
     return {
       success: true,
       message: 'Security alert acknowledged successfully',

@@ -75,6 +75,35 @@ describe('IvssZoneAccessLogService (Zone Access Log — đường B, FIX 2026-08
 
   afterEach(() => jest.clearAllMocks());
 
+  it('status=stranger: chỉ lấy người lạ, tổng phân trang = số người lạ, bộ đếm vẫn cả ngày', async () => {
+    wire({ counts: { total: '104', matched: '4', unmatched: '100' } });
+    const res = await service.getZoneAccessLog(ZONE_ID, {
+      status: 'stranger',
+      limit: 9,
+    });
+    const ev = captured.find((c) => isEventQuery(c.sql))!;
+    expect(ev.sql).toContain(`matchState' LIKE 'unmatched%'`);
+    expect(res.matchedCount).toBe(4);
+    expect(res.unmatchedCount).toBe(100);
+    expect(res.pagination.total).toBe(100);
+    expect(res.pagination.totalPages).toBe(12);
+  });
+
+  it('status=matched: chỉ lấy người quen; không truyền status thì không lọc', async () => {
+    wire({ counts: { total: '104', matched: '4', unmatched: '100' } });
+    const res = await service.getZoneAccessLog(ZONE_ID, { status: 'matched' });
+    expect(captured.find((c) => isEventQuery(c.sql))!.sql).toContain(
+      `matchState' = 'matched'`,
+    );
+    expect(res.pagination.total).toBe(4);
+    wire({ counts: { total: '104', matched: '4', unmatched: '100' } });
+    const all = await service.getZoneAccessLog(ZONE_ID, {});
+    expect(captured.find((c) => isEventQuery(c.sql))!.sql).not.toContain(
+      `matchState' = 'matched'`,
+    );
+    expect(all.pagination.total).toBe(104);
+  });
+
   it('zone không tồn tại / đã soft-delete → 404 ZONE_NOT_FOUND', async () => {
     wire({ zone: [] });
     await expect(
@@ -267,19 +296,39 @@ describe('IvssZoneAccessLogService (Zone Access Log — đường B, FIX 2026-08
       "e.event_time >= ($2::date::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh')",
     );
     expect(q.sql).toContain(
-      "(($2::date + interval '1 day')::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh')",
+      "(($5::date + interval '1 day')::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh')",
     );
     // Chặn hồi quy (mirror RAL-001): KHÔNG $2::date trần, KHÔNG thiếu ::timestamp.
     expect(q.sql).not.toMatch(/event_time\s*>=\s*\$2::date\s/);
     expect(q.sql).not.toMatch(/\$2::date AT TIME ZONE/);
     expect(q.sql).toContain('e.zone_id = $3::uuid');
     expect(q.sql).toContain('LEFT JOIN users u');
-    expect(q.params.slice(0, 4)).toEqual([
+    expect(q.params.slice(0, 5)).toEqual([
       'ivss_face_event',
       '2026-07-28',
       ZONE_ID,
       null,
+      '2026-07-28',
     ]);
+  });
+
+  it('from/to: lọc theo khoảng ngày [from, to+1) giờ VN; from > to → 400', async () => {
+    wire();
+    const r = await service.getZoneAccessLog(ZONE_ID, {
+      from: '2026-07-01',
+      to: '2026-07-28',
+    });
+    const q = captured.find((c) => isEventQuery(c.sql))!;
+    expect(q.params[1]).toBe('2026-07-01');
+    expect(q.params[4]).toBe('2026-07-28');
+    expect(r.from).toBe('2026-07-01');
+    expect(r.to).toBe('2026-07-28');
+    await expect(
+      service.getZoneAccessLog(ZONE_ID, {
+        from: '2026-07-28',
+        to: '2026-07-01',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'INVALID_DATE_RANGE' } });
   });
 
   it('thiếu date → tự dùng hôm nay (YYYY-MM-DD)', async () => {
@@ -290,15 +339,15 @@ describe('IvssZoneAccessLogService (Zone Access Log — đường B, FIX 2026-08
     expect(q.params[1]).toBe(r.date);
   });
 
-  // ── phân trang — mirror RAL-001 (LIMIT/OFFSET giờ ở $5/$6, không $6/$7, vì KHÔNG meetingId) ──
+  // ── phân trang — LIMIT/OFFSET ở $6/$7 ($5 = ngày kết thúc của khoảng) ──
   describe('phân trang', () => {
     it('mặc định page=1 limit=20 → LIMIT/OFFSET đúng', async () => {
       wire();
       const r = await service.getZoneAccessLog(ZONE_ID, { date: '2026-07-28' });
       const q = captured.find((c) => isEventQuery(c.sql))!;
-      expect(q.sql).toContain('LIMIT $5 OFFSET $6');
-      expect(q.params[4]).toBe(20);
-      expect(q.params[5]).toBe(0);
+      expect(q.sql).toContain('LIMIT $6 OFFSET $7');
+      expect(q.params[5]).toBe(20);
+      expect(q.params[6]).toBe(0);
       expect(r.pagination).toEqual({
         page: 1,
         limit: 20,
@@ -318,8 +367,8 @@ describe('IvssZoneAccessLogService (Zone Access Log — đường B, FIX 2026-08
         limit: 10,
       });
       const q = captured.find((c) => isEventQuery(c.sql))!;
-      expect(q.params[4]).toBe(10);
-      expect(q.params[5]).toBe(20);
+      expect(q.params[5]).toBe(10);
+      expect(q.params[6]).toBe(20);
       expect(r.pagination).toEqual({
         page: 3,
         limit: 10,

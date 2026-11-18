@@ -48,9 +48,12 @@ export class IvssZoneAccessController {
   ) {
     const data = await this.zoneAccessLogService.getZoneAccessLog(zoneId, {
       date: query.date,
+      from: query.from,
+      to: query.to,
       page: query.page,
       limit: query.limit,
       search: query.search,
+      status: query.status,
     });
     return { success: true, message: 'Zone access log retrieved', data };
   }
