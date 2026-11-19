@@ -502,7 +502,8 @@ export class HgvisionClient {
         ident: input.ident,
         lp_infor: input.lpInfor ?? '',
         visible_to: input.visibleTo ?? 'all',
-        is_blacklist: !!input.isBlacklist,
+        // HGVision POST/PUT biển số chỉ nhận số 0/1 (true/false → 400 Invalid request parameters).
+        is_blacklist: input.isBlacklist ? 1 : 0,
       },
     });
   }
@@ -516,7 +517,8 @@ export class HgvisionClient {
     if (patch.ident !== undefined) body.ident = patch.ident;
     if (patch.lpInfor !== undefined) body.lp_infor = patch.lpInfor;
     if (patch.visibleTo !== undefined) body.visible_to = patch.visibleTo;
-    if (patch.isBlacklist !== undefined) body.is_blacklist = patch.isBlacklist;
+    if (patch.isBlacklist !== undefined)
+      body.is_blacklist = patch.isBlacklist ? 1 : 0;
     return this.request(
       'PUT',
       `/api/identification/license-plates/${seg(licensePlate)}`,
@@ -666,11 +668,15 @@ export class HgvisionClient {
   private async toError(res: Response): Promise<HgvisionError> {
     let detail = '';
     try {
-      const body = (await res.json()) as {
-        error?: string;
-        error_description?: string;
-      };
-      detail = body.error_description ?? body.error ?? '';
+      const body = (await res.json()) as Record<string, unknown>;
+      const main = body.error_description ?? body.error;
+      detail = typeof main === 'string' ? main : '';
+      // Kèm chi tiết để biết trường nào sai / thiếu scope nào (không chứa token).
+      const extra = ['required_scope', 'details', 'errors', 'message']
+        .filter((k) => body[k] !== undefined && body[k] !== main)
+        .map((k) => `${k}=${JSON.stringify(body[k])}`)
+        .join(' ');
+      if (extra) detail = detail ? `${detail} (${extra})` : extra;
     } catch {
       // body không phải JSON — chỉ dùng status.
     }
