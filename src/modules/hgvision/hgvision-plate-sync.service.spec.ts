@@ -4,12 +4,16 @@ import { HgvisionPlateSyncService } from './hgvision-plate-sync.service.js';
 import { HgvisionError, type HgvisionClient } from './hgvision.client.js';
 import { ControlListSyncHook } from '../anpr/services/control-list-sync.hook.js';
 import type { VehicleControlListEntity } from '../anpr/entities/vehicle-control-list.entity.js';
+import type { VehicleRegistrationEntity } from '../anpr/entities/vehicle-registration.entity.js';
 
 type Row = Partial<VehicleControlListEntity>;
+type Reg = Partial<VehicleRegistrationEntity>;
 
 function setup(opts: {
   live?: Row[];
   owned?: boolean;
+  reg?: Reg | null;
+  regOwned?: boolean;
   writeEnabled?: boolean;
   provider?: string;
 }) {
@@ -24,6 +28,11 @@ function setup(opts: {
     exists: jest.fn().mockResolvedValue(!!opts.owned),
     update: jest.fn().mockResolvedValue({ affected: 1 }),
   };
+  const regRepo = {
+    findOne: jest.fn().mockResolvedValue(opts.reg ?? null),
+    exists: jest.fn().mockResolvedValue(!!opts.regOwned),
+    update: jest.fn().mockResolvedValue({ affected: 1 }),
+  };
   const hook = new ControlListSyncHook();
   const config = {
     get: jest.fn((k: string, d?: unknown) =>
@@ -33,6 +42,7 @@ function setup(opts: {
   const svc = new HgvisionPlateSyncService(
     client as unknown as HgvisionClient,
     repo as unknown as Repository<VehicleControlListEntity>,
+    regRepo as unknown as Repository<VehicleRegistrationEntity>,
     hook,
     config as unknown as ConfigService,
   );
@@ -40,7 +50,11 @@ function setup(opts: {
     const calls = repo.update.mock.calls as unknown[][];
     return calls[calls.length - 1]?.[1] ?? {};
   };
-  return { svc, client, repo, hook, lastMark };
+  const lastRegMark = (): Reg => {
+    const calls = regRepo.update.mock.calls as unknown[][];
+    return calls[calls.length - 1]?.[1] ?? {};
+  };
+  return { svc, client, repo, regRepo, hook, lastMark, lastRegMark };
 }
 
 const black: Row = {
@@ -175,5 +189,86 @@ describe('HgvisionPlateSyncService', () => {
     expect(m.hgvisionSyncStatus).toBe('failed');
     expect(m.hgvisionSyncError).toContain('HTTP 403');
     expect(m.hgvisionSyncError).not.toContain('abc.def.ghi');
+  });
+
+  describe('xe đăng ký (Phương tiện cá nhân / Đăng ký xe nhân viên)', () => {
+    const reg: Reg = {
+      plateNumber: '51A12345',
+      status: 'active',
+      vehicleType: 'motorbike',
+      user: { fullName: 'Nguyễn Văn A', employeeCode: 'NV001' } as never,
+    };
+
+    it('chỉ đăng ký → tạo Bình thường, chủ xe = họ tên - mã tài khoản', async () => {
+      const { svc, client, lastRegMark } = setup({ reg });
+      await svc.syncPlate('51A12345');
+      expect(client.createPlate).toHaveBeenCalledWith({
+        licensePlate: '51A12345',
+        ident: 'Nguyễn Văn A - NV001',
+        lpInfor: 'SAVP - Xe đăng ký (Xe máy)',
+        isBlacklist: false,
+        visibleTo: 'all',
+      });
+      expect(lastRegMark()).toMatchObject({ hgvisionSyncStatus: 'synced' });
+    });
+
+    it('không có mã NV → chỉ họ tên', async () => {
+      const { svc, client } = setup({
+        reg: { ...reg, user: { fullName: 'B', employeeCode: null } as never },
+      });
+      await svc.syncPlate('51A12345');
+      expect(client.createPlate).toHaveBeenCalledWith(
+        expect.objectContaining({ ident: 'B' }),
+      );
+    });
+
+    it('đăng ký + admin đưa vào danh sách đen → blacklist thắng, giữ chủ xe', async () => {
+      const { svc, client } = setup({ reg, live: [black] });
+      await svc.syncPlate('51A12345');
+      expect(client.createPlate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ident: 'Nguyễn Văn A - NV001',
+          isBlacklist: true,
+          lpInfor: 'SAVP - Danh sách đen: Trộm xe',
+        }),
+      );
+    });
+
+    it('gỡ danh sách đen nhưng xe vẫn đăng ký → update về Bình thường (không xoá)', async () => {
+      const { svc, client } = setup({
+        reg,
+        live: [{ ...black, active: false }],
+        owned: true,
+      });
+      await svc.syncPlate('51A12345');
+      expect(client.deletePlate).not.toHaveBeenCalled();
+      expect(client.updatePlate).toHaveBeenCalledWith(
+        '51A12345',
+        expect.objectContaining({ isBlacklist: false }),
+      );
+    });
+
+    it('Tạm dừng xe SAVP đã tạo → xoá trên HGVision', async () => {
+      const { svc, client, lastRegMark } = setup({
+        reg: { ...reg, status: 'disabled' },
+        regOwned: true,
+      });
+      await svc.syncPlate('51A12345');
+      expect(client.deletePlate).toHaveBeenCalledWith('51A12345');
+      expect(lastRegMark()).toMatchObject({ hgvisionSyncStatus: 'synced' });
+    });
+
+    it('xoá xe đăng ký (đã đồng bộ) → xoá trên HGVision', async () => {
+      const { svc, client } = setup({ reg: null, regOwned: true });
+      await svc.syncPlate('51A12345');
+      expect(client.deletePlate).toHaveBeenCalledWith('51A12345');
+    });
+
+    it('cờ ghi tắt → đánh dấu pending cả xe đăng ký', async () => {
+      const { svc, client, lastRegMark } = setup({ reg, writeEnabled: false });
+      await svc.syncPlate('51A12345');
+      expect(client.createPlate).not.toHaveBeenCalled();
+      expect(lastRegMark()).toMatchObject({ hgvisionSyncStatus: 'pending' });
+    });
   });
 });

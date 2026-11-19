@@ -3,6 +3,7 @@
 ## 📝 CHANGELOG & REVISION HISTORY
 | Ngày cập nhật | Tóm tắt thay đổi | Các dòng thay đổi |
 | :--- | :--- | :--- |
+| 2026-11-19 | Thêm mục "Xe đăng ký → HGVision (Bình thường)" và "Test xe đăng ký trên máy trường": quy tắc đẩy xe đăng ký (chủ xe theo tài khoản, danh sách đen do admin đặt luôn thắng), nút đồng bộ hàng loạt + ↻, 2 API mới, migration `20261119000001`. Thêm biển test `99A99997` vào bảng dữ liệu phải xoá và `cleanup-plate-test.sql`. | 2 mục mới trước "Dữ liệu test phải xoá"; bảng dữ liệu test; dòng unit test cuối file; `cleanup-plate-test.sql` |
 | 2026-11-19 | Test máy trường: lỗi 403 `insufficient_scope` (thiếu `plates:write`, cấp quyền + restart BE) và 400 (`is_blacklist` phải là số 0/1 — đã sửa code). Thêm biển test thứ 2 `99A99998` vào bảng dữ liệu phải xoá + script dọn. | Bảng "Dữ liệu test phải xoá"; `cleanup-plate-test.sql` |
 | 2026-11-19 | Đổi biển test `TEST01` → `99A-999.99` (`99A99999`): `TEST01` bị SAVP từ chối vì sai định dạng biển số. | Mục "Đẩy biển số SAVP → HGVision" bước 5–7, bảng dữ liệu test; `cleanup-plate-test.sql` |
 | 2026-11-19 | Thêm mục "Đẩy biển số SAVP → HGVision": quy tắc đồng bộ, các bước test 1 biển `TEST01` trên máy trường, danh sách dữ liệu test phải xoá + script `cleanup-plate-test.sql`. | Mục mới cuối file, file `cleanup-plate-test.sql` |
@@ -73,13 +74,50 @@ Cần scope `plates:write` cho client trên trang "Tích hợp API" của HGVisi
 7. Trên SAVP xoá `99A99999` → HGVision không còn `99A99999`.
 8. Đặt lại `HGVISION_WRITE_ENABLED=false`, khởi động lại BE.
 
+### Xe đăng ký → HGVision (Bình thường)
+
+Xe đăng ký trên SAVP cũng được đẩy sang HGVision ngay khi lưu (khi `CAMERA_PROVIDER=hgvision`), dạng **Bình thường** (`is_blacklist: 0`). Áp dụng cho 3 nơi:
+
+- "Phương tiện cá nhân": mọi vai trò tự đăng ký xe.
+- "Đăng ký xe nhân viên": business admin đăng ký hộ.
+- Trang "Đăng ký phương tiện" của system admin.
+
+Cách ghi:
+
+- Chủ xe (`ident`) lấy theo tài khoản: `Họ tên - Mã nhân viên`. Không có mã thì chỉ ghi họ tên.
+- Mô tả (`lp_infor`): `SAVP - Xe đăng ký (Ô tô)` hoặc `SAVP - Xe đăng ký (Xe máy)`.
+- Danh sách đen chỉ do admin đặt ở "Danh sách biển số giám sát" và luôn thắng. Xe đã đăng ký mà bị đưa vào danh sách đen thì thành `is_blacklist: 1`, vẫn giữ tên chủ xe. Gỡ khỏi danh sách đen thì xe về lại Bình thường, biển không bị xoá.
+- Tạm dừng hoặc xoá xe, và biển không còn trong danh sách giám sát → xoá biển bên HGVision (chỉ khi biển do SAVP tạo).
+- Sửa xe hoặc bật lại → ghi lại bên HGVision. Nếu biển đã bị xoá bên đó thì tạo mới.
+- HGVision lỗi hoặc cờ ghi đang tắt không chặn việc lưu xe. Trạng thái đồng bộ hiện dưới cột "Trạng thái" ở trang "Đăng ký phương tiện" và "Phương tiện cá nhân".
+
+Trang "Đăng ký phương tiện" (system admin, quyền `anpr.vehicle.admin_register`) có 2 nút:
+
+- **Đồng bộ HGVision** (đầu trang): đẩy các xe chưa đồng bộ hoặc bị lỗi, tối đa 300 xe mỗi lần. Nếu còn xe, thông báo sẽ ghi "bấm lại để đẩy tiếp". Dùng nút này để đẩy các xe đã đăng ký trước khi có tính năng.
+- **↻** trên dòng bị lỗi hoặc chưa ghi: đẩy lại 1 xe.
+
+API: `POST /api/v1/anpr/admin/vehicle-registrations/hgvision-sync` (hàng loạt) và `POST /api/v1/anpr/admin/vehicle-registrations/:id/hgvision-sync` (1 xe). Migration `20261119000001` thêm 3 cột `hgvision_sync_status`, `hgvision_synced_at`, `hgvision_sync_error` vào `vehicle_registrations`.
+
+> Lưu ý: nút **Đồng bộ HGVision** đẩy mọi xe đang hoạt động trong DB của máy đó. Nếu DB máy trường còn xe demo (ghi chú `demo_seed`) thì xoá hoặc tạm dừng chúng trước khi bấm, nếu không HGVision sẽ nhận cả biển demo. Xem trước danh sách sẽ đẩy: `SELECT plate_number, note FROM vehicle_registrations WHERE deleted_at IS NULL AND status = 'active';`
+
+### Test xe đăng ký trên máy trường
+
+1. `git pull` nhánh `main` (BE + FE), chạy `npm run migration:run` ở BE, rồi khởi động lại BE.
+2. `.env` có `HGVISION_WRITE_ENABLED=true` và client đã có scope `plates:write`.
+3. Đăng nhập một tài khoản thường → "Phương tiện cá nhân" → "Đăng ký xe mới": biển `99A-999.97` (SAVP lưu `99A99997`, biển giả), loại "Xe máy". Dòng phải hiện "Đã đồng bộ HGVision".
+4. Mở trang biển số của HGVision → có `99A99997`, loại Bình thường, chủ xe là họ tên và mã của tài khoản đó.
+5. (Tuỳ chọn) Admin thêm `99A-999.97` vào "Danh sách biển số giám sát", loại "Danh sách đen" → HGVision đổi sang danh sách đen. Xoá dòng đó → HGVision về lại Bình thường.
+6. Xoá xe `99A99997` trên "Phương tiện cá nhân" → HGVision không còn biển này.
+7. Dọn dữ liệu test theo bảng bên dưới.
+
 ### Dữ liệu test phải xoá sau khi test
 
 | Ở đâu | Dữ liệu | Cách xoá |
 | :--- | :--- | :--- |
-| HGVision (máy trường) | Biển `99A99999` và `99A99998` (biển thứ 2 thêm lúc test máy trường 2026-11-19) | Bước 7 ở trên (xoá trên SAVP khi cờ còn bật). Nếu sót: xoá tay trên trang biển số HGVision. |
-| DB SAVP (máy trường) | Dòng `vehicle_control_list` biển `99A99999`, `99A99998` (đã xoá mềm) | `scripts/hgvision/cleanup-plate-test.sql`: chạy SELECT xem trước, rồi bỏ comment dòng DELETE |
-| `.env` máy trường | `HGVISION_WRITE_ENABLED=true` | Đặt lại `false` (bước 8) |
+| HGVision (máy trường) | Biển `99A99999` và `99A99998` (biển thứ 2 thêm lúc test máy trường 2026-11-19) | Bước 7 của "Test 1 biển" (xoá trên SAVP khi cờ còn bật). Nếu sót: xoá tay trên trang biển số HGVision. |
+| HGVision (máy trường) | Biển `99A99997` (test xe đăng ký) | Bước 6 của "Test xe đăng ký" (xoá xe trên SAVP khi cờ còn bật). Nếu sót: xoá tay trên trang biển số HGVision. |
+| DB SAVP (máy trường) | Dòng `vehicle_control_list` biển `99A99999`, `99A99998`, `99A99997` và dòng `vehicle_registrations` biển `99A99997` (đều đã xoá mềm) | `scripts/hgvision/cleanup-plate-test.sql`: chạy SELECT xem trước, rồi bỏ comment 2 dòng DELETE |
+| `.env` máy trường | `HGVISION_WRITE_ENABLED=true` | Giữ `true` nếu muốn xe đăng ký đẩy sang HGVision khi chạy thật. Chưa dùng thật thì đặt lại `false` rồi khởi động lại BE. |
 
-Unit test (`hgvision-plate-sync.service.spec.ts`, `vehicle-control-list.service.spec.ts`) chỉ dùng mock trong bộ nhớ, không tạo dữ liệu thật.
+Unit test (`hgvision-plate-sync.service.spec.ts`, `vehicle-control-list.service.spec.ts`, `vehicle-registration.service.spec.ts`) chỉ dùng mock trong bộ nhớ, không tạo dữ liệu thật.
 
