@@ -219,6 +219,28 @@ describe('HgvisionClient — camera / định danh', () => {
     expect(JSON.parse(init.body as string)).toEqual({ is_blacklist: true });
   });
 
+  it('createPlate/updatePlate gửi is_blacklist dạng số 0/1 (HGVision từ chối boolean → 400)', async () => {
+    fetchMock
+      .mockResolvedValueOnce(tokenRes())
+      .mockResolvedValueOnce(json(201, {}))
+      .mockResolvedValueOnce(json(200, {}));
+    const c = mk(true);
+    await c.createPlate({
+      licensePlate: '99A99998',
+      ident: 'SAVP',
+      isBlacklist: true,
+    });
+    await c.updatePlate('99A99998', { isBlacklist: false });
+    const create = fetchMock.mock.calls[1] as FetchCall;
+    const update = fetchMock.mock.calls[2] as FetchCall;
+    expect(JSON.parse(create[1].body as string)).toMatchObject({
+      license_plate: '99A99998',
+      is_blacklist: 1,
+    });
+    expect(update[1].method).toBe('PUT');
+    expect(JSON.parse(update[1].body as string)).toEqual({ is_blacklist: 0 });
+  });
+
   it('findFace 404 → null', async () => {
     fetchMock
       .mockResolvedValueOnce(tokenRes())

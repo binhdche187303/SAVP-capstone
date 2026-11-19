@@ -3,6 +3,7 @@
 ## 📝 CHANGELOG & REVISION HISTORY
 | Ngày cập nhật | Tóm tắt thay đổi | Các dòng thay đổi |
 | :--- | :--- | :--- |
+| 2026-11-19 | Test máy trường: lỗi 403 `insufficient_scope` (thiếu `plates:write`, cấp quyền + restart BE) và 400 (`is_blacklist` phải là số 0/1 — đã sửa code). Thêm biển test thứ 2 `99A99998` vào bảng dữ liệu phải xoá + script dọn. | Bảng "Dữ liệu test phải xoá"; `cleanup-plate-test.sql` |
 | 2026-11-19 | Đổi biển test `TEST01` → `99A-999.99` (`99A99999`): `TEST01` bị SAVP từ chối vì sai định dạng biển số. | Mục "Đẩy biển số SAVP → HGVision" bước 5–7, bảng dữ liệu test; `cleanup-plate-test.sql` |
 | 2026-11-19 | Thêm mục "Đẩy biển số SAVP → HGVision": quy tắc đồng bộ, các bước test 1 biển `TEST01` trên máy trường, danh sách dữ liệu test phải xoá + script `cleanup-plate-test.sql`. | Mục mới cuối file, file `cleanup-plate-test.sql` |
 | 2026-11-18 | Sửa giả định #1: `live_hls_path` là tên luồng MediaMTX, video lấy từ `HGVISION_HLS_BASE_URL` (:8888). Thêm biến này vào mẫu `.env` máy trường. | Mục "Cấu hình BE trên máy trường", "Giả định" #1 |
@@ -76,8 +77,8 @@ Cần scope `plates:write` cho client trên trang "Tích hợp API" của HGVisi
 
 | Ở đâu | Dữ liệu | Cách xoá |
 | :--- | :--- | :--- |
-| HGVision (máy trường) | Biển `99A99999` | Bước 7 ở trên (xoá trên SAVP khi cờ còn bật). Nếu sót: xoá tay trên trang biển số HGVision. |
-| DB SAVP (máy trường) | Dòng `vehicle_control_list` biển `99A99999` (đã xoá mềm) | `scripts/hgvision/cleanup-plate-test.sql`: chạy SELECT xem trước, rồi bỏ comment dòng DELETE |
+| HGVision (máy trường) | Biển `99A99999` và `99A99998` (biển thứ 2 thêm lúc test máy trường 2026-11-19) | Bước 7 ở trên (xoá trên SAVP khi cờ còn bật). Nếu sót: xoá tay trên trang biển số HGVision. |
+| DB SAVP (máy trường) | Dòng `vehicle_control_list` biển `99A99999`, `99A99998` (đã xoá mềm) | `scripts/hgvision/cleanup-plate-test.sql`: chạy SELECT xem trước, rồi bỏ comment dòng DELETE |
 | `.env` máy trường | `HGVISION_WRITE_ENABLED=true` | Đặt lại `false` (bước 8) |
 
 Unit test (`hgvision-plate-sync.service.spec.ts`, `vehicle-control-list.service.spec.ts`) chỉ dùng mock trong bộ nhớ, không tạo dữ liệu thật.
