@@ -3,6 +3,7 @@
 ## 📝 CHANGELOG & REVISION HISTORY
 | Ngày cập nhật | Tóm tắt thay đổi | Các dòng thay đổi |
 | :--- | :--- | :--- |
+| 2026-11-19 | Đổi biển test `TEST01` → `99A-999.99` (`99A99999`): `TEST01` bị SAVP từ chối vì sai định dạng biển số. | Mục "Đẩy biển số SAVP → HGVision" bước 5–7, bảng dữ liệu test; `cleanup-plate-test.sql` |
 | 2026-11-19 | Thêm mục "Đẩy biển số SAVP → HGVision": quy tắc đồng bộ, các bước test 1 biển `TEST01` trên máy trường, danh sách dữ liệu test phải xoá + script `cleanup-plate-test.sql`. | Mục mới cuối file, file `cleanup-plate-test.sql` |
 | 2026-11-18 | Sửa giả định #1: `live_hls_path` là tên luồng MediaMTX, video lấy từ `HGVISION_HLS_BASE_URL` (:8888). Thêm biến này vào mẫu `.env` máy trường. | Mục "Cấu hình BE trên máy trường", "Giả định" #1 |
 | 2026-11-18 | Xóa mock HGVision (`server.mjs`, `prepare-media.mjs`, npm `hgvision:mock*`) sau khi test xong API camera cho FE. Chuyển thư mục `scripts/hgvision-mock/` → `scripts/hgvision/`, chỉ giữ `capture-real.mjs`. Thêm mục cấu hình máy trường. Mock vẫn lấy lại được từ commit `f0830a2`. | Toàn bộ file |
@@ -66,17 +67,17 @@ Cần scope `plates:write` cho client trên trang "Tích hợp API" của HGVisi
 2. `git pull` nhánh `feature/hgvision-plate-write` (BE + FE), `npm run migration:run` ở BE.
 3. Đặt `HGVISION_WRITE_ENABLED=true` trong `.env`, khởi động lại BE.
 4. `GET /api/v1/hgvision/status` → thấy `plates:write` trong danh sách scope.
-5. Trên SAVP thêm biển `TEST01`, loại "Danh sách đen", lý do "TEST đồng bộ". Dòng phải hiện "Đã đồng bộ HGVision".
-6. Mở trang biển số của HGVision → có `TEST01`, đánh dấu danh sách đen.
-7. Trên SAVP xoá `TEST01` → HGVision không còn `TEST01`.
+5. Trên SAVP thêm biển `99A-999.99` (SAVP lưu chuẩn hoá `99A99999`, biển giả, không trùng xe thật), loại "Danh sách đen", lý do "TEST đồng bộ". Dòng phải hiện "Đã đồng bộ HGVision".
+6. Mở trang biển số của HGVision → có `99A99999`, đánh dấu danh sách đen.
+7. Trên SAVP xoá `99A99999` → HGVision không còn `99A99999`.
 8. Đặt lại `HGVISION_WRITE_ENABLED=false`, khởi động lại BE.
 
 ### Dữ liệu test phải xoá sau khi test
 
 | Ở đâu | Dữ liệu | Cách xoá |
 | :--- | :--- | :--- |
-| HGVision (máy trường) | Biển `TEST01` | Bước 7 ở trên (xoá trên SAVP khi cờ còn bật). Nếu sót: xoá tay trên trang biển số HGVision. |
-| DB SAVP (máy trường) | Dòng `vehicle_control_list` biển `TEST01` (đã xoá mềm) | `scripts/hgvision/cleanup-plate-test.sql`: chạy SELECT xem trước, rồi bỏ comment dòng DELETE |
+| HGVision (máy trường) | Biển `99A99999` | Bước 7 ở trên (xoá trên SAVP khi cờ còn bật). Nếu sót: xoá tay trên trang biển số HGVision. |
+| DB SAVP (máy trường) | Dòng `vehicle_control_list` biển `99A99999` (đã xoá mềm) | `scripts/hgvision/cleanup-plate-test.sql`: chạy SELECT xem trước, rồi bỏ comment dòng DELETE |
 | `.env` máy trường | `HGVISION_WRITE_ENABLED=true` | Đặt lại `false` (bước 8) |
 
 Unit test (`hgvision-plate-sync.service.spec.ts`, `vehicle-control-list.service.spec.ts`) chỉ dùng mock trong bộ nhớ, không tạo dữ liệu thật.
