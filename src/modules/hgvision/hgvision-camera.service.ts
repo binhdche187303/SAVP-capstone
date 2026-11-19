@@ -239,9 +239,7 @@ export class HgvisionCameraService {
   }
 
   /** Path playlist live trên HGVision (tương đối HGVISION_BASE_URL) + trạng thái camera. */
-  async liveSource(
-    name: string,
-  ): Promise<{
+  async liveSource(name: string): Promise<{
     upstream: string;
     source: MediaSource;
     online: boolean;

@@ -3,6 +3,7 @@
 ## 📝 CHANGELOG & REVISION HISTORY
 | Ngày cập nhật | Tóm tắt thay đổi | Các dòng thay đổi |
 | :--- | :--- | :--- |
+| 2026-11-19 | Thêm mục "Đẩy biển số SAVP → HGVision": quy tắc đồng bộ, các bước test 1 biển `TEST01` trên máy trường, danh sách dữ liệu test phải xoá + script `cleanup-plate-test.sql`. | Mục mới cuối file, file `cleanup-plate-test.sql` |
 | 2026-11-18 | Sửa giả định #1: `live_hls_path` là tên luồng MediaMTX, video lấy từ `HGVISION_HLS_BASE_URL` (:8888). Thêm biến này vào mẫu `.env` máy trường. | Mục "Cấu hình BE trên máy trường", "Giả định" #1 |
 | 2026-11-18 | Xóa mock HGVision (`server.mjs`, `prepare-media.mjs`, npm `hgvision:mock*`) sau khi test xong API camera cho FE. Chuyển thư mục `scripts/hgvision-mock/` → `scripts/hgvision/`, chỉ giữ `capture-real.mjs`. Thêm mục cấu hình máy trường. Mock vẫn lấy lại được từ commit `f0830a2`. | Toàn bộ file |
 | 2026-11-18 | Thêm script `capture-real.mjs` (lấy JSON thật, chỉ đọc) và mục "Lấy JSON thật trên máy trường" | Mục mới cuối file |
@@ -45,3 +46,38 @@ Thư mục `.capture/` đã nằm trong gitignore và **không được commit**
 3. Sự kiện vạch đếm: `direction` 1 = vào, −1 = ra (OpenAPI không ghi rõ).
 4. POST faces với `face_ident` đã tồn tại: server thật có thể gộp ảnh vào định danh cũ thay vì trả 400.
 5. `GET /api/cameras` trả cả `username`/`password` camera, nên BE đã lọc bỏ trước khi gửi xuống FE.
+
+## Đẩy biển số SAVP → HGVision
+
+Trang "Danh sách biển số giám sát" (`/anpr/admin/control-list`) tự đẩy sang HGVision khi `CAMERA_PROVIDER=hgvision`:
+
+- Thêm / sửa / bật-tắt / xoá trên SAVP → thêm / sửa / xoá biển bên HGVision.
+- `blocklist` → `is_blacklist: true`; `watchlist` → chỉ tạo biển. Biển có cả hai → danh sách đen.
+- Biển bị tắt hết hoặc xoá hết trên SAVP → xoá bên HGVision, **chỉ khi biển do SAVP tạo**.
+- Biển có sẵn trên HGVision mà SAVP chưa từng tạo → không ghi đè, không xoá, báo "Đồng bộ HGVision lỗi".
+- `HGVISION_WRITE_ENABLED=false` → không gọi HGVision, dòng hiện "Chưa đồng bộ HGVision". Bật cờ rồi bấm nút đồng bộ lại (biểu tượng ↻) để đẩy.
+- HGVision lỗi → SAVP vẫn lưu biển, trạng thái "Đồng bộ HGVision lỗi" (rê chuột xem lỗi).
+
+Cần scope `plates:write` cho client trên trang "Tích hợp API" của HGVision. Đổi scope xong khởi động lại BE (token cũ được giữ khoảng 1 giờ).
+
+### Test 1 biển trên máy trường
+
+1. Tích `plates:write` cho client hiện tại trên HGVision.
+2. `git pull` nhánh `feature/hgvision-plate-write` (BE + FE), `npm run migration:run` ở BE.
+3. Đặt `HGVISION_WRITE_ENABLED=true` trong `.env`, khởi động lại BE.
+4. `GET /api/v1/hgvision/status` → thấy `plates:write` trong danh sách scope.
+5. Trên SAVP thêm biển `TEST01`, loại "Danh sách đen", lý do "TEST đồng bộ". Dòng phải hiện "Đã đồng bộ HGVision".
+6. Mở trang biển số của HGVision → có `TEST01`, đánh dấu danh sách đen.
+7. Trên SAVP xoá `TEST01` → HGVision không còn `TEST01`.
+8. Đặt lại `HGVISION_WRITE_ENABLED=false`, khởi động lại BE.
+
+### Dữ liệu test phải xoá sau khi test
+
+| Ở đâu | Dữ liệu | Cách xoá |
+| :--- | :--- | :--- |
+| HGVision (máy trường) | Biển `TEST01` | Bước 7 ở trên (xoá trên SAVP khi cờ còn bật). Nếu sót: xoá tay trên trang biển số HGVision. |
+| DB SAVP (máy trường) | Dòng `vehicle_control_list` biển `TEST01` (đã xoá mềm) | `scripts/hgvision/cleanup-plate-test.sql`: chạy SELECT xem trước, rồi bỏ comment dòng DELETE |
+| `.env` máy trường | `HGVISION_WRITE_ENABLED=true` | Đặt lại `false` (bước 8) |
+
+Unit test (`hgvision-plate-sync.service.spec.ts`, `vehicle-control-list.service.spec.ts`) chỉ dùng mock trong bộ nhớ, không tạo dữ liệu thật.
+

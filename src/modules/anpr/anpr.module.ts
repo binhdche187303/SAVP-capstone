@@ -1,3 +1,4 @@
+import { ControlListSyncHook } from './services/control-list-sync.hook.js';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module.js';
@@ -76,6 +77,7 @@ import {
     VehicleResolveService,
     VehicleControlListService,
     VehicleControlAlertService,
+    ControlListSyncHook,
     // VRE-001 (UC5): handler thật thay default log-only (UC4).
     { provide: VEHICLE_EVENT_HANDLER, useExisting: VehicleResolveService },
     VehicleEventProcessor,
@@ -89,6 +91,8 @@ import {
     VehicleControlAlertService,
     // HGVision poller đẩy sự kiện biển số vào cùng handler với webhook IVSS.
     VEHICLE_EVENT_HANDLER,
+    // HGVision đăng ký nhận thay đổi danh sách kiểm soát biển số (đẩy sang HGVision).
+    ControlListSyncHook,
   ],
 })
 export class AnprModule {}

@@ -4,10 +4,12 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { VehicleControlListEntity } from '../entities/vehicle-control-list.entity.js';
 import { VehicleControlListService } from './vehicle-control-list.service.js';
+import { ControlListSyncHook } from './control-list-sync.hook.js';
 
 describe('VehicleControlListService (VCL-001 / UC8)', () => {
   let service: VehicleControlListService;
   let repo: any;
+  let hook: ControlListSyncHook;
 
   beforeEach(async () => {
     repo = {
@@ -17,9 +19,11 @@ describe('VehicleControlListService (VCL-001 / UC8)', () => {
       softDelete: jest.fn().mockResolvedValue({ affected: 1 }),
       findAndCount: jest.fn().mockResolvedValue([[], 0]),
     };
+    hook = new ControlListSyncHook();
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         VehicleControlListService,
+        { provide: ControlListSyncHook, useValue: hook },
         {
           provide: getRepositoryToken(VehicleControlListEntity),
           useValue: repo,
@@ -246,7 +250,7 @@ describe('VehicleControlListService (VCL-001 / UC8)', () => {
         plateNumber: 'A',
         active: true,
       });
-      await service.update('cl1', { active: false } as any);
+      await service.update('cl1', { active: false });
       await service.checkControlList('A');
       expect(repo.find).toHaveBeenCalledTimes(3);
       await service.softDelete('cl1');
@@ -354,6 +358,55 @@ describe('VehicleControlListService (VCL-001 / UC8)', () => {
         NotFoundException,
       );
       expect(repo.softDelete).not.toHaveBeenCalled();
+    });
+  });
+  describe('đồng bộ HGVision (ControlListSyncHook)', () => {
+    it('chưa ai đăng ký hook → create giữ nguyên hành vi cũ, không đọc lại DB', async () => {
+      const saved = await service.create('u1', {
+        plateRaw: '51A-123.45',
+        listType: 'blocklist',
+      } as any);
+      expect(saved.plateNumber).toBe('51A12345');
+      expect(repo.findOne).toHaveBeenCalledTimes(1);
+    });
+
+    it('có handler → create gọi syncPlate(biển chuẩn hoá) rồi trả dòng đọc lại', async () => {
+      const syncPlate = jest.fn().mockResolvedValue(undefined);
+      hook.register({ syncPlate });
+      repo.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'cl1', hgvisionSyncStatus: 'synced' });
+      const out = await service.create('u1', {
+        plateRaw: '51A-123.45',
+        listType: 'blocklist',
+      } as any);
+      expect(syncPlate).toHaveBeenCalledWith('51A12345');
+      expect(out.hgvisionSyncStatus).toBe('synced');
+    });
+
+    it('handler ném lỗi → SAVP vẫn lưu, không ném ra ngoài', async () => {
+      hook.register({
+        syncPlate: jest.fn().mockRejectedValue(new Error('down')),
+      });
+      await expect(
+        service.create('u1', {
+          plateRaw: '51A12345',
+          listType: 'watchlist',
+        } as any),
+      ).resolves.toBeDefined();
+      expect(repo.save).toHaveBeenCalled();
+    });
+
+    it('softDelete → gọi syncPlate sau khi xoá mềm', async () => {
+      const syncPlate = jest.fn().mockResolvedValue(undefined);
+      hook.register({ syncPlate });
+      repo.findOne.mockResolvedValueOnce({
+        id: 'cl1',
+        plateNumber: '51A12345',
+      });
+      await service.softDelete('cl1');
+      expect(repo.softDelete).toHaveBeenCalledWith('cl1');
+      expect(syncPlate).toHaveBeenCalledWith('51A12345');
     });
   });
 });
