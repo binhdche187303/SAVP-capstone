@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { ControlListSyncHook } from './control-list-sync.hook.js';
 import { ILike } from 'typeorm';
 import { VehicleRegistrationEntity } from '../entities/vehicle-registration.entity.js';
 import { VehicleRegistrationService } from './vehicle-registration.service.js';
@@ -13,6 +14,7 @@ import { VehicleRegistrationService } from './vehicle-registration.service.js';
 describe('VehicleRegistrationService (VPR-001 / UC1)', () => {
   let service: VehicleRegistrationService;
   let repo: any;
+  let hook: ControlListSyncHook;
   let qb: any; // UC-101: mock QueryBuilder cho listAll (dựng mock — không đụng test cũ)
 
   beforeEach(async () => {
@@ -36,6 +38,7 @@ describe('VehicleRegistrationService (VPR-001 / UC1)', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         VehicleRegistrationService,
+        ControlListSyncHook,
         {
           provide: getRepositoryToken(VehicleRegistrationEntity),
           useValue: repo,
@@ -43,6 +46,7 @@ describe('VehicleRegistrationService (VPR-001 / UC1)', () => {
       ],
     }).compile();
     service = module.get(VehicleRegistrationService);
+    hook = module.get(ControlListSyncHook);
   });
 
   it('ok → save với plate_number chuẩn + status active + userId', async () => {
@@ -458,6 +462,98 @@ describe('VehicleRegistrationService (VPR-001 / UC1)', () => {
         },
       });
       expect(repo.softDelete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('đồng bộ HGVision (xe đăng ký → Bình thường)', () => {
+    let syncPlate: jest.Mock;
+    const live = {
+      id: 'veh1',
+      userId: 'u1',
+      plateNumber: '30A12345',
+      status: 'active',
+    };
+    beforeEach(() => {
+      syncPlate = jest.fn().mockResolvedValue(undefined);
+      hook.register({ syncPlate });
+    });
+
+    it('register → báo hook theo biển đã chuẩn hoá, trả dòng đọc lại (có trạng thái)', async () => {
+      repo.findOne
+        .mockResolvedValueOnce(null) // pre-check trùng
+        .mockResolvedValueOnce({ ...live, hgvisionSyncStatus: 'synced' });
+      const r = await service.register('u1', { plateRaw: '30A-123.45' });
+      expect(syncPlate).toHaveBeenCalledWith('30A12345');
+      expect(r.hgvisionSyncStatus).toBe('synced');
+    });
+
+    it('HGVision lỗi → đăng ký ở SAVP vẫn thành công', async () => {
+      syncPlate.mockRejectedValue(new Error('boom'));
+      await expect(
+        service.register('u1', { plateRaw: '30A-123.45' }),
+      ).resolves.toMatchObject({ plateNumber: '30A12345' });
+    });
+
+    it('setStatus / softDeleteOwned / adminSoftDelete → báo hook', async () => {
+      repo.findOne.mockResolvedValue({ ...live });
+      await service.setStatus('veh1', 'u1', 'disabled');
+      await service.softDeleteOwned('veh1', 'u1');
+      await service.adminSoftDelete('veh1');
+      expect(syncPlate).toHaveBeenCalledTimes(3);
+      expect(syncPlate).toHaveBeenCalledWith('30A12345');
+    });
+
+    it('updateMetadata no-op → KHÔNG báo hook', async () => {
+      repo.findOne.mockResolvedValue({ ...live });
+      await service.updateMetadata('veh1', 'u1', {});
+      expect(syncPlate).not.toHaveBeenCalled();
+    });
+
+    it('resync: id không tồn tại → 404; có → báo hook', async () => {
+      repo.findOne.mockResolvedValueOnce(null);
+      await expect(service.resync('nope')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      repo.findOne.mockResolvedValue({ ...live });
+      await service.resync('veh1');
+      expect(syncPlate).toHaveBeenCalledWith('30A12345');
+    });
+  });
+
+  describe('resyncAll (admin đẩy hàng loạt sang HGVision)', () => {
+    it('chưa dùng HGVision (hook chưa đăng ký) → enabled=false, không đọc DB', async () => {
+      repo.findAndCount = jest.fn();
+      await expect(service.resyncAll()).resolves.toMatchObject({
+        enabled: false,
+        total: 0,
+      });
+      expect(repo.findAndCount).not.toHaveBeenCalled();
+    });
+
+    it('đẩy từng biển chưa đồng bộ rồi đếm kết quả', async () => {
+      const syncPlate = jest.fn().mockResolvedValue(undefined);
+      hook.register({ syncPlate });
+      repo.findAndCount = jest.fn().mockResolvedValue([
+        [
+          { id: 'a', plateNumber: '30A11111' },
+          { id: 'b', plateNumber: '30A22222' },
+        ],
+        5,
+      ]);
+      repo.find = jest.fn().mockResolvedValue([
+        { id: 'a', hgvisionSyncStatus: 'synced' },
+        { id: 'b', hgvisionSyncStatus: 'failed' },
+      ]);
+      const r = await service.resyncAll();
+      expect(syncPlate.mock.calls).toEqual([['30A11111'], ['30A22222']]);
+      expect(r).toEqual({
+        enabled: true,
+        total: 2,
+        synced: 1,
+        failed: 1,
+        pending: 0,
+        remaining: 3,
+      });
     });
   });
 });

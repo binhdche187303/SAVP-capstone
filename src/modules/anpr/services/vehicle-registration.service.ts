@@ -1,4 +1,7 @@
-import { filterWhere, filterValues } from '../../../common/utils/filter-selection.js';
+import {
+  filterWhere,
+  filterValues,
+} from '../../../common/utils/filter-selection.js';
 import {
   Injectable,
   BadRequestException,
@@ -6,9 +9,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull, ILike, type FindOptionsWhere } from 'typeorm';
+import { Repository, IsNull, ILike, In, type FindOptionsWhere } from 'typeorm';
 import { VehicleRegistrationEntity } from '../entities/vehicle-registration.entity.js';
 import { normalizePlate } from '../utils/normalize-plate.js';
+import { ControlListSyncHook } from './control-list-sync.hook.js';
 import type { CreateVehicleRegistrationDto } from '../dto/create-vehicle-registration.dto.js';
 import type { UpdateVehicleRegistrationDto } from '../dto/update-vehicle-registration.dto.js';
 import type { VehicleStatus } from '../dto/update-vehicle-status.dto.js';
@@ -28,6 +32,20 @@ const PLATE_FORMAT_RE = /^[0-9A-Z]+$/;
 const PLATE_MIN = 6;
 const PLATE_MAX = 10;
 
+/** Số xe tối đa mỗi lần admin bấm "Đồng bộ HGVision" (đẩy tuần tự, không dồn HGVision). */
+export const BULK_SYNC_MAX = 300;
+
+export interface BulkSyncResult {
+  /** false = chưa dùng HGVision (CAMERA_PROVIDER khác hgvision) → không làm gì. */
+  enabled: boolean;
+  total: number;
+  synced: number;
+  failed: number;
+  pending: number;
+  /** Số xe chưa đồng bộ còn lại sau lượt này (vượt BULK_SYNC_MAX) — bấm lại để đẩy tiếp. */
+  remaining: number;
+}
+
 /** VAL-02: conflict trùng biển — dùng chung cho pre-check + safety-net 23505. */
 const plateConflict = (): ConflictException =>
   new ConflictException({
@@ -46,7 +64,34 @@ export class VehicleRegistrationService {
   constructor(
     @InjectRepository(VehicleRegistrationEntity)
     private readonly repo: Repository<VehicleRegistrationEntity>,
+    private readonly syncHook: ControlListSyncHook,
   ) {}
+
+  /**
+   * Đẩy thay đổi sang HGVision (xe đăng ký = "Bình thường", chủ xe theo tài khoản) rồi đọc
+   * lại dòng để trả trạng thái đồng bộ. Lỗi HGVision KHÔNG làm hỏng thao tác lưu ở SAVP.
+   */
+  private async afterChange(
+    entity: VehicleRegistrationEntity,
+  ): Promise<VehicleRegistrationEntity> {
+    if (!this.syncHook.enabled) return entity;
+    await this.syncHook.notify(entity.plateNumber);
+    return (await this.repo.findOne({ where: { id: entity.id } })) ?? entity;
+  }
+
+  /** Admin đồng bộ lại 1 xe đăng ký (vd lần trước lỗi hoặc lúc đó cờ ghi đang tắt). */
+  async resync(id: string): Promise<VehicleRegistrationEntity> {
+    const entity = await this.repo.findOne({
+      where: { id, deletedAt: IsNull() },
+    });
+    if (!entity) {
+      throw new NotFoundException({
+        code: 'VEHICLE_NOT_FOUND',
+        message: 'Không tìm thấy biển số',
+      });
+    }
+    return this.afterChange(entity);
+  }
 
   async register(
     userId: string,
@@ -80,8 +125,9 @@ export class VehicleRegistrationService {
       status: 'active',
     });
 
+    let saved: VehicleRegistrationEntity;
     try {
-      return await this.repo.save(entity);
+      saved = await this.repo.save(entity);
     } catch (e) {
       // VAL-02 safety-net: partial-unique race → 23505 → 409 sạch, KHÔNG để lỗi DB phọt client.
       if (this.isUniqueViolation(e)) {
@@ -89,6 +135,53 @@ export class VehicleRegistrationService {
       }
       throw e;
     }
+    return this.afterChange(saved);
+  }
+
+  /**
+   * Admin đẩy hàng loạt xe đăng ký chưa đồng bộ sang HGVision: xe đăng ký trước khi có tính
+   * năng này (status NULL), lần trước lỗi (failed) hoặc lúc đó cờ ghi tắt (pending).
+   * Tuần tự từng biển; tối đa BULK_SYNC_MAX xe/lần, cũ nhất trước.
+   */
+  async resyncAll(): Promise<BulkSyncResult> {
+    if (!this.syncHook.enabled) {
+      return {
+        enabled: false,
+        total: 0,
+        synced: 0,
+        failed: 0,
+        pending: 0,
+        remaining: 0,
+      };
+    }
+    const [rows, count] = await this.repo.findAndCount({
+      where: [
+        { deletedAt: IsNull(), hgvisionSyncStatus: IsNull() },
+        { deletedAt: IsNull(), hgvisionSyncStatus: In(['pending', 'failed']) },
+      ],
+      select: { id: true, plateNumber: true },
+      order: { createdAt: 'ASC' },
+      take: BULK_SYNC_MAX,
+    });
+    for (const r of rows) {
+      await this.syncHook.notify(r.plateNumber);
+    }
+    const after = rows.length
+      ? await this.repo.find({
+          where: { id: In(rows.map((r) => r.id)) },
+          select: { id: true, hgvisionSyncStatus: true },
+        })
+      : [];
+    const countOf = (s: string) =>
+      after.filter((a) => a.hgvisionSyncStatus === s).length;
+    return {
+      enabled: true,
+      total: rows.length,
+      synced: countOf('synced'),
+      failed: countOf('failed'),
+      pending: countOf('pending'),
+      remaining: Math.max(0, count - rows.length),
+    };
   }
 
   // ── UC2 (VPM-001): sửa / disable / xóa-mềm — chỉ biển CỦA MÌNH ──
@@ -185,10 +278,14 @@ export class VehicleRegistrationService {
       .where('vr.deletedAt IS NULL');
 
     if (query.status) {
-      qb.andWhere('vr.status IN (:...status)', { status: filterValues(query.status) });
+      qb.andWhere('vr.status IN (:...status)', {
+        status: filterValues(query.status),
+      });
     }
     if (query.vehicleType) {
-      qb.andWhere('vr.vehicleType IN (:...vt)', { vt: filterValues(query.vehicleType) });
+      qb.andWhere('vr.vehicleType IN (:...vt)', {
+        vt: filterValues(query.vehicleType),
+      });
     }
     if (query.plate) {
       qb.andWhere('vr.plateNumber ILIKE :p', {
@@ -256,7 +353,7 @@ export class VehicleRegistrationService {
     if (!changed) {
       return entity; // no-op
     }
-    return this.repo.save(entity);
+    return this.afterChange(await this.repo.save(entity));
   }
 
   /** Đổi status active↔disabled (DATA-02). */
@@ -267,13 +364,14 @@ export class VehicleRegistrationService {
   ): Promise<VehicleRegistrationEntity> {
     const entity = await this.loadOwned(id, userId);
     entity.status = status;
-    return this.repo.save(entity);
+    return this.afterChange(await this.repo.save(entity));
   }
 
   /** Xóa-mềm (DATA-02: softDelete, KHÔNG hard-delete). Đã xóa → loadOwned 404. */
   async softDeleteOwned(id: string, userId: string): Promise<void> {
-    await this.loadOwned(id, userId);
+    const entity = await this.loadOwned(id, userId);
     await this.repo.softDelete(id);
+    await this.syncHook.notify(entity.plateNumber);
   }
 
   /**
@@ -292,6 +390,7 @@ export class VehicleRegistrationService {
       });
     }
     await this.repo.softDelete(id);
+    await this.syncHook.notify(entity.plateNumber);
   }
 
   /** OQ-4: ^[0-9A-Z]+$ && dài 6–10 && ≥1 chữ && ≥1 số. */

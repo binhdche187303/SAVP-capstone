@@ -262,6 +262,42 @@ export class VehicleRegistrationController {
     };
   }
 
+  // ADMIN: đẩy hàng loạt xe đăng ký chưa đồng bộ sang HGVision (xe có từ trước tính năng này,
+  // lỗi, hoặc lúc cờ ghi tắt). Khác số segment với route :id/hgvision-sync → không xung đột.
+  @Post('admin/vehicle-registrations/hgvision-sync')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('anpr.vehicle.admin_register')
+  @ApiOperation({
+    summary: 'Admin đẩy hàng loạt xe đăng ký chưa đồng bộ sang HGVision',
+  })
+  async resyncAllAsAdmin() {
+    const data = await this.vehicleRegistrationService.resyncAll();
+    return {
+      success: true,
+      message: 'Vehicle registrations sync finished',
+      data,
+    };
+  }
+
+  // ADMIN: đồng bộ lại 1 xe đăng ký sang HGVision (lần trước lỗi / lúc đó cờ ghi tắt).
+  // Tái dùng quyền admin_register (ai đăng ký hộ được thì đồng bộ lại được) — không cần seed mới.
+  @Post('admin/vehicle-registrations/:id/hgvision-sync')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('anpr.vehicle.admin_register')
+  @ApiOperation({
+    summary: 'Admin đồng bộ lại 1 xe đăng ký sang HGVision',
+  })
+  async resyncAsAdmin(@Param('id', ParseUUIDPipe) id: string) {
+    const entity = await this.vehicleRegistrationService.resync(id);
+    return {
+      success: true,
+      message: 'Vehicle registration synced',
+      data: toVehicleRegistrationResponse(entity),
+    };
+  }
+
   // ── UC2 (VPM-001): sửa / disable / xóa-mềm — chỉ biển CỦA MÌNH (ownership trong service) ──
 
   // Sửa metadata (note/vehicle_type). userId từ JWT; biển không thuộc → 404.

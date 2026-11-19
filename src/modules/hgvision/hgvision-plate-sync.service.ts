@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Not, Repository } from 'typeorm';
 import { VehicleControlListEntity } from '../anpr/entities/vehicle-control-list.entity.js';
+import { VehicleRegistrationEntity } from '../anpr/entities/vehicle-registration.entity.js';
 import {
   ControlListSyncHook,
   type ControlListSyncHandler,
@@ -15,10 +16,15 @@ export type PlateSyncStatus = 'pending' | 'synced' | 'failed';
 const ERROR_MAX = 255;
 
 /**
- * HgvisionPlateSyncService — đẩy danh sách biển số kiểm soát SAVP sang HGVision.
+ * HgvisionPlateSyncService — đẩy biển số SAVP sang HGVision.
  *
- * Một biển trên HGVision = gộp mọi dòng SAVP còn sống của biển đó:
- *  - còn ≥1 dòng active → có trên HGVision; is_blacklist = có dòng blocklist active.
+ * Một biển trên HGVision = gộp mọi dòng SAVP còn sống của biển đó, gồm danh sách kiểm soát
+ * (vehicle_control_list) và xe đăng ký (vehicle_registrations — Phương tiện cá nhân /
+ * Đăng ký xe nhân viên):
+ *  - còn dòng kiểm soát active HOẶC xe đăng ký status=active → có trên HGVision;
+ *    is_blacklist = có dòng blocklist active (danh sách đen do admin đặt luôn thắng),
+ *    xe chỉ đăng ký → Bình thường (is_blacklist=0).
+ *  - Chủ phương tiện (ident) = họ tên + mã NV/SV của tài khoản đăng ký xe; không có → 'SAVP'.
  *  - không còn dòng active → xoá trên HGVision, NHƯNG chỉ khi biển do SAVP tạo
  *    (có dòng từng `hgvision_synced_at`, kể cả đã xoá mềm).
  * Biển có sẵn trên HGVision mà SAVP chưa từng tạo → KHÔNG ghi đè, KHÔNG xoá (báo failed).
@@ -35,6 +41,8 @@ export class HgvisionPlateSyncService
     @Inject(HGVISION_CLIENT) private readonly client: HgvisionClient,
     @InjectRepository(VehicleControlListEntity)
     private readonly repo: Repository<VehicleControlListEntity>,
+    @InjectRepository(VehicleRegistrationEntity)
+    private readonly regRepo: Repository<VehicleRegistrationEntity>,
     private readonly hook: ControlListSyncHook,
     private readonly config: ConfigService,
   ) {}
@@ -53,23 +61,34 @@ export class HgvisionPlateSyncService
     const live = await this.repo.find({
       where: { plateNumber, deletedAt: IsNull() },
     });
+    const reg = await this.regRepo.findOne({
+      where: { plateNumber, deletedAt: IsNull() },
+      relations: { user: true },
+    });
 
     if (!this.client.writeEnabled) {
       await this.mark(plateNumber, 'pending', null);
       return;
     }
 
-    const owned = await this.repo.exists({
-      where: { plateNumber, hgvisionSyncedAt: Not(IsNull()) },
-      withDeleted: true,
-    });
+    const owned =
+      (await this.repo.exists({
+        where: { plateNumber, hgvisionSyncedAt: Not(IsNull()) },
+        withDeleted: true,
+      })) ||
+      (await this.regRepo.exists({
+        where: { plateNumber, hgvisionSyncedAt: Not(IsNull()) },
+        withDeleted: true,
+      }));
     const active = live.filter((r) => r.active);
+    const regActive = reg?.status === 'active';
+    const present = active.length > 0 || regActive;
 
     try {
-      if (active.length > 0) {
+      if (present) {
         const input = {
-          ident: 'SAVP',
-          lpInfor: describe(active),
+          ident: ownerIdent(reg),
+          lpInfor: describe(active, regActive ? reg : null),
           isBlacklist: active.some((r) => r.listType === 'blocklist'),
           visibleTo: 'all' as const,
         };
@@ -101,10 +120,10 @@ export class HgvisionPlateSyncService
           if (!isNotFound(e)) throw e;
         }
       }
-      if (live.length > 0) await this.mark(plateNumber, 'synced', null);
+      if (live.length > 0 || reg) await this.mark(plateNumber, 'synced', null);
     } catch (e) {
       const msg =
-        !owned && active.length > 0 && isConflict(e)
+        !owned && present && isConflict(e)
           ? 'Biển đã có sẵn trên HGVision (không do SAVP tạo) — không ghi đè.'
           : errorText(e);
       this.logger.warn(`Đẩy biển ${plateNumber} sang HGVision lỗi: ${msg}`);
@@ -117,23 +136,53 @@ export class HgvisionPlateSyncService
     status: PlateSyncStatus,
     error: string | null,
   ): Promise<void> {
-    await this.repo.update(
-      { plateNumber, deletedAt: IsNull() },
-      {
-        hgvisionSyncStatus: status,
-        hgvisionSyncError: error,
-        ...(status === 'synced' ? { hgvisionSyncedAt: new Date() } : {}),
-      },
-    );
+    const patch = {
+      hgvisionSyncStatus: status,
+      hgvisionSyncError: error,
+      ...(status === 'synced' ? { hgvisionSyncedAt: new Date() } : {}),
+    };
+    const where = { plateNumber, deletedAt: IsNull() };
+    await this.repo.update(where, patch);
+    await this.regRepo.update(where, patch);
   }
 }
 
-function describe(rows: VehicleControlListEntity[]): string {
+/** Chủ phương tiện trên HGVision: "Họ tên - Mã" của tài khoản đăng ký xe, không có → 'SAVP'. */
+function ownerIdent(reg: VehicleRegistrationEntity | null): string {
+  const name = reg?.user?.fullName?.trim();
+  if (!name) return 'SAVP';
+  const code = reg?.user?.employeeCode?.trim();
+  return (code ? `${name} - ${code}` : name).slice(0, ERROR_MAX);
+}
+
+function describe(
+  rows: VehicleControlListEntity[],
+  reg: VehicleRegistrationEntity | null,
+): string {
+  if (rows.length === 0) {
+    const type = vehicleTypeLabel(reg?.vehicleType);
+    return `SAVP - Xe đăng ký${type ? ` (${type})` : ''}`.slice(0, ERROR_MAX);
+  }
   const black = rows.find((r) => r.listType === 'blocklist');
   const main = black ?? rows[0];
   const label = black ? 'Danh sách đen' : 'Theo dõi';
   const text = `SAVP - ${label}${main.reason ? `: ${main.reason}` : ''}`;
   return text.slice(0, ERROR_MAX);
+}
+
+const VEHICLE_TYPE_LABEL: Record<string, string> = {
+  car: 'Ô tô',
+  motorbike: 'Xe máy',
+  motorcycle: 'Xe máy',
+  bicycle: 'Xe đạp',
+  truck: 'Xe tải',
+  bus: 'Xe buýt',
+};
+
+/** Loại xe hiển thị trên HGVision (DB lưu car/motorbike…); loại lạ giữ nguyên. */
+function vehicleTypeLabel(type: string | null | undefined): string {
+  const t = type?.trim() ?? '';
+  return VEHICLE_TYPE_LABEL[t.toLowerCase()] ?? t;
 }
 
 function isNotFound(e: unknown): boolean {
