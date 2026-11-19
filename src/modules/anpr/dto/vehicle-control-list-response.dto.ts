@@ -39,6 +39,25 @@ export class VehicleControlListResponseDto {
   @ApiPropertyOptional({ nullable: true, description: 'ID user tạo mục này' })
   created_by: string | null;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Đồng bộ HGVision: null (chưa) | pending (cờ ghi tắt) | synced | failed',
+  })
+  hgvision_sync_status: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Lần đồng bộ HGVision thành công gần nhất',
+  })
+  hgvision_synced_at: Date | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Lỗi đồng bộ HGVision gần nhất',
+  })
+  hgvision_sync_error: string | null;
+
   @ApiProperty({ description: 'Thời điểm tạo' })
   created_at: Date;
 
@@ -58,6 +77,9 @@ export function toVehicleControlListResponse(
     reason: entity.reason,
     active: entity.active,
     created_by: entity.createdBy,
+    hgvision_sync_status: entity.hgvisionSyncStatus ?? null,
+    hgvision_synced_at: entity.hgvisionSyncedAt ?? null,
+    hgvision_sync_error: entity.hgvisionSyncError ?? null,
     created_at: entity.createdAt,
     updated_at: entity.updatedAt,
   };

@@ -12,6 +12,7 @@ import type { CreateVehicleControlListDto } from '../dto/create-vehicle-control-
 import type { UpdateVehicleControlListDto } from '../dto/update-vehicle-control-list.dto.js';
 import type { ListVehicleControlListQueryDto } from '../dto/list-vehicle-control-list-query.dto.js';
 import type { PaginationMeta } from './vehicle-registration.service.js';
+import { ControlListSyncHook } from './control-list-sync.hook.js';
 
 /** VAL-02/DATA-03: conflict trùng (plate, list_type) còn sống — dùng chung pre-check + safety-net 23505. */
 const controlListConflict = (): ConflictException =>
@@ -36,7 +37,22 @@ export class VehicleControlListService {
   constructor(
     @InjectRepository(VehicleControlListEntity)
     private readonly repo: Repository<VehicleControlListEntity>,
+    private readonly syncHook: ControlListSyncHook,
   ) {}
+
+  /** Đẩy thay đổi sang hệ thống ngoài (HGVision) rồi đọc lại dòng để trả trạng thái đồng bộ. */
+  private async afterChange(
+    entity: VehicleControlListEntity,
+  ): Promise<VehicleControlListEntity> {
+    if (!this.syncHook.enabled) return entity;
+    await this.syncHook.notify(entity.plateNumber);
+    return (await this.repo.findOne({ where: { id: entity.id } })) ?? entity;
+  }
+
+  /** Đồng bộ lại 1 dòng (vd lần trước lỗi hoặc lúc đó cờ ghi đang tắt). */
+  async resync(id: string): Promise<VehicleControlListEntity> {
+    return this.afterChange(await this.getDetail(id));
+  }
 
   private activeCache?: {
     at: number;
@@ -70,7 +86,7 @@ export class VehicleControlListService {
     try {
       const saved = await this.repo.save(entity);
       this.activeCache = undefined;
-      return saved;
+      return await this.afterChange(saved);
     } catch (e) {
       // safety-net: partial-unique race → 23505 → 409 sạch, KHÔNG để lỗi DB phọt client.
       if (this.isUniqueViolation(e)) {
@@ -185,13 +201,14 @@ export class VehicleControlListService {
     }
     const saved = await this.repo.save(entity);
     this.activeCache = undefined;
-    return saved;
+    return this.afterChange(saved);
   }
 
   async softDelete(id: string): Promise<void> {
-    await this.getDetail(id);
+    const entity = await this.getDetail(id);
     await this.repo.softDelete(id);
     this.activeCache = undefined;
+    await this.syncHook.notify(entity.plateNumber);
   }
 
   /** Postgres unique_violation = 23505 (TypeORM QueryFailedError.driverError.code). */

@@ -112,6 +112,21 @@ export class VehicleControlListController {
     };
   }
 
+  @Post(':id/hgvision-sync')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions('vehicle_control.update')
+  @ApiOperation({
+    summary: 'Đồng bộ lại 1 biển số kiểm soát sang HGVision',
+  })
+  async resync(@Param('id', ParseUUIDPipe) id: string) {
+    const entity = await this.vehicleControlListService.resync(id);
+    return {
+      success: true,
+      message: 'Control list entry synced',
+      data: toVehicleControlListResponse(entity),
+    };
+  }
+
   @Delete(':id')
   @RequirePermissions('vehicle_control.delete')
   @ApiOperation({ summary: 'Xóa mềm 1 mục khỏi danh sách kiểm soát biển số' })

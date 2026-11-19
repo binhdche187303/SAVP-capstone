@@ -53,6 +53,26 @@ export class VehicleControlListEntity {
   @Column({ name: 'created_by', type: 'uuid', nullable: true })
   createdBy: string | null;
 
+  // Đồng bộ sang HGVision (migration 20261118000004). NULL = chưa từng đồng bộ.
+  @Column({
+    name: 'hgvision_sync_status',
+    type: 'varchar',
+    length: 16,
+    nullable: true,
+  })
+  hgvisionSyncStatus: string | null;
+
+  @Column({ name: 'hgvision_synced_at', type: 'timestamptz', nullable: true })
+  hgvisionSyncedAt: Date | null;
+
+  @Column({
+    name: 'hgvision_sync_error',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  hgvisionSyncError: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
