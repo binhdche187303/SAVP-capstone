@@ -64,6 +64,8 @@ export enum NotificationType {
   EQUIPMENT_AUTO_UNASSIGNED = 'equipment_auto_unassigned',
   // Camera IP chuyen online -> offline (cron device-offline-detect) -> bao SA/BA.
   DEVICE_OFFLINE_ALERT = 'device_offline_alert',
+  // Doi soat bien so SAVP <-> HGVision: khoi phuc bien bi xoa / lech / thieu qua nhieu -> bao SA.
+  HGVISION_PLATE_RECONCILE = 'hgvision_plate_reconcile',
   // Canh bao an ninh moi (security_alerts, recordAlert isNew) -> bao nguoi co quyen
   // security_alert.read (SecurityAlertNotifierService).
   SECURITY_ALERT = 'security_alert',

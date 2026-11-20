@@ -11,7 +11,41 @@ import {
 import { HGVISION_CLIENT } from './hgvision.constants.js';
 import { HgvisionClient, HgvisionError } from './hgvision.client.js';
 
-export type PlateSyncStatus = 'pending' | 'synced' | 'failed';
+/**
+ * - pending: cờ ghi tắt; synced: khớp HGVision; failed: lỗi đẩy;
+ * - mismatch: đối soát thấy bên HGVision bị sửa tay (KHÔNG ghi đè, chỉ báo);
+ * - missing: đối soát thấy bị xoá bên HGVision nhưng chưa khôi phục (cờ ghi tắt / quá ngưỡng).
+ */
+export type PlateSyncStatus =
+  | 'pending'
+  | 'synced'
+  | 'failed'
+  | 'mismatch'
+  | 'missing';
+
+/** Dữ liệu SAVP muốn có trên HGVision cho 1 biển (null = không nên có). */
+export interface ExpectedPlate {
+  ident: string;
+  lpInfor: string;
+  isBlacklist: boolean;
+  visibleTo: 'all';
+}
+
+/** Tính trạng thái mong muốn từ các dòng SAVP còn sống của 1 biển. */
+export function expectedPlate(
+  live: VehicleControlListEntity[],
+  reg: VehicleRegistrationEntity | null,
+): ExpectedPlate | null {
+  const active = live.filter((r) => r.active);
+  const regActive = reg?.status === 'active';
+  if (active.length === 0 && !regActive) return null;
+  return {
+    ident: ownerIdent(reg),
+    lpInfor: describe(active, regActive ? reg : null),
+    isBlacklist: active.some((r) => r.listType === 'blocklist'),
+    visibleTo: 'all',
+  };
+}
 
 const ERROR_MAX = 255;
 
@@ -80,18 +114,11 @@ export class HgvisionPlateSyncService
         where: { plateNumber, hgvisionSyncedAt: Not(IsNull()) },
         withDeleted: true,
       }));
-    const active = live.filter((r) => r.active);
-    const regActive = reg?.status === 'active';
-    const present = active.length > 0 || regActive;
+    const input = expectedPlate(live, reg);
+    const present = input !== null;
 
     try {
-      if (present) {
-        const input = {
-          ident: ownerIdent(reg),
-          lpInfor: describe(active, regActive ? reg : null),
-          isBlacklist: active.some((r) => r.listType === 'blocklist'),
-          visibleTo: 'all' as const,
-        };
+      if (input) {
         if (owned) {
           try {
             await this.client.updatePlate(plateNumber, input);
@@ -131,14 +158,15 @@ export class HgvisionPlateSyncService
     }
   }
 
-  private async mark(
+  /** Ghi trạng thái đồng bộ cho mọi dòng còn sống của biển (cả 2 bảng). */
+  async mark(
     plateNumber: string,
     status: PlateSyncStatus,
     error: string | null,
   ): Promise<void> {
     const patch = {
       hgvisionSyncStatus: status,
-      hgvisionSyncError: error,
+      hgvisionSyncError: error?.slice(0, ERROR_MAX) ?? null,
       ...(status === 'synced' ? { hgvisionSyncedAt: new Date() } : {}),
     };
     const where = { plateNumber, deletedAt: IsNull() };

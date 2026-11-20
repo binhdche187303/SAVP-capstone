@@ -113,7 +113,8 @@ export class VehicleRegistrationController {
       'Admin xem danh sách biển số lạ (đi qua camera nhưng chưa khớp đăng ký nào)',
   })
   async listUnknown(@Query() query: ListUnknownVehiclesQueryDto) {
-    const { items, meta, stats, facets } = await this.vehicleUnknownService.listUnknown(query);
+    const { items, meta, stats, facets } =
+      await this.vehicleUnknownService.listUnknown(query);
     return {
       success: true,
       message: 'Unknown vehicles retrieved',
@@ -276,6 +277,24 @@ export class VehicleRegistrationController {
     return {
       success: true,
       message: 'Vehicle registrations sync finished',
+      data,
+    };
+  }
+
+  // ADMIN: đối soát ngay SAVP ↔ HGVision (khôi phục biển bị xoá, báo lệch, xoá biển thừa).
+  // Cùng quyền admin_register — không cần seed mới. Route tĩnh, 2 segment → không trùng :id.
+  @Post('admin/vehicle-registrations/hgvision-reconcile')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('anpr.vehicle.admin_register')
+  @ApiOperation({ summary: 'Admin đối soát biển số SAVP ↔ HGVision ngay' })
+  async reconcileAsAdmin() {
+    const data = await this.vehicleRegistrationService.reconcileHgvision();
+    return {
+      success: true,
+      message: data.busy
+        ? 'Reconcile already running'
+        : 'Vehicle plate reconcile finished',
       data,
     };
   }
