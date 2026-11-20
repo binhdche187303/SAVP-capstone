@@ -10,6 +10,8 @@ import { HgvisionCameraService } from './hgvision-camera.service.js';
 import { HgvisionCameraController } from './hgvision-camera.controller.js';
 import { HgvisionSnapshotService } from './hgvision-snapshot.service.js';
 import { HgvisionPlateSyncService } from './hgvision-plate-sync.service.js';
+import { HgvisionPlateReconcileService } from './hgvision-plate-reconcile.service.js';
+import { NotificationsModule } from '../notifications/notifications.module.js';
 
 /**
  * HgvisionModule — nguồn camera AI HGVision, chạy SONG SONG với IVSS.
@@ -18,7 +20,7 @@ import { HgvisionPlateSyncService } from './hgvision-plate-sync.service.js';
  * AnprModule để lấy VEHICLE_EVENT_HANDLER (pipeline biển số dùng chung).
  */
 @Module({
-  imports: [IvssModule, AnprModule, AuthModule],
+  imports: [IvssModule, AnprModule, AuthModule, NotificationsModule],
   controllers: [HgvisionCameraController],
   providers: [
     {
@@ -39,6 +41,7 @@ import { HgvisionPlateSyncService } from './hgvision-plate-sync.service.js';
     HgvisionCameraService,
     HgvisionSnapshotService,
     HgvisionPlateSyncService,
+    HgvisionPlateReconcileService,
   ],
   exports: [HGVISION_CLIENT, HgvisionCameraService],
 })

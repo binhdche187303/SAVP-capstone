@@ -12,7 +12,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull, ILike, In, type FindOptionsWhere } from 'typeorm';
 import { VehicleRegistrationEntity } from '../entities/vehicle-registration.entity.js';
 import { normalizePlate } from '../utils/normalize-plate.js';
-import { ControlListSyncHook } from './control-list-sync.hook.js';
+import {
+  ControlListSyncHook,
+  type PlateReconcileResult,
+} from './control-list-sync.hook.js';
 import type { CreateVehicleRegistrationDto } from '../dto/create-vehicle-registration.dto.js';
 import type { UpdateVehicleRegistrationDto } from '../dto/update-vehicle-registration.dto.js';
 import type { VehicleStatus } from '../dto/update-vehicle-status.dto.js';
@@ -143,6 +146,11 @@ export class VehicleRegistrationService {
    * năng này (status NULL), lần trước lỗi (failed) hoặc lúc đó cờ ghi tắt (pending).
    * Tuần tự từng biển; tối đa BULK_SYNC_MAX xe/lần, cũ nhất trước.
    */
+  /** Đối soát ngay SAVP ↔ HGVision (nút admin) — chạy cùng logic với job định kỳ. */
+  reconcileHgvision(): Promise<PlateReconcileResult> {
+    return this.syncHook.reconcile();
+  }
+
   async resyncAll(): Promise<BulkSyncResult> {
     if (!this.syncHook.enabled) {
       return {
@@ -157,7 +165,10 @@ export class VehicleRegistrationService {
     const [rows, count] = await this.repo.findAndCount({
       where: [
         { deletedAt: IsNull(), hgvisionSyncStatus: IsNull() },
-        { deletedAt: IsNull(), hgvisionSyncStatus: In(['pending', 'failed']) },
+        {
+          deletedAt: IsNull(),
+          hgvisionSyncStatus: In(['pending', 'failed', 'missing']),
+        },
       ],
       select: { id: true, plateNumber: true },
       order: { createdAt: 'ASC' },

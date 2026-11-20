@@ -3,6 +3,7 @@
 ## 📝 CHANGELOG & REVISION HISTORY
 | Ngày cập nhật | Tóm tắt thay đổi | Các dòng thay đổi |
 | :--- | :--- | :--- |
+| 2026-11-20 | Thêm mục "Đối soát tự động SAVP ↔ HGVision" và "Test đối soát trên máy trường": job 15 phút + nút "Đối soát ngay", tự khôi phục biển bị xoá bên HGVision, báo "Lệch với hệ thống nhận diện" khi HGVision bị sửa tay, xoá biển thừa do SAVP tạo, ngưỡng an toàn khi mất quá nhiều biển. Thêm `HGVISION_RECONCILE_INTERVAL_MS` vào mẫu `.env`. | Mẫu `.env` máy trường; 2 mục mới trước "Dữ liệu test phải xoá" |
 | 2026-11-19 | Thêm mục "Xe đăng ký → HGVision (Bình thường)" và "Test xe đăng ký trên máy trường": quy tắc đẩy xe đăng ký (chủ xe theo tài khoản, danh sách đen do admin đặt luôn thắng), nút đồng bộ hàng loạt + ↻, 2 API mới, migration `20261119000001`. Thêm biển test `99A99997` vào bảng dữ liệu phải xoá và `cleanup-plate-test.sql`. | 2 mục mới trước "Dữ liệu test phải xoá"; bảng dữ liệu test; dòng unit test cuối file; `cleanup-plate-test.sql` |
 | 2026-11-19 | Test máy trường: lỗi 403 `insufficient_scope` (thiếu `plates:write`, cấp quyền + restart BE) và 400 (`is_blacklist` phải là số 0/1 — đã sửa code). Thêm biển test thứ 2 `99A99998` vào bảng dữ liệu phải xoá + script dọn. | Bảng "Dữ liệu test phải xoá"; `cleanup-plate-test.sql` |
 | 2026-11-19 | Đổi biển test `TEST01` → `99A-999.99` (`99A99999`): `TEST01` bị SAVP từ chối vì sai định dạng biển số. | Mục "Đẩy biển số SAVP → HGVision" bước 5–7, bảng dữ liệu test; `cleanup-plate-test.sql` |
@@ -24,6 +25,7 @@ HGVISION_HLS_BASE_URL=http://localhost:8888   # MediaMTX — nguồn video live 
 HGVISION_CLIENT_ID=<tạo ở trang "Tích hợp API" của HGVision>
 HGVISION_CLIENT_SECRET=<như trên>
 HGVISION_WRITE_ENABLED=false      # chỉ bật khi đã thử ghi định danh trên máy thật
+HGVISION_RECONCILE_INTERVAL_MS=900000   # đối soát biển số mỗi 15 phút; 0 = tắt (nút "Đối soát ngay" vẫn dùng được)
 ```
 
 Client HGVision cần tối thiểu scope `cameras:read` (trang camera bảo vệ). Thêm `dashboard:read` để xem tài nguyên máy chủ, và `history:read` cho poller sự kiện.
@@ -110,6 +112,30 @@ API: `POST /api/v1/anpr/admin/vehicle-registrations/hgvision-sync` (hàng loạt
 6. Xoá xe `99A99997` trên "Phương tiện cá nhân" → HGVision không còn biển này.
 7. Dọn dữ liệu test theo bảng bên dưới.
 
+### Đối soát tự động SAVP ↔ HGVision
+
+SAVP là nguồn gốc. BE tự so danh sách biển số với HGVision mỗi `HGVISION_RECONCILE_INTERVAL_MS` (mặc định 15 phút, lần đầu 1 phút sau khi BE khởi động; chỉ chạy khi `CAMERA_PROVIDER=hgvision`). Admin có thể bấm **Đối soát ngay** ở trang "Đăng ký phương tiện" (`POST /api/v1/anpr/admin/vehicle-registrations/hgvision-reconcile`, quyền `anpr.vehicle.admin_register`). Mỗi lúc chỉ chạy 1 lần đối soát.
+
+| Tình huống | SAVP xử lý | Trạng thái hiện trên web |
+| :--- | :--- | :--- |
+| Biển SAVP đã đẩy bị xoá bên HGVision | Đẩy lại (cờ ghi bật) | "Đã đồng bộ HGVision", ghi chú "đã khôi phục lúc …" |
+| Như trên nhưng cờ ghi tắt | Chỉ đánh dấu | "Bị xoá bên hệ thống nhận diện" |
+| Biển bị sửa tay bên HGVision (đổi danh sách đen, chủ xe, ghi chú) | **Không ghi đè**, chỉ báo | "Lệch với hệ thống nhận diện" — bấm ↻ để ghi đè bằng dữ liệu SAVP |
+| Xe đã xoá / tạm dừng trên SAVP mà HGVision còn biển (do SAVP tạo, ghi chú bắt đầu bằng `SAVP`) | Xoá biển thừa | — |
+| Biển người khác tạo tay trên HGVision | Không đụng tới | — |
+| Mất quá nhiều biển (> 20, hoặc ≥ 5 và > 50% số biển SAVP đã đẩy) | Không tự khôi phục (đề phòng HGVision bị reset), báo admin | "Bị xoá bên hệ thống nhận diện" — bấm "Đồng bộ HGVision" để đẩy lại hàng loạt |
+
+Mỗi lần có khôi phục / xoá thừa / lệch mới, BE ghi audit log (`HGVISION_PLATE_RESTORED`, `HGVISION_PLATE_REMOVED_EXTRA`, `HGVISION_PLATE_MISMATCH`) và gửi 1 thông báo gộp cho tài khoản quản trị hệ thống. Biển lệch đã báo rồi thì lần sau không báo lại. Không cần migration.
+
+### Test đối soát trên máy trường
+
+1. `git pull` `main` (BE + FE), khởi động lại BE. `.env` có `HGVISION_WRITE_ENABLED=true`.
+2. Đăng ký xe test `99A-999.97` như mục "Test xe đăng ký" → "Đã đồng bộ HGVision".
+3. **Bị xoá:** xoá tay biển `99A99997` trên trang biển số HGVision → vào "Đăng ký phương tiện" bấm **Đối soát ngay** (hoặc chờ 15 phút) → toast "khôi phục 1 biển bị xoá", HGVision có lại biển.
+4. **Lệch:** sửa tay biển đó trên HGVision sang danh sách đen → **Đối soát ngay** → dòng hiện "Lệch với hệ thống nhận diện", HGVision vẫn giữ danh sách đen. Bấm ↻ trên dòng → HGVision về Bình thường, dòng "Đã đồng bộ HGVision".
+5. **Thừa:** tạm dừng/xoá xe `99A99997` khi cờ đang **tắt** (BE không xoá được bên HGVision), bật lại cờ, khởi động lại BE, bấm **Đối soát ngay** → HGVision không còn biển. (Bỏ qua nếu ngại đổi cờ.)
+6. Dọn dữ liệu test theo bảng bên dưới (biển `99A99997`).
+
 ### Dữ liệu test phải xoá sau khi test
 
 | Ở đâu | Dữ liệu | Cách xoá |
@@ -119,5 +145,5 @@ API: `POST /api/v1/anpr/admin/vehicle-registrations/hgvision-sync` (hàng loạt
 | DB SAVP (máy trường) | Dòng `vehicle_control_list` biển `99A99999`, `99A99998`, `99A99997` và dòng `vehicle_registrations` biển `99A99997` (đều đã xoá mềm) | `scripts/hgvision/cleanup-plate-test.sql`: chạy SELECT xem trước, rồi bỏ comment 2 dòng DELETE |
 | `.env` máy trường | `HGVISION_WRITE_ENABLED=true` | Giữ `true` nếu muốn xe đăng ký đẩy sang HGVision khi chạy thật. Chưa dùng thật thì đặt lại `false` rồi khởi động lại BE. |
 
-Unit test (`hgvision-plate-sync.service.spec.ts`, `vehicle-control-list.service.spec.ts`, `vehicle-registration.service.spec.ts`) chỉ dùng mock trong bộ nhớ, không tạo dữ liệu thật.
+Unit test (`hgvision-plate-sync.service.spec.ts`, `hgvision-plate-reconcile.service.spec.ts`, `vehicle-control-list.service.spec.ts`, `vehicle-registration.service.spec.ts`) chỉ dùng mock trong bộ nhớ, không tạo dữ liệu thật.
 
