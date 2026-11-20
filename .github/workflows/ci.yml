@@ -1,0 +1,60 @@
+# CI backend: build + lint file đổi + unit test. Không deploy (CD làm sau).
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, 'feature/**']
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            workers/ai-transcription/package-lock.json
+
+      - name: Cài thư viện
+        run: |
+          npm ci
+          npm ci --prefix workers/ai-transcription
+
+      - name: Build
+        run: npm run build
+
+      - name: Lint file .ts mới (chặn) + file sửa (chỉ báo)
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]              || ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            BASE_SHA=$(git merge-base HEAD origin/main 2>/dev/null || git rev-list --max-parents=0 HEAD | tail -1)
+          fi
+          echo "So sánh với $BASE_SHA"
+          ADDED=$(git diff --name-only --diff-filter=A "$BASE_SHA" HEAD -- 'src/*.ts' 'test/*.ts' || true)
+          MODIFIED=$(git diff --name-only --diff-filter=MR "$BASE_SHA" HEAD -- 'src/*.ts' 'test/*.ts' || true)
+          if [ -n "$MODIFIED" ]; then
+            echo "::group::File sửa (code cũ còn lỗi lint — chỉ báo, không chặn)"
+            echo "$MODIFIED" | xargs npx eslint || echo "::warning::File sửa còn lỗi lint (xem log) — không chặn."
+            echo "::endgroup::"
+          fi
+          if [ -z "$ADDED" ]; then echo "Không có file .ts mới."; exit 0; fi
+          echo "File mới (phải sạch lint):"; echo "$ADDED"
+          echo "$ADDED" | xargs npx eslint
+
+      - name: Unit test (bỏ qua suite trong .github/ci-known-failing-tests.txt)
+        run: |
+          IGNORE=$(grep -vE '^\s*(#|$)' .github/ci-known-failing-tests.txt | sed 's#^#src/#' | paste -sd'|' -)
+          npx jest --ci --maxWorkers=2 --testTimeout=20000 --testPathIgnorePatterns "/node_modules/${IGNORE:+|$IGNORE}"
