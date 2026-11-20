@@ -3,6 +3,7 @@
 ## 📝 CHANGELOG & REVISION HISTORY
 | Ngày cập nhật | Tóm tắt thay đổi | Các dòng thay đổi |
 | :--- | :--- | :--- |
+| 2026-11-20 | Thêm mục "Đổi biển số xe đăng ký": người dùng sửa được biển trong "Phương tiện cá nhân" (kiểm định dạng + trùng như lúc đăng ký), HGVision gỡ biển cũ + thêm biển mới; dòng "bia mộ" giữ dấu biển cũ để đối soát dọn nếu xoá lỗi. Thêm bước test + biển test `99A99996`. | Mục mới sau "Test đối soát trên máy trường"; bảng dữ liệu test |
 | 2026-11-20 | Thêm mục "Đối soát tự động SAVP ↔ HGVision" và "Test đối soát trên máy trường": job 15 phút + nút "Đối soát ngay", tự khôi phục biển bị xoá bên HGVision, báo "Lệch với hệ thống nhận diện" khi HGVision bị sửa tay, xoá biển thừa do SAVP tạo, ngưỡng an toàn khi mất quá nhiều biển. Thêm `HGVISION_RECONCILE_INTERVAL_MS` vào mẫu `.env`. | Mẫu `.env` máy trường; 2 mục mới trước "Dữ liệu test phải xoá" |
 | 2026-11-19 | Thêm mục "Xe đăng ký → HGVision (Bình thường)" và "Test xe đăng ký trên máy trường": quy tắc đẩy xe đăng ký (chủ xe theo tài khoản, danh sách đen do admin đặt luôn thắng), nút đồng bộ hàng loạt + ↻, 2 API mới, migration `20261119000001`. Thêm biển test `99A99997` vào bảng dữ liệu phải xoá và `cleanup-plate-test.sql`. | 2 mục mới trước "Dữ liệu test phải xoá"; bảng dữ liệu test; dòng unit test cuối file; `cleanup-plate-test.sql` |
 | 2026-11-19 | Test máy trường: lỗi 403 `insufficient_scope` (thiếu `plates:write`, cấp quyền + restart BE) và 400 (`is_blacklist` phải là số 0/1 — đã sửa code). Thêm biển test thứ 2 `99A99998` vào bảng dữ liệu phải xoá + script dọn. | Bảng "Dữ liệu test phải xoá"; `cleanup-plate-test.sql` |
@@ -136,12 +137,24 @@ Mỗi lần có khôi phục / xoá thừa / lệch mới, BE ghi audit log (`HG
 5. **Thừa:** tạm dừng/xoá xe `99A99997` khi cờ đang **tắt** (BE không xoá được bên HGVision), bật lại cờ, khởi động lại BE, bấm **Đối soát ngay** → HGVision không còn biển. (Bỏ qua nếu ngại đổi cờ.)
 6. Dọn dữ liệu test theo bảng bên dưới (biển `99A99997`).
 
+### Đổi biển số xe đăng ký
+
+Người dùng sửa biển ngay trong form "Chỉnh sửa phương tiện" (`PATCH /api/v1/anpr/vehicle-registrations/:id`, trường `plate_raw`).
+
+- Biển mới được chuẩn hoá và kiểm như lúc đăng ký: 6–10 ký tự, có cả chữ và số → sai thì báo "Biển số không hợp lệ"; trùng xe khác đang hoạt động → "Biển số này đã được đăng ký".
+- Chỉ đổi cách viết (`30a12345` → `30A-123.45`) thì giữ nguyên biển, không đụng HGVision.
+- Xe giữ nguyên id → lịch sử ra vào cũ vẫn gắn với xe.
+- HGVision: gỡ biển cũ, thêm biển mới (Bình thường, cùng chủ xe). Biển cũ đang ở "Danh sách giám sát" thì vẫn giữ (do admin quản lý).
+- Nếu biển cũ đã từng đẩy sang HGVision, SAVP lưu 1 dòng "bia mộ" (bản sao đã xoá mềm, ghi chú "Biển cũ, đã đổi sang …") để nhớ biển cũ là của SAVP. Nhờ vậy nếu lần gỡ biển cũ bị lỗi, job đối soát sẽ dọn trong vòng 15 phút. Dòng bia mộ không hiện ở danh sách hay báo cáo.
+
+Test trên máy trường: đăng ký `99A-999.97` → Sửa → đổi thành `99A-999.96` → Lưu. Đúng: toast "Đã đổi biển số sang 99A99996", HGVision mất `99A99997` và có `99A99996`. Thử thêm: sửa thành `ABC` → báo không hợp lệ; sửa thành biển của xe khác → báo đã được đăng ký.
+
 ### Dữ liệu test phải xoá sau khi test
 
 | Ở đâu | Dữ liệu | Cách xoá |
 | :--- | :--- | :--- |
 | HGVision (máy trường) | Biển `99A99999` và `99A99998` (biển thứ 2 thêm lúc test máy trường 2026-11-19) | Bước 7 của "Test 1 biển" (xoá trên SAVP khi cờ còn bật). Nếu sót: xoá tay trên trang biển số HGVision. |
-| HGVision (máy trường) | Biển `99A99997` (test xe đăng ký) | Bước 6 của "Test xe đăng ký" (xoá xe trên SAVP khi cờ còn bật). Nếu sót: xoá tay trên trang biển số HGVision. |
+| HGVision (máy trường) | Biển `99A99997` (test xe đăng ký) và `99A99996` (test đổi biển) | Bước 6 của "Test xe đăng ký" (xoá xe trên SAVP khi cờ còn bật). Nếu sót: xoá tay trên trang biển số HGVision. |
 | DB SAVP (máy trường) | Dòng `vehicle_control_list` biển `99A99999`, `99A99998`, `99A99997` và dòng `vehicle_registrations` biển `99A99997` (đều đã xoá mềm) | `scripts/hgvision/cleanup-plate-test.sql`: chạy SELECT xem trước, rồi bỏ comment 2 dòng DELETE |
 | `.env` máy trường | `HGVISION_WRITE_ENABLED=true` | Giữ `true` nếu muốn xe đăng ký đẩy sang HGVision khi chạy thật. Chưa dùng thật thì đặt lại `false` rồi khởi động lại BE. |
 

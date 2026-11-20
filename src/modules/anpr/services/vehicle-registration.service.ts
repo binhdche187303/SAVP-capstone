@@ -100,16 +100,7 @@ export class VehicleRegistrationService {
     userId: string,
     dto: CreateVehicleRegistrationDto,
   ): Promise<VehicleRegistrationEntity> {
-    const plateNumber = normalizePlate(dto.plateRaw);
-
-    // OQ-4: validate trên giá trị ĐÃ normalize.
-    if (!this.isValidPlate(plateNumber)) {
-      throw new BadRequestException({
-        code: 'INVALID_PLATE',
-        message:
-          'Biển số không hợp lệ (cần 6–10 ký tự chữ-số, có cả chữ và số).',
-      });
-    }
+    const plateNumber = this.checkedPlate(dto.plateRaw);
 
     // OQ-3: pre-check trùng biển đang sống — KHÔNG lộ user nào giữ biển.
     const existing = await this.repo.findOne({
@@ -343,8 +334,15 @@ export class VehicleRegistrationService {
   }
 
   /**
-   * Sửa metadata (DATA-01: CHỈ note + vehicle_type). undefined→giữ nguyên,
-   * null→xóa (set null). Cả 2 absent → no-op (KHÔNG save), trả nguyên trạng (OQ-5).
+   * Sửa xe (DATA-01: note + vehicle_type + plate_raw). undefined→giữ nguyên,
+   * null→xóa (set null). Không có gì đổi → no-op (KHÔNG save), trả nguyên trạng (OQ-5).
+   *
+   * Đổi biển: sửa NGAY trên dòng cũ (giữ id → lịch sử ra vào `gate_access_logs` vẫn gắn
+   * với xe). Biển mới kiểm định dạng + trùng như lúc đăng ký. Nếu biển cũ đã từng đẩy
+   * sang HGVision, lưu 1 dòng "bia mộ" (bản sao đã xoá mềm, giữ `hgvision_synced_at`)
+   * để syncPlate + job đối soát vẫn nhận biển cũ là của SAVP và xoá nó bên HGVision —
+   * kể cả khi lần xoá ngay lúc đổi bị lỗi. Dòng sống reset trạng thái đồng bộ để biển
+   * mới KHÔNG bị coi là "SAVP đã tạo" (tránh ghi đè biển người khác tạo bên HGVision).
    */
   async updateMetadata(
     id: string,
@@ -353,6 +351,22 @@ export class VehicleRegistrationService {
   ): Promise<VehicleRegistrationEntity> {
     const entity = await this.loadOwned(id, userId);
     let changed = false;
+    let oldPlate: VehicleRegistrationEntity | null = null;
+    if (dto.plateRaw !== undefined) {
+      const plateNumber = this.checkedPlate(dto.plateRaw);
+      if (plateNumber !== entity.plateNumber) {
+        const dup = await this.repo.findOne({
+          where: { plateNumber, deletedAt: IsNull() },
+        });
+        if (dup) throw plateConflict();
+        oldPlate = { ...entity };
+        entity.plateNumber = plateNumber;
+      }
+      if (dto.plateRaw !== entity.plateRaw) {
+        entity.plateRaw = dto.plateRaw;
+        changed = true;
+      }
+    }
     if (dto.vehicleType !== undefined) {
       entity.vehicleType = dto.vehicleType;
       changed = true;
@@ -364,7 +378,51 @@ export class VehicleRegistrationService {
     if (!changed) {
       return entity; // no-op
     }
-    return this.afterChange(await this.repo.save(entity));
+    if (!oldPlate) return this.afterChange(await this.repo.save(entity));
+
+    const old = oldPlate;
+    let saved: VehicleRegistrationEntity;
+    try {
+      saved = await this.repo.manager.transaction(async (m) => {
+        const r = m.getRepository(VehicleRegistrationEntity);
+        if (old.hgvisionSyncedAt) {
+          await r.insert({
+            userId: old.userId,
+            plateRaw: old.plateRaw,
+            plateNumber: old.plateNumber,
+            vehicleType: old.vehicleType,
+            note: `Biển cũ, đã đổi sang ${entity.plateNumber}`.slice(0, 255),
+            status: old.status,
+            hgvisionSyncStatus: old.hgvisionSyncStatus,
+            hgvisionSyncedAt: old.hgvisionSyncedAt,
+            deletedAt: new Date(),
+          });
+        }
+        entity.hgvisionSyncStatus = null;
+        entity.hgvisionSyncedAt = null;
+        entity.hgvisionSyncError = null;
+        return r.save(entity);
+      });
+    } catch (e) {
+      if (this.isUniqueViolation(e)) throw plateConflict();
+      throw e;
+    }
+    // Biển cũ: không còn ai cần → syncPlate xoá bên HGVision (nhờ dòng bia mộ).
+    await this.syncHook.notify(old.plateNumber);
+    return this.afterChange(saved);
+  }
+
+  /** Chuẩn hoá + kiểm định dạng biển (OQ-4: validate trên giá trị ĐÃ normalize). */
+  private checkedPlate(plateRaw: string): string {
+    const plateNumber = normalizePlate(plateRaw);
+    if (!this.isValidPlate(plateNumber)) {
+      throw new BadRequestException({
+        code: 'INVALID_PLATE',
+        message:
+          'Biển số không hợp lệ (cần 6–10 ký tự chữ-số, có cả chữ và số).',
+      });
+    }
+    return plateNumber;
   }
 
   /** Đổi status active↔disabled (DATA-02). */
