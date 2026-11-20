@@ -325,7 +325,7 @@ export class VehicleRegistrationController {
   @UsePipes(REGISTER_PIPE)
   @ApiOperation({
     summary:
-      'Sửa metadata (ghi chú/loại xe) của 1 biển số CỦA CHÍNH user đang đăng nhập',
+      'Sửa xe (biển số/ghi chú/loại xe) của CHÍNH user đang đăng nhập. Đổi biển: kiểm định dạng + trùng như lúc đăng ký',
   })
   async update(
     @CurrentUser() user: { userId: string },

@@ -503,6 +503,118 @@ describe('VehicleRegistrationService (VPR-001 / UC1)', () => {
       expect(syncPlate).toHaveBeenCalledWith('30A12345');
     });
 
+    describe('đổi biển (plate_raw)', () => {
+      let tx: { insert: jest.Mock; save: jest.Mock };
+      const synced = () => ({
+        ...live,
+        plateRaw: '30A-123.45',
+        vehicleType: 'car',
+        note: null,
+        hgvisionSyncStatus: 'synced',
+        hgvisionSyncedAt: new Date('2026-11-19T00:00:00Z'),
+        hgvisionSyncError: null,
+      });
+      beforeEach(() => {
+        tx = {
+          insert: jest.fn().mockResolvedValue({}),
+          save: jest.fn((x: any) => Promise.resolve({ ...x })),
+        };
+        repo.manager = {
+          transaction: jest.fn((cb: any) => cb({ getRepository: () => tx })),
+        };
+      });
+
+      it('biển sai định dạng → 400 INVALID_PLATE, không lưu, không báo hook', async () => {
+        repo.findOne.mockResolvedValue(synced());
+        for (const bad of ['ABCDEF', '123456', '30A1', '30A-123.456789']) {
+          await expect(
+            service.updateMetadata('veh1', 'u1', { plateRaw: bad }),
+          ).rejects.toBeInstanceOf(BadRequestException);
+        }
+        expect(repo.manager.transaction).not.toHaveBeenCalled();
+        expect(repo.save).not.toHaveBeenCalled();
+        expect(syncPlate).not.toHaveBeenCalled();
+      });
+
+      it('biển mới trùng xe khác đang sống → 409 PLATE_ALREADY_REGISTERED', async () => {
+        repo.findOne
+          .mockResolvedValueOnce(synced()) // loadOwned
+          .mockResolvedValueOnce({ id: 'other', plateNumber: '30A99999' }); // trùng
+        await expect(
+          service.updateMetadata('veh1', 'u1', { plateRaw: '30A-999.99' }),
+        ).rejects.toMatchObject({
+          response: { code: 'PLATE_ALREADY_REGISTERED' },
+        });
+        expect(repo.manager.transaction).not.toHaveBeenCalled();
+      });
+
+      it('chỉ đổi cách viết (cùng biển chuẩn) → lưu plate_raw, không bia mộ, không kiểm trùng', async () => {
+        repo.findOne.mockResolvedValue(synced());
+        await service.updateMetadata('veh1', 'u1', { plateRaw: '30a12345' });
+        expect(repo.findOne).toHaveBeenCalledTimes(2); // loadOwned + đọc lại sau sync
+        expect(repo.manager.transaction).not.toHaveBeenCalled();
+        expect(repo.save.mock.calls[0][0]).toMatchObject({
+          plateNumber: '30A12345',
+          plateRaw: '30a12345',
+          hgvisionSyncStatus: 'synced',
+        });
+        expect(syncPlate).toHaveBeenCalledWith('30A12345');
+      });
+
+      it('đổi biển đã đồng bộ → bia mộ giữ dấu biển cũ, dòng sống reset đồng bộ, sync biển cũ rồi biển mới', async () => {
+        repo.findOne
+          .mockResolvedValueOnce(synced()) // loadOwned
+          .mockResolvedValueOnce(null) // kiểm trùng
+          .mockResolvedValueOnce({ id: 'veh1', plateNumber: '30A12346' }); // đọc lại
+        const r = await service.updateMetadata('veh1', 'u1', {
+          plateRaw: '30A-123.46',
+        });
+        const tomb = tx.insert.mock.calls[0][0];
+        expect(tomb).toMatchObject({
+          userId: 'u1',
+          plateNumber: '30A12345',
+          plateRaw: '30A-123.45',
+          hgvisionSyncedAt: new Date('2026-11-19T00:00:00Z'),
+          note: 'Biển cũ, đã đổi sang 30A12346',
+        });
+        expect(tomb.deletedAt).toBeInstanceOf(Date);
+        expect(tomb.id).toBeUndefined(); // dòng mới, không đè id xe
+        expect(tx.save.mock.calls[0][0]).toMatchObject({
+          id: 'veh1',
+          plateNumber: '30A12346',
+          plateRaw: '30A-123.46',
+          hgvisionSyncStatus: null,
+          hgvisionSyncedAt: null,
+          hgvisionSyncError: null,
+        });
+        expect(syncPlate.mock.calls.map((c) => c[0])).toEqual([
+          '30A12345',
+          '30A12346',
+        ]);
+        expect(r.plateNumber).toBe('30A12346');
+      });
+
+      it('đổi biển chưa từng đồng bộ → không tạo bia mộ', async () => {
+        repo.findOne
+          .mockResolvedValueOnce({ ...synced(), hgvisionSyncedAt: null })
+          .mockResolvedValueOnce(null);
+        await service.updateMetadata('veh1', 'u1', { plateRaw: '30A12346' });
+        expect(tx.insert).not.toHaveBeenCalled();
+        expect(tx.save).toHaveBeenCalledTimes(1);
+      });
+
+      it('race: unique violation lúc lưu → 409, không báo hook', async () => {
+        repo.findOne
+          .mockResolvedValueOnce(synced())
+          .mockResolvedValueOnce(null);
+        tx.save.mockRejectedValue({ driverError: { code: '23505' } });
+        await expect(
+          service.updateMetadata('veh1', 'u1', { plateRaw: '30A12346' }),
+        ).rejects.toBeInstanceOf(ConflictException);
+        expect(syncPlate).not.toHaveBeenCalled();
+      });
+    });
+
     it('updateMetadata no-op → KHÔNG báo hook', async () => {
       repo.findOne.mockResolvedValue({ ...live });
       await service.updateMetadata('veh1', 'u1', {});
