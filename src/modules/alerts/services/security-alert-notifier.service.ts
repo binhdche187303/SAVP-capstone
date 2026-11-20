@@ -46,6 +46,21 @@ const SEVERITY_LABEL: Record<string, string> = {
   critical: 'Nghiêm trọng',
 };
 
+/** Tên tiếng Việt của loại cảnh báo — thông báo KHÔNG hiện mã kỹ thuật (visitor_must_leave…). */
+const ALERT_TYPE_LABEL: Record<string, string> = {
+  stranger: 'Người lạ',
+  unknown_vehicle: 'Phương tiện lạ',
+  vehicle_unauthorized: 'Phương tiện không được phép',
+  vehicle_control_match: 'Biển số trong danh sách theo dõi',
+  crowd: 'Tụ tập đông người',
+  intrusion: 'Xâm nhập khu vực hạn chế',
+  device_error: 'Lỗi thiết bị',
+  person_watchlist_match: 'Người trong danh sách kiểm soát',
+  visitor_overstay: 'Khách ở quá giờ',
+  visitor_must_leave: 'Khách cần rời khỏi khuôn viên',
+  visitor_zone_violation: 'Khách vào sai khu vực',
+};
+
 const PRIORITY_BY_SEVERITY: Record<string, NotificationPriority> = {
   low: NotificationPriority.LOW,
   medium: NotificationPriority.NORMAL,
@@ -382,11 +397,14 @@ export class SecurityAlertNotifierService {
           content: `Phát hiện khuôn mặt lạ tại thiết bị ${device}${roomName ? ` (phòng ${roomName})` : ''}.`,
         };
       }
-      default:
+      default: {
+        const label = ALERT_TYPE_LABEL[alert.alertType];
+        const severity = SEVERITY_LABEL[alert.severity];
         return {
-          title: `Cảnh báo an ninh${where}`,
-          content: `Có cảnh báo an ninh mới (${alert.alertType}) mức ${SEVERITY_LABEL[alert.severity] ?? alert.severity}.`,
+          title: `Cảnh báo an ninh${label ? `: ${label}` : ''}${where}`,
+          content: `${label ?? 'Có cảnh báo an ninh mới'}${zoneName ? ` tại ${zoneName}` : ''}${severity ? ` – mức ${severity.toLowerCase()}` : ''}.`,
         };
+      }
     }
   }
 }

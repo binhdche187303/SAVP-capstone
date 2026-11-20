@@ -147,6 +147,22 @@ describe('SecurityAlertNotifierService', () => {
     expect(dto.content).toBe('Camera Cam cổng (CAM-1) không còn phản hồi.');
   });
 
+  it('loại không có mẫu riêng (khách phải rời) → tên tiếng Việt, KHÔNG lộ mã kỹ thuật', async () => {
+    await service.notifyNewAlert(
+      crowdAlert({ alertType: 'visitor_must_leave', severity: 'high' }),
+    );
+    const dto = notif.createNotification.mock.calls[0][0];
+    expect(dto.subject).toBe(
+      'Cảnh báo an ninh: Khách cần rời khỏi khuôn viên – Bãi đỗ xe',
+    );
+    expect(dto.content).toBe(
+      'Khách cần rời khỏi khuôn viên tại Bãi đỗ xe – mức cao.',
+    );
+    expect(`${dto.subject} ${dto.content}`).not.toMatch(
+      /visitor_|[a-z]+_[a-z]+/,
+    );
+  });
+
   const strangerAlert = (over: Record<string, unknown> = {}): any =>
     crowdAlert({
       alertType: 'stranger',
