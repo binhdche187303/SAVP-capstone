@@ -4,7 +4,7 @@
   "sourceRoot": "src",
   "compilerOptions": {
     "deleteOutDir": true,
-    "assets": [{ "include": "assets/fonts/*.ttf", "outDir": "dist" }],
+    "assets": [{ "include": "assets/fonts/*.ttf", "outDir": "dist" }, { "include": "assets/report-templates/*.png", "outDir": "dist" }],
     "watchAssets": true
   }
 }
