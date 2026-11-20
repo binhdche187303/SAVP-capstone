@@ -3,7 +3,11 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 export class SeedDemoGateZones20261011000005 implements MigrationInterface {
   name = 'SeedDemoGateZones20261011000005';
 
-  public async up(queryRunner: QueryRunner): Promise<void> {
+  /** Dữ liệu demo đã gỡ khỏi luồng migration — chỉ giữ data thật. down() vẫn dọn được demo cũ. */
+  public async up(): Promise<void> {}
+
+  /** Seed demo cũ — không còn chạy tự động. */
+  public async seedDemo(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
       `INSERT INTO zones (
          zone_code, zone_name, zone_type, building, floor, description,

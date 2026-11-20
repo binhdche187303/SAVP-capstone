@@ -27,13 +27,8 @@
     "migration:show": "npm run typeorm -- migration:show -d src/database/data-source.ts",
     "migration:run:tsx": "tsx scripts/run-migrations.ts",
     "cleanup:ivss-group1": "tsx scripts/cleanup-ivss-group1-mappings.ts",
-    "seed:demo": "tsx scripts/seed-clean-demo.ts",
     "hgvision:capture": "node scripts/hgvision/capture-real.mjs",
-    "demo:cleanup": "tsx scripts/cleanup-demo-data.ts",
-    "uitest:strangers": "tsx scripts/seed-ui-test-strangers.ts",
-    "uitest:devices": "tsx scripts/seed-ui-test-devices.ts",
-    "uitest:zonelog": "tsx scripts/seed-ui-test-zone-log.ts",
-    "uitest:guard": "tsx scripts/seed-ui-test-guard.ts"
+    "demo:cleanup": "tsx scripts/cleanup-demo-data.ts"
   },
   "dependencies": {
     "@nestjs/bullmq": "^11.0.4",

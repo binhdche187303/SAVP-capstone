@@ -16,7 +16,11 @@ export class SeedDemoRecordingTranscriptMinutes20260720000010 implements Migrati
   ];
   private readonly captureMeetings = ['MTG-2026-001', 'MTG-2026-007']; // co iot_devices capture agent trong phong
 
-  public async up(queryRunner: QueryRunner): Promise<void> {
+  /** Dữ liệu demo đã gỡ khỏi luồng migration — chỉ giữ data thật. down() vẫn dọn được demo cũ. */
+  public async up(): Promise<void> {}
+
+  /** Seed demo cũ — không còn chạy tự động. */
+  public async seedDemo(queryRunner: QueryRunner): Promise<void> {
     // capture_sessions cho 2 meeting co capture agent (RM-A201 co IOT-CAPAGENT-A201;
     // RM-A101 khong co capture_agent device rieng nen dung IOT-ROOMCAM-A101 lam nguon).
     const captureDeviceByMeeting: Record<string, string> = {

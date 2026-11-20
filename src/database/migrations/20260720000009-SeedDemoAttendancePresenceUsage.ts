@@ -13,7 +13,11 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 export class SeedDemoAttendancePresenceUsage20260720000009 implements MigrationInterface {
   name = 'SeedDemoAttendancePresenceUsage20260720000009';
 
-  public async up(queryRunner: QueryRunner): Promise<void> {
+  /** Dữ liệu demo đã gỡ khỏi luồng migration — chỉ giữ data thật. down() vẫn dọn được demo cũ. */
+  public async up(): Promise<void> {}
+
+  /** Seed demo cũ — không còn chạy tự động. */
+  public async seedDemo(queryRunner: QueryRunner): Promise<void> {
     // room_booking_usages: 1 dong cho moi booking completed/active co room.
     await queryRunner.query(
       `INSERT INTO room_booking_usages (

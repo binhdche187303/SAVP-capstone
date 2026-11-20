@@ -22,44 +22,6 @@ export class CreateClassAttendanceRecordsAndSeedDemo20261011000002 implements Mi
     ['SV008', 'khoa.le', 'khoa.le@smartracking.edu.vn', 'Lê Đăng Khoa'],
   ];
 
-  private readonly classes = [
-    {
-      code: 'WEB101-01',
-      subjectCode: 'WEB101',
-      subjectName: 'Lập trình Web',
-      scheduleWeekday: 1,
-      scheduleText: 'Thứ 2, 08:00 - 10:30',
-      roomText: 'Phòng học A101',
-      studentCodes: [
-        'SV001',
-        'SV002',
-        'SV003',
-        'SV004',
-        'SV005',
-        'SV006',
-        'SV007',
-      ],
-    },
-    {
-      code: 'AI202-01',
-      subjectCode: 'AI202',
-      subjectName: 'Trí tuệ nhân tạo ứng dụng',
-      scheduleWeekday: 3,
-      scheduleText: 'Thứ 4, 13:30 - 16:00',
-      roomText: 'Phòng học A102',
-      studentCodes: ['SV001', 'SV002', 'SV003', 'SV005', 'SV006', 'SV008'],
-    },
-    {
-      code: 'DB303-01',
-      subjectCode: 'DB303',
-      subjectName: 'Cơ sở dữ liệu nâng cao',
-      scheduleWeekday: 5,
-      scheduleText: 'Thứ 6, 09:00 - 11:30',
-      roomText: 'Phòng học B203',
-      studentCodes: ['SV001', 'SV003', 'SV004', 'SV005', 'SV007'],
-    },
-  ];
-
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS "class_attendance_records" (
@@ -99,25 +61,11 @@ export class CreateClassAttendanceRecordsAndSeedDemo20261011000002 implements Mi
         ON "class_attendance_records" ("student_id", "attendance_date")
     `);
 
-    await this.seedDemoAcademicData(queryRunner);
+    await this.seedDemoStudentAccounts(queryRunner);
   }
 
-  private async seedDemoAcademicData(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(
-      `INSERT INTO semesters (semester_code, semester_name, academic_year, start_date, end_date, status)
-       SELECT 'HK1-2026-2027', 'HK1 2026-2027', '2026-2027', '2026-09-01', '2027-01-15', 'ongoing'
-       WHERE NOT EXISTS (SELECT 1 FROM semesters WHERE semester_code = 'HK1-2026-2027' AND deleted_at IS NULL);`,
-    );
-
-    for (const klass of this.classes) {
-      await queryRunner.query(
-        `INSERT INTO subjects (subject_code, subject_name, credits, is_active)
-         SELECT $1::varchar, $2::varchar, 3, true
-         WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_code = $1::varchar AND deleted_at IS NULL);`,
-        [klass.subjectCode, klass.subjectName],
-      );
-    }
-
+  /** Chỉ giữ tài khoản SV demo; lớp/môn/học kỳ demo đã gỡ (dùng dữ liệu UEL). */
+  private async seedDemoStudentAccounts(queryRunner: QueryRunner): Promise<void> {
     for (const [code, username, email, fullName] of this.demoStudents) {
       await queryRunner.query(
         `INSERT INTO users (
@@ -166,50 +114,6 @@ export class CreateClassAttendanceRecordsAndSeedDemo20261011000002 implements Mi
             );`,
         [username],
       );
-    }
-
-    for (const klass of this.classes) {
-      await queryRunner.query(
-        `INSERT INTO class_sections (
-           class_code, semester_id, subject_id, lecturer_user_id,
-           default_room_id, max_students, status, note
-         )
-         SELECT $1::varchar, sem.id, subj.id, teacher.id, NULL, 50, 'open', $3::text
-           FROM semesters sem, subjects subj
-           LEFT JOIN users teacher ON lower(teacher.username) = 'teacher.demo'
-          WHERE sem.semester_code = 'HK1-2026-2027'
-            AND subj.subject_code = $2::varchar
-            AND NOT EXISTS (
-              SELECT 1 FROM class_sections cs
-               WHERE cs.class_code = $1::varchar
-                 AND cs.semester_id = sem.id
-                 AND cs.subject_id = subj.id
-                 AND cs.deleted_at IS NULL
-            );`,
-        [
-          klass.code,
-          klass.subjectCode,
-          `${klass.scheduleText} | ${klass.roomText}`,
-        ],
-      );
-
-      for (const studentCode of klass.studentCodes) {
-        await queryRunner.query(
-          `INSERT INTO class_enrollments (class_section_id, student_id, status)
-           SELECT cs.id, st.id, 'active'
-             FROM class_sections cs
-             JOIN subjects subj ON subj.id = cs.subject_id
-             JOIN students st ON st.student_code = $3::varchar AND st.deleted_at IS NULL
-            WHERE cs.class_code = $1::varchar
-              AND subj.subject_code = $2::varchar
-              AND cs.deleted_at IS NULL
-              AND NOT EXISTS (
-                SELECT 1 FROM class_enrollments ce
-                 WHERE ce.class_section_id = cs.id AND ce.student_id = st.id
-              );`,
-          [klass.code, klass.subjectCode, studentCode],
-        );
-      }
     }
   }
 

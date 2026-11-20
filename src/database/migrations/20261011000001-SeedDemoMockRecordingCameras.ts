@@ -16,7 +16,11 @@ export class SeedDemoMockRecordingCameras20261011000001
 {
   name = 'SeedDemoMockRecordingCameras20261011000001';
 
-  public async up(queryRunner: QueryRunner): Promise<void> {
+  /** Dữ liệu demo đã gỡ khỏi luồng migration — chỉ giữ data thật. down() vẫn dọn được demo cũ. */
+  public async up(): Promise<void> {}
+
+  /** Seed demo cũ — không còn chạy tự động. */
+  public async seedDemo(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       UPDATE iot_devices
          SET metadata_json = COALESCE(metadata_json, '{}'::jsonb)

@@ -241,7 +241,11 @@ export class SeedDemoBookingsRequestsEvents20260720000008 implements MigrationIn
     },
   ];
 
-  public async up(queryRunner: QueryRunner): Promise<void> {
+  /** Dữ liệu demo đã gỡ khỏi luồng migration — chỉ giữ data thật. down() vẫn dọn được demo cũ. */
+  public async up(): Promise<void> {}
+
+  /** Seed demo cũ — không còn chạy tự động. */
+  public async seedDemo(queryRunner: QueryRunner): Promise<void> {
     for (const b of this.bookings) {
       await queryRunner.query(
         `INSERT INTO room_bookings (booking_code, meeting_id, room_id, reserved_start_time, reserved_end_time, status, booked_by, approved_by, approved_at)

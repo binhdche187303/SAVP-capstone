@@ -82,7 +82,11 @@ export class SeedDemoNotificationsJobsAuditVehicles20260720000011 implements Mig
     },
   ];
 
-  public async up(queryRunner: QueryRunner): Promise<void> {
+  /** Dữ liệu demo đã gỡ khỏi luồng migration — chỉ giữ data thật. down() vẫn dọn được demo cũ. */
+  public async up(): Promise<void> {}
+
+  /** Seed demo cũ — không còn chạy tự động. */
+  public async seedDemo(queryRunner: QueryRunner): Promise<void> {
     const sysAdminRow = (await queryRunner.query(
       `SELECT id FROM users WHERE lower(username) = 'sysadmin';`,
     )) as Array<{ id: string }>;

@@ -393,7 +393,11 @@ export class SeedDemoMeetings20260720000007 implements MigrationInterface {
     return base;
   }
 
-  public async up(queryRunner: QueryRunner): Promise<void> {
+  /** Dữ liệu demo đã gỡ khỏi luồng migration — chỉ giữ data thật. down() vẫn dọn được demo cũ. */
+  public async up(): Promise<void> {}
+
+  /** Seed demo cũ — không còn chạy tự động. */
+  public async seedDemo(queryRunner: QueryRunner): Promise<void> {
     const ruleIdByKey = new Map<string, string>();
     for (const rule of this.recurrenceRules) {
       await queryRunner.query(

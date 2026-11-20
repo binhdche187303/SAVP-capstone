@@ -37,7 +37,11 @@ const ZONE_CODE = 'TEST-GATE-01';
 export class SeedGateAccessDemoLogsForVerify20260723000004 implements MigrationInterface {
   name = 'SeedGateAccessDemoLogsForVerify20260723000004';
 
-  public async up(queryRunner: QueryRunner): Promise<void> {
+  /** Dữ liệu demo đã gỡ khỏi luồng migration — chỉ giữ data thật. down() vẫn dọn được demo cũ. */
+  public async up(): Promise<void> {}
+
+  /** Seed demo cũ — không còn chạy tự động. */
+  public async seedDemo(queryRunner: QueryRunner): Promise<void> {
     const already = (await queryRunner.query(
       `SELECT COUNT(*)::int AS c FROM gate_access_logs WHERE metadata_json->>'seed_batch' = $1`,
       [SEED_BATCH_TAG],
