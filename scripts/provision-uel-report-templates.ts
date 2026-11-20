@@ -7,7 +7,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { buildUelReportTemplates } from '../src/modules/reports/templates/uel-report-templates.js';
 
-type Template = { id: string; name: string; reportType: string | null; isDefault: boolean; layout: { logo: { mediaFileId: string | null } } };
+type Template = { id: string; name: string; reportTypes: string[]; layout: { logo: { mediaFileId: string | null } } };
 
 async function main() {
   const token = process.env.REPORT_TEMPLATE_ADMIN_TOKEN;
@@ -34,17 +34,17 @@ async function main() {
     form.append('file', new Blob([new Uint8Array(bytes)], { type: 'image/png' }), 'logo-uel.png');
     mediaFileId = (await request('/report-templates/assets', form)).mediaFileId;
   }
-  const results: Array<{ id: string; name: string; reportType: string; status: string; isDefault: boolean }> = [];
+  const results: Array<{ id: string; name: string; reportType: string; status: string }> = [];
   for (const definition of buildUelReportTemplates(mediaFileId!)) {
-    const existing = current.find(t => t.name === definition.name && t.reportType === definition.reportType);
+    // Mỗi loại báo cáo chỉ có một mẫu riêng — loại đã có mẫu thì giữ nguyên, không tạo thêm.
+    const existing = current.find(t => t.reportTypes.includes(definition.reportType));
     if (existing) {
-      results.push({ id: existing.id, name: definition.name, reportType: definition.reportType, status: 'existing', isDefault: existing.isDefault });
+      results.push({ id: existing.id, name: existing.name, reportType: definition.reportType, status: 'existing' });
       continue;
     }
-    const isDefault = !current.some(t => t.reportType === definition.reportType && t.isDefault);
-    const created: Template = await request('/report-templates', { ...definition, isDefault });
+    const created: Template = await request('/report-templates', { name: definition.name, reportTypes: [definition.reportType], layout: definition.layout });
     current.push(created);
-    results.push({ id: created.id, name: created.name, reportType: definition.reportType, status: 'created', isDefault: created.isDefault });
+    results.push({ id: created.id, name: created.name, reportType: definition.reportType, status: 'created' });
   }
   console.log(JSON.stringify(results, null, 2));
 }

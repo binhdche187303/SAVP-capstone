@@ -44,7 +44,8 @@ export class ReportTemplateController {
   @Get('defaults')
   @RequirePermissions(READ)
   defaults() {
-    return ok({ layout: this.templates.defaultLayout() });
+    const layout = this.templates.defaultLayout();
+    return ok({ layout, assetUrls: this.templates.assetUrlsOf(layout) });
   }
 
   @Get('signers')
@@ -140,12 +141,6 @@ export class ReportTemplateController {
   @RequirePermissions(MANAGE)
   async update(@Param('id') id: string, @Body() body: Record<string, unknown>, @CurrentUser() user: CurrentUserPayload) {
     return ok(await this.templates.update(id, body ?? {}, user.userId), 'Đã lưu mẫu báo cáo');
-  }
-
-  @Post(':id/duplicate')
-  @RequirePermissions(MANAGE)
-  async duplicate(@Param('id') id: string, @CurrentUser() user: CurrentUserPayload) {
-    return ok(await this.templates.duplicate(id, user.userId), 'Đã nhân bản mẫu báo cáo');
   }
 
   @Delete(':id')

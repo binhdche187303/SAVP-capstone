@@ -1,12 +1,14 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
+import { readFile } from 'node:fs/promises';
+import * as path from 'node:path';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { AuditLogsService } from '../../administration/services/audit-logs.service.js';
 import { MediaFileEntity, MediaFileType, MediaVisibilityLevel, StorageProvider } from '../../recording/entities/media-file.entity.js';
 import { StorageService } from '../../storage/storage.service.js';
-import { reportBadRequest, reportNotFound } from '../center/report-center.errors.js';
-import { isReportType } from '../center/report-definition.registry.js';
+import { reportBadRequest, reportConflict, reportNotFound } from '../center/report-center.errors.js';
+import { isReportType, REPORT_DEFINITIONS } from '../center/report-definition.registry.js';
 import {
   defaultLayout,
   LayoutError,
@@ -24,19 +26,27 @@ export const TEMPLATE_ASSET_ENTITY = 'report_template_asset';
 const ASSET_MAX_BYTES = 2 * 1024 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_NAME = 150;
+/** Logo trường đóng gói sẵn trong BE (src/assets/report-templates) — id cố định để mẫu nào cũng trỏ tới được. */
+export const BUILTIN_LOGO_ID = 'a15a0000-0000-4000-8000-0000000000a1';
+const SEED_TEMPLATE_ID = 'a15a0000-0000-4000-8000-000000000001';
+const BUILTIN_LOGO_PATHS = [
+  path.join(__dirname, '..', '..', '..', 'assets', 'report-templates', 'logo-uel.png'),
+  path.join(process.cwd(), 'src', 'assets', 'report-templates', 'logo-uel.png'),
+  path.join(process.cwd(), 'dist', 'assets', 'report-templates', 'logo-uel.png'),
+];
 
 export interface UploadedAssetFile { buffer: Buffer; mimetype: string; originalname: string; size: number }
 
 interface TemplateRow {
-  id: string; name: string; report_type: string | null; is_default: boolean; layout: unknown;
+  id: string; name: string; report_types: string[]; layout: unknown;
   created_at: Date; updated_at: Date; updated_by_name: string | null;
 }
 
 export interface ReportTemplateDto {
   id: string;
   name: string;
-  reportType: string | null;
-  isDefault: boolean;
+  /** Rỗng = dùng cho mọi loại báo cáo. */
+  reportTypes: string[];
   layout: ReportTemplateLayout;
   /** mediaFileId → URL ký tạm để FE hiển thị logo trên canvas. */
   assetUrls: Record<string, string>;
@@ -58,7 +68,7 @@ export interface StandardExportOptions {
   recipients?: string[];
 }
 
-const SELECT = `SELECT t.id, t.name, t.report_type, t.is_default, t.layout, t.created_at, t.updated_at, u.full_name AS updated_by_name
+const SELECT = `SELECT t.id, t.name, t.report_types, t.layout, t.created_at, t.updated_at, u.full_name AS updated_by_name
                   FROM report_templates t LEFT JOIN users u ON u.id = t.updated_by`;
 
 const asBad = (e: unknown): never => {
@@ -68,8 +78,10 @@ const asBad = (e: unknown): never => {
 
 /** Mẫu báo cáo quy chuẩn: CRUD, ảnh logo/nền, tra người ký, ghép mẫu khi xuất. */
 @Injectable()
-export class ReportTemplateService {
+export class ReportTemplateService implements OnApplicationBootstrap {
   private readonly logger = new Logger(ReportTemplateService.name);
+  /** Có khi logo đóng gói đã nằm trong kho ảnh → mẫu mới bật sẵn logo + logo nền. */
+  private builtinLogoReady = false;
 
   constructor(
     private readonly dataSource: DataSource,
@@ -79,16 +91,70 @@ export class ReportTemplateService {
     @InjectRepository(MediaFileEntity) private readonly mediaFiles: Repository<MediaFileEntity>,
   ) {}
 
+  /** Bố cục cho mẫu mới: có logo trường thì bật sẵn logo góc + logo nền mờ. */
   defaultLayout(): ReportTemplateLayout {
-    return defaultLayout();
+    const l = defaultLayout();
+    if (this.builtinLogoReady) {
+      l.logo = { ...l.logo, enabled: true, mediaFileId: BUILTIN_LOGO_ID };
+      l.watermark = { ...l.watermark, enabled: true, mediaFileId: BUILTIN_LOGO_ID };
+    }
+    return l;
   }
 
-  /** Mẫu dùng được cho một loại (mẫu riêng của loại + mẫu chung), mặc định đứng đầu. Không truyền loại = tất cả. */
+  async onApplicationBootstrap(): Promise<void> {
+    try {
+      await this.ensureBuiltinLogo();
+    } catch (e) {
+      // Thiếu logo không được làm hỏng khởi động — mẫu mới chỉ không có logo sẵn.
+      this.logger.warn(`Không nạp được logo trường cho mẫu báo cáo: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  /**
+   * Đưa logo đóng gói vào kho ảnh (một lần, id cố định) và gắn cho mẫu gốc nếu mẫu gốc chưa từng bị sửa
+   * (updated_by NULL, chưa có ảnh) — không đè lên lựa chọn của người dùng.
+   */
+  private async ensureBuiltinLogo(): Promise<void> {
+    const exists: unknown[] = await this.dataSource.query(`SELECT 1 FROM media_files WHERE id = $1 AND is_active = true`, [BUILTIN_LOGO_ID]);
+    if (!exists.length) {
+      let buffer: Buffer | null = null;
+      for (const p of BUILTIN_LOGO_PATHS) {
+        try { buffer = await readFile(p); break; } catch { /* thử đường dẫn kế */ }
+      }
+      if (!buffer) throw new Error('Không tìm thấy file logo-uel.png');
+      const saved = await this.storage.saveFile({ buffer, originalName: 'logo-uel.png', folder: 'report-templates' });
+      await this.mediaFiles.save(this.mediaFiles.create({
+        id: BUILTIN_LOGO_ID,
+        fileName: 'logo-uel.png',
+        fileType: MediaFileType.IMAGE,
+        mimeType: 'image/png',
+        storageProvider: this.storage.getDriver() === 's3' ? StorageProvider.S3 : StorageProvider.LOCAL,
+        storageKey: saved.storageKey,
+        fileSizeBytes: saved.sizeBytes.toString(),
+        relatedEntityType: TEMPLATE_ASSET_ENTITY,
+        visibilityLevel: MediaVisibilityLevel.INTERNAL,
+        isActive: true,
+      }));
+    }
+    this.builtinLogoReady = true;
+    await this.dataSource.query(
+      `UPDATE report_templates
+          SET layout = jsonb_set(jsonb_set(layout,
+                '{logo}', COALESCE(layout->'logo', '{}'::jsonb) || jsonb_build_object('enabled', true, 'mediaFileId', $2::text)),
+                '{watermark}', COALESCE(layout->'watermark', '{}'::jsonb) || jsonb_build_object('enabled', true, 'mediaFileId', $2::text)),
+              updated_at = now()
+        WHERE id = $1 AND updated_by IS NULL AND deleted_at IS NULL
+          AND layout->'logo'->>'mediaFileId' IS NULL AND layout->'watermark'->>'mediaFileId' IS NULL`,
+      [SEED_TEMPLATE_ID, BUILTIN_LOGO_ID],
+    );
+  }
+
+  /** Mẫu dùng được cho một loại (mẫu riêng của loại đứng trước, rồi mẫu chung). Không truyền loại = tất cả. */
   async list(reportType?: string): Promise<ReportTemplateDto[]> {
     if (reportType && !isReportType(reportType)) throw reportBadRequest('Loại báo cáo không tồn tại');
     const rows: TemplateRow[] = await this.dataSource.query(
-      `${SELECT} WHERE t.deleted_at IS NULL AND ($1::varchar IS NULL OR t.report_type IS NULL OR t.report_type = $1)
-        ORDER BY (t.report_type IS NOT NULL) DESC, t.is_default DESC, t.name`,
+      `${SELECT} WHERE t.deleted_at IS NULL AND ($1::varchar IS NULL OR cardinality(t.report_types) = 0 OR $1 = ANY(t.report_types))
+        ORDER BY (cardinality(t.report_types) > 0) DESC, t.name`,
       [reportType ?? null],
     );
     return Promise.all(rows.map((r) => this.toDto(r)));
@@ -100,17 +166,19 @@ export class ReportTemplateService {
 
   async create(body: Record<string, unknown>, userId: string): Promise<ReportTemplateDto> {
     const input = this.input(body, true);
+    const reportTypes = input.reportTypes ?? [];
     const layout = this.layoutOf(body['layout'] ?? defaultLayout(), true);
     await this.assertAssets(layout);
+    const name = input.name as string;
     const id = await this.dataSource.transaction(async (m) => {
-      if (input.isDefault) await m.query(`UPDATE report_templates SET is_default = false WHERE deleted_at IS NULL AND COALESCE(report_type, '*') = COALESCE($1::varchar, '*')`, [input.reportType]);
+      await assertNoConflict(m, { name, reportTypes }, null);
       const rows: Array<{ id: string }> = await m.query(
-        `INSERT INTO report_templates (name, report_type, is_default, layout, created_by, updated_by) VALUES ($1, $2, $3, $4::jsonb, $5, $5) RETURNING id`,
-        [input.name, input.reportType, input.isDefault, JSON.stringify(layout), userId],
+        `INSERT INTO report_templates (name, report_types, layout, created_by, updated_by) VALUES ($1, $2::varchar[], $3::jsonb, $4, $4) RETURNING id`,
+        [name, reportTypes, JSON.stringify(layout), userId],
       );
       return rows[0].id;
     });
-    this.log(userId, 'report_template_create', id, { name: input.name, reportType: input.reportType });
+    this.log(userId, 'report_template_create', id, { name, reportTypes });
     return this.get(id);
   }
 
@@ -118,29 +186,26 @@ export class ReportTemplateService {
     const current = await this.row(id);
     const input = this.input(body, false);
     const name = input.name ?? current.name;
-    const reportType = body['reportType'] === undefined ? current.report_type : input.reportType;
-    const isDefault = body['isDefault'] === undefined ? current.is_default : input.isDefault;
+    const reportTypes = input.reportTypes === undefined ? current.report_types : input.reportTypes;
     const layout = this.layoutOf(body['layout'] === undefined ? current.layout : body['layout'], true);
     await this.assertAssets(layout);
+    // Chỉ kiểm phần đổi — mẫu cũ (trước khi có luật) đang trùng vẫn sửa được nội dung.
+    const nameChanged = normName(name) !== normName(current.name);
+    const typesChanged = !sameSet(reportTypes, current.report_types);
     await this.dataSource.transaction(async (m) => {
-      if (isDefault) await m.query(`UPDATE report_templates SET is_default = false WHERE deleted_at IS NULL AND id <> $2 AND COALESCE(report_type, '*') = COALESCE($1::varchar, '*')`, [reportType, id]);
+      await assertNoConflict(m, { name: nameChanged ? name : null, reportTypes: typesChanged ? reportTypes : null }, id);
       await m.query(
-        `UPDATE report_templates SET name = $2, report_type = $3, is_default = $4, layout = $5::jsonb, updated_by = $6, updated_at = now() WHERE id = $1`,
-        [id, name, reportType, isDefault, JSON.stringify(layout), userId],
+        `UPDATE report_templates SET name = $2, report_types = $3::varchar[], layout = $4::jsonb, updated_by = $5, updated_at = now() WHERE id = $1`,
+        [id, name, reportTypes, JSON.stringify(layout), userId],
       );
     });
-    this.log(userId, 'report_template_update', id, { name, reportType, isDefault });
+    this.log(userId, 'report_template_update', id, { name, reportTypes });
     return this.get(id);
-  }
-
-  async duplicate(id: string, userId: string): Promise<ReportTemplateDto> {
-    const r = await this.row(id);
-    return this.create({ name: `${r.name} (bản sao)`.slice(0, MAX_NAME), reportType: r.report_type, isDefault: false, layout: r.layout }, userId);
   }
 
   async remove(id: string, userId: string): Promise<void> {
     await this.row(id);
-    await this.dataSource.query(`UPDATE report_templates SET deleted_at = now(), is_default = false, updated_by = $2 WHERE id = $1`, [id, userId]);
+    await this.dataSource.query(`UPDATE report_templates SET deleted_at = now(), updated_by = $2 WHERE id = $1`, [id, userId]);
     this.log(userId, 'report_template_delete', id, {});
   }
 
@@ -193,7 +258,7 @@ export class ReportTemplateService {
     const templateId = String(body['templateId'] ?? '');
     if (!UUID.test(templateId)) throw reportBadRequest('Vui lòng chọn mẫu báo cáo', 'TEMPLATE_REQUIRED');
     const row = await this.row(templateId);
-    if (row.report_type && row.report_type !== type) throw reportBadRequest('Mẫu này không dùng cho loại báo cáo đã chọn', 'TEMPLATE_MISMATCH');
+    if (row.report_types.length && !row.report_types.includes(type)) throw reportBadRequest('Mẫu này không dùng cho loại báo cáo đã chọn', 'TEMPLATE_MISMATCH');
     const layout = this.layoutOf(row.layout);
 
     const rawSigners = body['signers'] ?? {};
@@ -264,7 +329,7 @@ export class ReportTemplateService {
     } catch (e) { return asBad(e); }
   }
 
-  private input(body: Record<string, unknown>, creating: boolean): { name: string | undefined; reportType: string | null; isDefault: boolean } {
+  private input(body: Record<string, unknown>, creating: boolean): { name: string | undefined; reportTypes: string[] | undefined } {
     const rawName = body['name'];
     let name: string | undefined;
     if (rawName !== undefined || creating) {
@@ -272,11 +337,8 @@ export class ReportTemplateService {
       if (!name) throw reportBadRequest('Vui lòng nhập tên mẫu');
       if (name.length > MAX_NAME) throw reportBadRequest(`Tên mẫu tối đa ${MAX_NAME} ký tự`);
     }
-    const rt = body['reportType'];
-    if (rt !== undefined && rt !== null && rt !== '' && (typeof rt !== 'string' || !isReportType(rt))) throw reportBadRequest('Loại báo cáo không tồn tại');
-    const isDefault = body['isDefault'];
-    if (isDefault !== undefined && typeof isDefault !== 'boolean') throw reportBadRequest('Cờ mặc định không hợp lệ');
-    return { name, reportType: typeof rt === 'string' && rt ? rt : null, isDefault: isDefault === true };
+    // `isDefault` của client cũ bị bỏ qua: mỗi loại chỉ có một mẫu nên mẫu đó luôn là mẫu dùng.
+    return { name, reportTypes: parseReportTypes(body) };
   }
 
   /** Ảnh trong layout phải là ảnh đã tải qua API này (không cho trỏ tới file bất kỳ trong media_files). */
@@ -314,18 +376,24 @@ export class ReportTemplateService {
     return `${base}/api/v1/media-files/${mediaFileId}/secure-download?token=${token}`;
   }
 
-  private async toDto(r: TemplateRow): Promise<ReportTemplateDto> {
-    // Mẫu cũ trong DB có thể thiếu trường mới → chuẩn hóa lại; nếu hỏng hẳn thì trả mặc định thay vì 500.
-    let layout: ReportTemplateLayout;
-    try { layout = normalizeLayout(r.layout); } catch { layout = defaultLayout(); }
+  /** mediaFileId → URL ký tạm cho logo/logo nền của bố cục (FE hiển thị trên canvas). */
+  assetUrlsOf(layout: ReportTemplateLayout): Record<string, string> {
     const assetUrls: Record<string, string> = {};
     for (const id of [layout.logo.mediaFileId, layout.watermark.mediaFileId]) {
       if (id && !assetUrls[id]) {
         try { assetUrls[id] = this.assetUrl(id); } catch { /* thiếu secret → FE tự ẩn ảnh */ }
       }
     }
+    return assetUrls;
+  }
+
+  private async toDto(r: TemplateRow): Promise<ReportTemplateDto> {
+    // Mẫu cũ trong DB có thể thiếu trường mới → chuẩn hóa lại; nếu hỏng hẳn thì trả mặc định thay vì 500.
+    let layout: ReportTemplateLayout;
+    try { layout = normalizeLayout(r.layout); } catch { layout = defaultLayout(); }
+    const assetUrls = this.assetUrlsOf(layout);
     return {
-      id: r.id, name: r.name, reportType: r.report_type, isDefault: r.is_default, layout, assetUrls,
+      id: r.id, name: r.name, reportTypes: r.report_types ?? [], layout, assetUrls,
       updatedAt: new Date(r.updated_at).toISOString(), updatedByName: r.updated_by_name,
     };
   }
@@ -356,6 +424,65 @@ export class ReportTemplateService {
     this.audit
       .logAction({ userId, actionType, entityType: 'report_templates', entityId, metadataJson })
       .catch((e) => this.logger.warn(`Audit mẫu báo cáo lỗi: ${e instanceof Error ? e.message : String(e)}`));
+  }
+}
+
+/**
+ * Đọc loại báo cáo áp dụng: `reportTypes: string[]` (rỗng = mọi loại).
+ * Vẫn nhận `reportType` (1 loại | null) của client/script cũ. Không gửi cả hai → undefined (giữ nguyên khi sửa).
+ */
+export function parseReportTypes(body: Record<string, unknown>): string[] | undefined {
+  let raw: unknown[];
+  if (body['reportTypes'] !== undefined) {
+    if (!Array.isArray(body['reportTypes'])) throw reportBadRequest('Loại báo cáo không hợp lệ');
+    raw = body['reportTypes'];
+  } else if (body['reportType'] !== undefined) {
+    raw = body['reportType'] === null || body['reportType'] === '' ? [] : [body['reportType']];
+  } else return undefined;
+  if (raw.some((t) => typeof t !== 'string' || !isReportType(t))) throw reportBadRequest('Loại báo cáo không tồn tại');
+  return [...new Set(raw as string[])];
+}
+
+const normName = (name: string): string => name.trim().toLocaleLowerCase('vi');
+const sameSet = (a: string[], b: string[]): boolean => a.length === b.length && a.every((x) => b.includes(x));
+
+/**
+ * Chống tạo trùng: mỗi loại báo cáo tối đa một mẫu riêng + một mẫu "Tất cả báo cáo" (≤ 8 mẫu), tên không trùng.
+ * Truyền `null` để bỏ qua phần không đổi. Khóa để hai lần lưu song song không cùng lọt.
+ */
+async function assertNoConflict(m: EntityManager, check: { name: string | null; reportTypes: string[] | null }, exceptId: string | null): Promise<void> {
+  await m.query(`SELECT pg_advisory_xact_lock(hashtext('report_templates_scope'))`);
+  if (check.name !== null) {
+    const same: Array<{ id: string; name: string }> = await m.query(
+      `SELECT id, name FROM report_templates
+        WHERE deleted_at IS NULL AND lower(btrim(name)) = lower(btrim($1)) AND ($2::uuid IS NULL OR id <> $2) LIMIT 1`,
+      [check.name, exceptId],
+    );
+    if (same[0]) {
+      throw reportConflict(`Đã có mẫu tên "${same[0].name}", vui lòng đặt tên khác`, 'TEMPLATE_NAME_TAKEN', {
+        templateId: same[0].id, templateName: same[0].name,
+      });
+    }
+  }
+  if (check.reportTypes !== null) {
+    const types = check.reportTypes;
+    const taken: Array<{ id: string; name: string; report_types: string[] }> = await m.query(
+      `SELECT id, name, report_types FROM report_templates
+        WHERE deleted_at IS NULL AND ($2::uuid IS NULL OR id <> $2)
+          AND (CASE WHEN cardinality($1::varchar[]) = 0 THEN cardinality(report_types) = 0 ELSE report_types && $1::varchar[] END)
+        ORDER BY created_at LIMIT 1`,
+      [types, exceptId],
+    );
+    const hit = taken[0];
+    if (hit) {
+      const overlap = types.filter((t) => hit.report_types.includes(t));
+      const scope = overlap.length
+        ? overlap.map((t) => `"${isReportType(t) ? REPORT_DEFINITIONS[t].title : t}"`).join(', ')
+        : '"Tất cả báo cáo"';
+      throw reportConflict(`${scope} đã có mẫu "${hit.name}". Hãy sửa mẫu hiện có thay vì tạo mới.`, 'TEMPLATE_SCOPE_TAKEN', {
+        templateId: hit.id, templateName: hit.name, reportTypes: overlap,
+      });
+    }
   }
 }
 
