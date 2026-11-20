@@ -16,19 +16,27 @@ const ACTUAL_HOURS = `CASE
 
 interface Row { room_id: string; room_name: string; building: string | null; capacity: number; day: Date; booked: string; used: string; meetings: string; no_show: string }
 
-/** Sử dụng phòng họp (2.13): theo phòng và theo ngày VN; lọc `building` (rooms.site_name) và `roomId`. */
+/**
+ * Sử dụng phòng họp (2.13): theo phòng và theo ngày VN; lọc `building` (rooms.site_name) và `roomId`.
+ * Phạm vi MANAGER: phòng họp là tài nguyên dùng chung → chỉ tính lượt đặt do cán bộ thuộc đơn vị mình quản lý tạo
+ * (`room_bookings.booked_by`). Quản trị / Ban giám hiệu (unrestricted) thấy toàn bộ.
+ */
 @Injectable()
 export class RoomUtilizationReportProvider implements ReportProvider {
   readonly type = 'room-utilization' as const;
 
   constructor(private readonly dataSource: DataSource) {}
 
-  async build(filters: ReportFilters, _scope: ResolvedScope, page: ReportPage | null, _now: Date): Promise<ReportModel> {
+  async build(filters: ReportFilters, scope: ResolvedScope, page: ReportPage | null, _now: Date): Promise<ReportModel> {
     const def = REPORT_DEFINITIONS['room-utilization'];
     const params: unknown[] = [filters.from, filters.to];
     let roomClause = '';
     if (filters['roomId']) { params.push(filterValues(filters['roomId'])); roomClause += ` AND r.id = ANY($${params.length}::uuid[])`; }
     if (filters['building']) { params.push(filterValues(filters['building'])); roomClause += ` AND r.site_name = ANY($${params.length}::text[])`; }
+    if (!scope.unrestricted) {
+      params.push(scope.departmentIds ?? []);
+      roomClause += ` AND EXISTS (SELECT 1 FROM users bu WHERE bu.id = rb.booked_by AND bu.department_id = ANY($${params.length}::uuid[]))`;
+    }
 
     const rows: Row[] = await this.dataSource.query(
       `SELECT r.id AS room_id, r.room_name, r.site_name AS building, r.capacity,

@@ -2,11 +2,12 @@ import { ForbiddenException } from '@nestjs/common';
 import { REPORT_DEFINITIONS } from './report-definition.registry.js';
 import { ReportScopeService } from './report-scope.service.js';
 
-const make = (roles: string[], managed: string[] = [], staffDept: string | null = null) => {
+const make = (roles: string[], managed: string[] = [], staffDept: string | null = null, hasStudents = true) => {
   const authz = { getEffectiveRolesAndPermissions: jest.fn().mockResolvedValue({ roles, permissions: [] }) };
   const ds = {
     query: jest.fn(async (sql: string) => {
       if (/manager_user_id/.test(sql)) return managed.map((id) => ({ id }));
+      if (/role_code = 'STUDENT'/.test(sql)) return [{ has: hasStudents }];
       if (/FROM users/.test(sql)) return [{ department_id: staffDept }];
       return [];
     }),
@@ -79,6 +80,22 @@ describe('ReportScopeService', () => {
           'Báo cáo này không có phạm vi theo đơn vị của bạn.',
         );
       }
+    });
+
+    it('MANAGER: Chuyên cần sinh viên chỉ hiện khi đơn vị quản lý có sinh viên (khoa), trưởng phòng thì ẩn', async () => {
+      const def = REPORT_DEFINITIONS['student-attendance'];
+      await expect(make(['MANAGER'], ['khoa'], null, true).unavailableReason('u', def)).resolves.toBeNull();
+      await expect(make(['MANAGER'], ['phong'], null, false).unavailableReason('u', def)).resolves.toBe('Đơn vị bạn quản lý không có sinh viên.');
+      await expect(make(['MANAGER'], [], null, true).unavailableReason('u', def)).resolves.toBe('Đơn vị bạn quản lý không có sinh viên.');
+      // Báo cáo khác không bị ảnh hưởng.
+      await expect(make(['MANAGER'], ['phong'], null, false).unavailableReason('u', REPORT_DEFINITIONS['staff-attendance'])).resolves.toBeNull();
+    });
+
+    it('MANAGER đơn vị không có sinh viên: gọi thẳng API Chuyên cần sinh viên → 403 REPORT_OUT_OF_SCOPE', async () => {
+      const p = make(['MANAGER'], ['phong'], null, false).resolve('u', REPORT_DEFINITIONS['student-attendance'], { from: 'a', to: 'b' });
+      await expect(p).rejects.toBeInstanceOf(ForbiddenException);
+      await p.catch((e) => expect(code(e).error.code).toBe('REPORT_OUT_OF_SCOPE'));
+      await expect(make(['MANAGER'], ['khoa']).resolve('u', REPORT_DEFINITIONS['student-attendance'], { from: 'a', to: 'b' })).resolves.toEqual({ unrestricted: false, departmentIds: ['khoa'] });
     });
 
     it('vai trò khác: không loại nào dùng được', async () => {
