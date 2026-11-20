@@ -41,8 +41,6 @@ describe('uel-sync.mapper', () => {
     expect(staffRoleOf('TG')).toBe('TEACHER');
     expect(staffRoleOf(' tg ')).toBe('TEACHER');
     expect(staffRoleOf('CH')).toBe('EMPLOYEE');
-    expect(staffRoleOf('CH', true)).toBe('TEACHER');
-    expect(staffRoleOf('TG', false)).toBe('TEACHER');
   });
 
   it('semesterCodeOf chuẩn hóa về HKnn, không lặp HKHK', () => {

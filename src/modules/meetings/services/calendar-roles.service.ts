@@ -132,6 +132,9 @@ export class CalendarRolesService {
           WHERE is_unit_clerk <> (id = ANY($1))`,
         [clerkIds],
       );
+      const prevLeaders: { id: string }[] = await m.query(
+        `SELECT id FROM users WHERE leadership_title IS NOT NULL`,
+      );
       await m.query(
         `UPDATE users SET leadership_title = NULL, updated_at = NOW() WHERE leadership_title IS NOT NULL`,
       );
@@ -152,6 +155,30 @@ export class CalendarRolesService {
              FROM roles r
             WHERE ur.role_id = r.id AND ur.user_id = $1 AND r.role_code IN ('MANAGER', 'EMPLOYEE')`,
           [l.userId],
+        );
+      }
+
+      // Bị gỡ khỏi BGH ⇒ gỡ MANAGER do hệ thống gán (trừ khi vẫn là trưởng đơn vị),
+      // bật lại EMPLOYEE nếu không còn role nào — tránh kẹt ở màn quản lý.
+      const keep = new Set(dto.leaders.map((l) => l.userId));
+      for (const { id } of prevLeaders) {
+        if (keep.has(id)) continue;
+        await m.query(
+          `UPDATE user_roles ur SET is_active = false, expired_at = NOW()
+             FROM roles r
+            WHERE ur.role_id = r.id AND r.role_code = 'MANAGER' AND ur.user_id = $1
+              AND ur.is_active AND ur.assigned_by IS NULL
+              AND NOT EXISTS (SELECT 1 FROM departments d
+                               WHERE d.manager_user_id = $1 AND d.deleted_at IS NULL)`,
+          [id],
+        );
+        await m.query(
+          `UPDATE user_roles ur SET is_active = true, expired_at = NULL
+             FROM roles r
+            WHERE ur.role_id = r.id AND r.role_code = 'EMPLOYEE' AND ur.user_id = $1
+              AND NOT ur.is_active
+              AND NOT EXISTS (SELECT 1 FROM user_roles x WHERE x.user_id = $1 AND x.is_active)`,
+          [id],
         );
       }
     });

@@ -206,8 +206,6 @@ export class UelSyncService implements OnModuleInit {
   private readonly logger = new Logger(UelSyncService.name);
   private running = false;
   private lastRun: UelSyncRun | null = null;
-  /** ds_phong_ban của lần chạy gần nhất — dùng để gán trưởng đơn vị sau khi có cán bộ. */
-  private deptRows: UelPhongBan[] = [];
 
   constructor(
     @Inject(UEL_API_CLIENT) private readonly client: UelApiClient,
@@ -640,7 +638,6 @@ export class UelSyncService implements OnModuleInit {
   private async syncDepartments({ runStart, r }: StepCtx): Promise<void> {
     const rows = await this.client.all<UelPhongBan>(UEL_API.DS_PHONG_BAN);
     r.fetched = rows.length;
-    this.deptRows = rows;
 
     for (const row of rows) {
       const code = clean(row.ma_phong_ban);
@@ -675,8 +672,6 @@ export class UelSyncService implements OnModuleInit {
         [code, parent],
       );
     }
-    await this.applyDepartmentManagers();
-
     if (rows.length && r.skipped === 0) {
       r.deactivated = await this.affected(
         `UPDATE departments SET is_active = false, updated_at = now()
@@ -687,21 +682,29 @@ export class UelSyncService implements OnModuleInit {
     }
   }
 
-  /** Gán trưởng đơn vị (ma_quan_ly) — chỉ được khi cán bộ đã đồng bộ. */
-  private async applyDepartmentManagers(): Promise<void> {
-    for (const row of this.deptRows) {
-      const code = clean(row.ma_phong_ban);
-      const mgr = clean(row.ma_quan_ly);
-      if (!code || !mgr) continue;
-      await this.db.query(
-        `UPDATE departments d SET manager_user_id = u.id
-           FROM users u
-          WHERE d.department_code = $1 AND d.deleted_at IS NULL
-            AND u.employee_code = $2 AND u.deleted_at IS NULL
-            AND d.manager_user_id IS DISTINCT FROM u.id`,
-        [code, mgr],
-      );
-    }
+  /**
+   * ds_phong_ban.ma_quan_ly là mã phân cấp của đơn vị (vd "02_21" Khoa Toán KT, "02_21_02" bộ môn con),
+   * không phải người quản lý ⇒ API không có trưởng đơn vị; manager_user_id do BUSINESS_ADMIN gán tay.
+   *
+   * MANAGER theo dữ liệu: trưởng đơn vị (departments.manager_user_id) và Ban Giám hiệu
+   * (users.leadership_title) có MANAGER; cán bộ uel_api không còn là quản lý thì gỡ MANAGER
+   * do đồng bộ gán (assigned_by IS NULL) — role gán tay giữ nguyên.
+   */
+  private async syncManagerRoles(): Promise<void> {
+    const leaders = await this.db.query<IdRow[]>(
+      `SELECT u.id FROM users u
+        WHERE u.deleted_at IS NULL
+          AND (u.leadership_title IS NOT NULL
+               OR EXISTS (SELECT 1 FROM departments d
+                           WHERE d.manager_user_id = u.id AND d.deleted_at IS NULL))`,
+    );
+    for (const { id } of leaders) await this.ensureRole(id, 'MANAGER');
+    await this.revokeSyncRole(
+      'MANAGER',
+      `u.leadership_title IS NULL
+       AND NOT EXISTS (SELECT 1 FROM departments d
+                        WHERE d.manager_user_id = u.id AND d.deleted_at IS NULL)`,
+    );
   }
 
   // ───────────────────────── 2. Cán bộ ─────────────────────────
@@ -709,7 +712,6 @@ export class UelSyncService implements OnModuleInit {
   private async syncStaff({ runStart, r }: StepCtx): Promise<void> {
     const rows = await this.client.all<UelNhanSu>(UEL_API.DS_NHANSU);
     r.fetched = rows.length;
-    const academic = await this.academicDepartmentCodes();
 
     for (const row of rows) {
       const code = clean(row.ma_nhan_su);
@@ -726,30 +728,24 @@ export class UelSyncService implements OnModuleInit {
           resigned: row.khong_con_cong_tac === true,
         });
         if (aliasOf) await this.saveAlias('staff', code, userId, aliasOf);
-        const deptCode = clean(row.ma_phong_ban);
-        await this.ensureRole(
-          userId,
-          staffRoleOf(row.loai, !!deptCode && academic.has(deptCode)),
-        );
+        const role = staffRoleOf(row.loai);
+        await this.ensureRole(userId, role);
+        if (role === 'EMPLOYEE') {
+          // Bản cũ gán TEACHER cho mọi cán bộ CH thuộc Khoa ⇒ gỡ nếu không dạy lớp HP nào.
+          await this.revokeSyncRole(
+            'TEACHER',
+            `u.id = $2 AND NOT EXISTS (SELECT 1 FROM class_sections cs
+                                        WHERE cs.lecturer_user_id = u.id AND cs.deleted_at IS NULL)`,
+            [userId],
+          );
+        }
         r.upserted++;
       });
     }
 
-    // Quản lý trực tiếp (cần đủ cán bộ trước).
-    for (const row of rows) {
-      const code = clean(row.ma_nhan_su);
-      const mgr = clean(row.ma_quan_ly);
-      if (!code || !mgr) continue;
-      await this.db.query(
-        `UPDATE users u SET direct_manager_id = m.id
-           FROM users m
-          WHERE u.employee_code = $1 AND u.deleted_at IS NULL
-            AND m.employee_code = $2 AND m.deleted_at IS NULL
-            AND u.id <> m.id AND u.direct_manager_id IS DISTINCT FROM m.id`,
-        [code, mgr],
-      );
-    }
-    await this.applyDepartmentManagers();
+    // ma_quan_ly KHÔNG phải người quản lý (dữ liệu thật: luôn = ma_nhan_su) ⇒ không suy ra
+    // quản lý trực tiếp. Trưởng đơn vị gán tay ở màn Phòng ban; ở đây chỉ đồng bộ role MANAGER.
+    await this.syncManagerRoles();
 
     // Cán bộ uel_api không còn trong danh sách (và không phải SV) → nghỉ.
     if (rows.length && r.skipped === 0) {
@@ -1288,26 +1284,6 @@ export class UelSyncService implements OnModuleInit {
     return { id: inserted[0].id };
   }
 
-  /**
-   * Mã đơn vị học thuật: tên bắt đầu "Khoa"/"Bộ môn" và mọi đơn vị con của chúng
-   * (vd "Phòng Nghiên cứu…" thuộc Khoa HTTT).
-   */
-  private async academicDepartmentCodes(): Promise<Set<string>> {
-    const rows = await this.db.query<{ code: string }[]>(
-      `WITH RECURSIVE t AS (
-         SELECT id, department_code FROM departments
-          WHERE deleted_at IS NULL AND (ltrim(department_name) ILIKE 'khoa %'
-                OR ltrim(department_name) ILIKE 'bộ môn %'
-                OR ltrim(department_name) LIKE 'Bộ môn %')
-         UNION
-         SELECT d.id, d.department_code FROM departments d
-           JOIN t ON d.parent_department_id = t.id
-          WHERE d.deleted_at IS NULL)
-       SELECT department_code AS code FROM t WHERE department_code IS NOT NULL`,
-    );
-    return new Set(rows.map((x) => x.code));
-  }
-
   /** Người được ghi là GV của lớp HP / buổi học ⇒ thêm role TEACHER (giữ role cũ). */
   private async grantTeacherByCode(code: string): Promise<void> {
     const rows = await this.db.query<IdRow[]>(
@@ -1317,6 +1293,10 @@ export class UelSyncService implements OnModuleInit {
     if (rows[0]?.id) await this.ensureRole(rows[0].id, 'TEACHER');
   }
 
+  /**
+   * Thêm role (đồng bộ ⇒ assigned_by NULL). Role bị gỡ tay giữ nguyên trạng thái gỡ;
+   * chỉ bật lại role do chính đồng bộ gỡ trước đó (metadata_json.revokedBy = 'uel_sync').
+   */
   private async ensureRole(userId: string, roleCode: string): Promise<void> {
     await this.db.query(
       `INSERT INTO user_roles (user_id, role_id)
@@ -1324,6 +1304,37 @@ export class UelSyncService implements OnModuleInit {
         WHERE r.role_code = $2
           AND NOT EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = $1 AND ur.role_id = r.id)`,
       [userId, roleCode],
+    );
+    await this.db.query(
+      `UPDATE user_roles ur
+          SET is_active = true, expired_at = NULL, assigned_at = now(),
+              metadata_json = ur.metadata_json - 'revokedBy'
+         FROM roles r
+        WHERE ur.role_id = r.id AND r.role_code = $2 AND ur.user_id = $1
+          AND NOT ur.is_active AND ur.metadata_json->>'revokedBy' = 'uel_sync'`,
+      [userId, roleCode],
+    );
+  }
+
+  /**
+   * Gỡ role do đồng bộ gán (assigned_by NULL) khỏi cán bộ uel_api thỏa `condition`
+   * (alias users = u, tham số bắt đầu từ $2). Role gán tay (assigned_by có giá trị) không bị đụng.
+   */
+  private async revokeSyncRole(
+    roleCode: string,
+    condition: string,
+    params: unknown[] = [],
+  ): Promise<void> {
+    await this.db.query(
+      `UPDATE user_roles ur
+          SET expired_at = now(), is_active = false,
+              metadata_json = COALESCE(ur.metadata_json, '{}'::jsonb) || '{"revokedBy":"uel_sync"}'::jsonb
+         FROM roles r, users u
+        WHERE ur.role_id = r.id AND r.role_code = $1 AND ur.user_id = u.id
+          AND ur.is_active AND ur.assigned_by IS NULL
+          AND u.source = 'uel_api' AND u.deleted_at IS NULL
+          AND ${condition}`,
+      [roleCode, ...params],
     );
   }
 

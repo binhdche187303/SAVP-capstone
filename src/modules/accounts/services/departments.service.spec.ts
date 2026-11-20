@@ -47,6 +47,8 @@ describe('DepartmentsService', () => {
       create: jest.fn(),
       save: jest.fn(),
       update: jest.fn(),
+      // syncDepartmentManagerRole (gán/gỡ MANAGER theo trưởng đơn vị)
+      query: jest.fn().mockResolvedValue([]),
     } as unknown as jest.Mocked<EntityManager>;
 
     repo = { findAndCount: jest.fn(), findOne: jest.fn() };

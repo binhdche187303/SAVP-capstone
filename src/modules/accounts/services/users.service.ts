@@ -146,6 +146,8 @@ export interface PartnerProvisionData {
  * và đang bật cho mọi role seed ⇒ trước đây mọi tài khoản đều vượt phạm vi.
  */
 const FULL_SCOPE_ROLE_CODES = ['SYSTEM_ADMIN', 'BUSINESS_ADMIN'];
+/** Role quản trị — chỉ SYSTEM_ADMIN được cấp/gỡ. */
+export const ADMIN_ROLE_CODES = ['SYSTEM_ADMIN', 'BUSINESS_ADMIN'];
 
 @Injectable()
 export class UsersService {
@@ -374,6 +376,11 @@ export class UsersService {
             }
             roles.push(role);
           }
+          await this.assertCanGrantRoles(
+            em,
+            creatorId,
+            roles.map((role) => role.roleCode),
+          );
         }
 
         if (isStudent && !roles.some((role) => role.roleCode === 'STUDENT')) {
@@ -752,8 +759,8 @@ export class UsersService {
    * UC-08 — Cập nhật (replace) tập vai trò của một tài khoản đã tồn tại.
    *
    * Ràng buộc chốt:
-   * - Chỉ SYSTEM_ADMIN được gọi (enforce ở controller qua PermissionsGuard) → service
-   *   KHÔNG kiểm department scope / role-elevation.
+   * - Phân quyền 2 tầng: SYSTEM_ADMIN toàn quyền; người khác có accounts.user.update_roles
+   *   (BUSINESS_ADMIN) chỉ trong phạm vi đơn vị và không cấp/gỡ role quản trị (A.6c).
    * - Replace-set: `desiredRoleIds` là tập mong muốn đầy đủ.
    * - Soft-remove role bị bỏ (is_active=false + expired_at=now()); role thêm dùng
    *   reactivate-if-exists (update row cũ nếu tồn tại do UNIQUE (user_id, role_id),
@@ -841,6 +848,24 @@ export class UsersService {
       BIOMETRIC_EXEMPT_ROLE_CODES.includes(roleCodeById.get(id) ?? ''),
     );
     const isBiometricDemotion = wasExempt && !willBeExempt;
+
+    // A.6c Phân quyền 2 tầng: không phải SYSTEM_ADMIN (vd BUSINESS_ADMIN) ⇒ không đụng role
+    // quản trị và chỉ trong phạm vi đơn vị của mình.
+    await this.assertCanGrantRoles(
+      em,
+      actorId,
+      [...toAdd, ...toRemove].map((id) => roleCodeById.get(id) ?? ''),
+    );
+    if (!(await this.isSystemAdminActor(em, actorId))) {
+      const scope = await this.resolveDepartmentScope(actorId);
+      if (!targetUser.departmentId || !scope.has(targetUser.departmentId)) {
+        throw new ForbiddenException({
+          success: false,
+          message: 'Tài khoản này nằm ngoài phạm vi đơn vị bạn quản lý.',
+          error: { code: 'FORBIDDEN', details: {} },
+        });
+      }
+    }
 
     // A.7 BR-04 — self-lockout: không tự gỡ vai trò hệ thống của chính mình
     if (actorId === targetUserId && toRemove.length > 0) {
@@ -1916,6 +1941,13 @@ export class UsersService {
     if (Object.keys(changed).length > 0) {
       await this.dataSource.transaction(async (tem) => {
         await tem.update(UserEntity, targetUserId, changed);
+        if ('leadershipTitle' in changed) {
+          await this.syncLeadershipManagerRole(
+            tem,
+            targetUserId,
+            changed.leadershipTitle != null,
+          );
+        }
 
         const auditLog = tem.create(AuditLogEntity, {
           userId: actorId,
@@ -2679,6 +2711,78 @@ export class UsersService {
           administrativeClass: row.administrative_class,
         },
       ]),
+    );
+  }
+
+  /** Actor có role SYSTEM_ADMIN đang hoạt động. */
+  private async isSystemAdminActor(
+    em: EntityManager,
+    actorId: string,
+  ): Promise<boolean> {
+    const count = await em.count(UserRoleEntity, {
+      where: {
+        userId: actorId,
+        isActive: true,
+        role: { roleCode: 'SYSTEM_ADMIN', isActive: true },
+      },
+    });
+    return count > 0;
+  }
+
+  /**
+   * Phân quyền 2 tầng: chỉ SYSTEM_ADMIN cấp/gỡ role quản trị (SYSTEM_ADMIN, BUSINESS_ADMIN);
+   * BUSINESS_ADMIN chỉ cấp role nghiệp vụ — chặn leo thang đặc quyền.
+   */
+  private async assertCanGrantRoles(
+    em: EntityManager,
+    actorId: string,
+    roleCodes: string[],
+  ): Promise<void> {
+    const adminCodes = roleCodes.filter((c) => ADMIN_ROLE_CODES.includes(c));
+    if (adminCodes.length === 0) return;
+    if (await this.isSystemAdminActor(em, actorId)) return;
+    throw new ForbiddenException({
+      success: false,
+      message: 'Chỉ Quản trị hệ thống được cấp hoặc gỡ vai trò quản trị.',
+      error: { code: 'ADMIN_ROLE_GRANT_FORBIDDEN', details: { roleCodes: adminCodes } },
+    });
+  }
+
+  /**
+   * Ban Giám hiệu dùng role MANAGER (màn /manager). Đặt chức danh ⇒ thêm/bật MANAGER;
+   * bỏ chức danh ⇒ gỡ MANAGER do hệ thống gán (assigned_by NULL) nếu người đó không còn
+   * là trưởng đơn vị. MANAGER gán tay giữ nguyên.
+   */
+  private async syncLeadershipManagerRole(
+    tem: EntityManager,
+    userId: string,
+    isLeader: boolean,
+  ): Promise<void> {
+    if (isLeader) {
+      await tem.query(
+        `INSERT INTO user_roles (user_id, role_id)
+         SELECT $1, r.id FROM roles r
+          WHERE r.role_code = 'MANAGER'
+            AND NOT EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = $1 AND ur.role_id = r.id)`,
+        [userId],
+      );
+      await tem.query(
+        `UPDATE user_roles ur SET is_active = true, expired_at = NULL, assigned_at = now()
+           FROM roles r
+          WHERE ur.role_id = r.id AND r.role_code = 'MANAGER' AND ur.user_id = $1
+            AND NOT ur.is_active`,
+        [userId],
+      );
+      return;
+    }
+    await tem.query(
+      `UPDATE user_roles ur SET is_active = false, expired_at = now()
+         FROM roles r
+        WHERE ur.role_id = r.id AND r.role_code = 'MANAGER' AND ur.user_id = $1
+          AND ur.is_active AND ur.assigned_by IS NULL
+          AND NOT EXISTS (SELECT 1 FROM departments d
+                           WHERE d.manager_user_id = $1 AND d.deleted_at IS NULL)`,
+      [userId],
     );
   }
 

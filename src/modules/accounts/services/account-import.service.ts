@@ -1,4 +1,9 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { DataSource, In, IsNull } from 'typeorm';
 import * as ExcelJS from 'exceljs';
 import JSZip from 'jszip';
@@ -240,6 +245,9 @@ export class AccountImportService {
     const states: AccountRowState[] = rows.map((parsed) =>
       this.staticValidate(parsed),
     );
+
+    // ── Step 2b: Phân quyền 2 tầng — chỉ SYSTEM_ADMIN được tạo tài khoản kèm role quản trị ──
+    await this.assertNoAdminRoleGrant(states, actor.userId);
 
     // ── Step 3: Duplicate-in-file (email) ──
     this.detectDuplicateInFile(states);
@@ -1064,6 +1072,31 @@ export class AccountImportService {
   }
 
   // ── Small utilities ──
+
+  private async assertNoAdminRoleGrant(
+    states: AccountRowState[],
+    actorId: string,
+  ): Promise<void> {
+    const adminCodes = ['SYSTEM_ADMIN', 'BUSINESS_ADMIN'];
+    const requested = states.some((s) =>
+      this.splitRoleCodes(s.parsed.roleCodes ?? '').some((c) =>
+        adminCodes.includes(c.toUpperCase()),
+      ),
+    );
+    if (!requested) return;
+    const rows: unknown[] = await this.dataSource.query(
+      `SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+        WHERE ur.user_id = $1 AND ur.is_active AND r.is_active
+          AND r.role_code = 'SYSTEM_ADMIN' LIMIT 1`,
+      [actorId],
+    );
+    if (rows.length > 0) return;
+    throw new ForbiddenException({
+      success: false,
+      message: 'Chỉ Quản trị hệ thống được tạo tài khoản kèm vai trò quản trị.',
+      error: { code: 'ADMIN_ROLE_GRANT_FORBIDDEN', details: {} },
+    });
+  }
 
   private splitRoleCodes(raw: string): string[] {
     return raw

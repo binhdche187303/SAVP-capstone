@@ -81,8 +81,10 @@ describe('UelSyncService.start', () => {
       { ma_phong_ban: 'K_HTTT', ten_phong_ban: 'Khoa HTTT' },
     ]);
     await svc.start({ steps: ['departments'] });
-    const deactivate = query.mock.calls.find(([sql]) =>
-      sql.includes('SET is_active = false'),
+    const deactivate = query.mock.calls.find(
+      ([sql]) =>
+        sql.includes('UPDATE departments') &&
+        sql.includes('SET is_active = false'),
     );
     expect(deactivate?.[1]).toEqual([DB_NOW]);
   });

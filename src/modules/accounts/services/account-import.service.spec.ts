@@ -135,6 +135,8 @@ describe('AccountImportService', () => {
         }),
       ),
       manager: { save: jest.fn().mockResolvedValue({}) },
+      // assertNoAdminRoleGrant: actor mặc định là SYSTEM_ADMIN.
+      query: jest.fn().mockResolvedValue([{ ok: 1 }]),
     };
 
     service = new AccountImportService(
@@ -434,6 +436,24 @@ describe('AccountImportService', () => {
     const row = report.results.find((r) => r.email === 'a@company.com');
     expect(row?.biometricStatus).toBe('role_exempt');
     expect(cloudinaryService.uploadImage).not.toHaveBeenCalled();
+  });
+
+  it('phân quyền 2 tầng: actor không phải SYSTEM_ADMIN import role quản trị → 403', async () => {
+    dataSource.query.mockResolvedValue([]);
+    const buf = await buildXlsx([
+      {
+        full_name: 'A',
+        email: 'a@company.com',
+        department_code: 'ENG',
+        role_codes: 'EMPLOYEE;SYSTEM_ADMIN',
+        employee_code: 'EMP001',
+      },
+    ]);
+    await expect(
+      service.importAccounts(fileOf(buf), { commit: false }, actor, ctx),
+    ).rejects.toMatchObject({
+      response: { error: { code: 'ADMIN_ROLE_GRANT_FORBIDDEN' } },
+    });
   });
 
   it('commit: file khớp tên nhưng không phải ảnh hợp lệ (magic bytes) → invalid_image', async () => {

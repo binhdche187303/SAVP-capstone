@@ -1105,7 +1105,10 @@ describe('UsersService', () => {
       finalActiveRoles?: { id: string; roleCode: string; roleName: string }[]; // getActiveRolesResponse
       activeFaceProfiles?: { id: string; status: string }[]; // BA 2026-08-03: face_profiles ACTIVE hiện có
       saveThrowsOnUserRole?: boolean;
+      actorIsSystemAdmin?: boolean; // mặc định true (SYSTEM_ADMIN)
     }) {
+      // isSystemAdminActor đếm user_roles SYSTEM_ADMIN của actor.
+      em.count.mockResolvedValue(opts.actorIsSystemAdmin === false ? 0 : 1);
       em.findOne.mockImplementation(async (entityClass, options: any) => {
         if (entityClass === UserEntity) {
           return options?.where?.id === targetUserId
@@ -1361,6 +1364,28 @@ describe('UsersService', () => {
         expect.anything(),
       );
       expect(activeProfile.status).toBe(FaceProfileStatus.ACTIVE);
+    });
+
+    it('[U13] Phân quyền 2 tầng — actor không phải SYSTEM_ADMIN cấp BUSINESS_ADMIN → 403, không ghi DB', async () => {
+      setup({
+        actorIsSystemAdmin: false,
+        roles: {
+          'role-employee': { isActive: true },
+          'role-ba': { isActive: true },
+        },
+        currentActiveRoleIds: ['role-employee'],
+        involvedRoles: [
+          { id: 'role-employee', roleCode: 'EMPLOYEE' },
+          { id: 'role-ba', roleCode: 'BUSINESS_ADMIN' },
+        ],
+      });
+
+      await expect(
+        service.updateUserRoles(targetUserId, ['role-employee', 'role-ba'], actorId, {}),
+      ).rejects.toMatchObject({
+        response: { error: { code: 'ADMIN_ROLE_GRANT_FORBIDDEN' } },
+      });
+      expect(dataSource.transaction).not.toHaveBeenCalled();
     });
 
     it('[U11] BA 2026-08-03 — Demote từ BUSINESS_ADMIN xuống EMPLOYEE: revoke face_profile ACTIVE + audit riêng', async () => {

@@ -30,6 +30,7 @@ import { DepartmentResponseDto } from '../dto/department-response.dto.js';
 import { ListDepartmentsQueryDto } from '../dto/list-departments-query.dto.js';
 import { PaginationMeta } from '../dto/pagination-meta.dto.js';
 import { DepartmentMemberItemDto } from '../dto/department-member-item.dto.js';
+import { syncDepartmentManagerRole } from '../../../common/utils/manager-role.util.js';
 
 export interface ClientContext {
   ipAddress?: string;
@@ -177,6 +178,7 @@ export class DepartmentsService {
       });
 
       createdDept = await em.save(DepartmentEntity, dept);
+      await syncDepartmentManagerRole(em, createdDept.managerUserId, null);
 
       // 6. Write audit log
       try {
@@ -418,6 +420,7 @@ export class DepartmentsService {
         description,
         updatedBy: updaterId,
       });
+      await syncDepartmentManagerRole(em, managerUserId, dept.managerUserId);
 
       updatedDept = {
         ...dept,

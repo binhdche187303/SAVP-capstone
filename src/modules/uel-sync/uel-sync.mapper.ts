@@ -32,22 +32,19 @@ export function usernameOf(code: string): string {
 /**
  * Role cán bộ. Dữ liệu thật: `loai` chỉ có "TG" (thỉnh giảng) / "CH" (cơ hữu) ⇒
  * - TG → TEACHER (thỉnh giảng = người dạy).
- * - CH thuộc đơn vị học thuật (Khoa / Bộ môn, kể cả cấp con) → TEACHER; Phòng/Ban/Viện… → EMPLOYEE.
+ * - CH → EMPLOYEE. TEACHER chỉ được thêm khi có tên trong thời khóa biểu (lớp HP / buổi học,
+ *   theo mã GV) — tránh gán nhầm thư ký khoa / chuyên viên thuộc Khoa.
  * - Vẫn nhận từ khóa "giảng viên"/"GV" nếu UEL đổi giá trị `loai`.
- * Người dạy ở Phòng/Viện được bổ sung TEACHER khi đồng bộ lớp HP / lịch học (theo mã GV).
  */
-export function staffRoleOf(
-  loai: string | null,
-  inAcademicUnit = false,
-): 'TEACHER' | 'EMPLOYEE' {
+export function staffRoleOf(loai: string | null): 'TEACHER' | 'EMPLOYEE' {
   const l = (clean(loai) ?? '')
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .replace(/đ/gi, 'd')
     .toLowerCase();
-  if (l === 'tg' || /giang vien|^gv\b|lecturer|teacher/.test(l))
-    return 'TEACHER';
-  return inAcademicUnit ? 'TEACHER' : 'EMPLOYEE';
+  return l === 'tg' || /giang vien|^gv\b|lecturer|teacher/.test(l)
+    ? 'TEACHER'
+    : 'EMPLOYEE';
 }
 
 /** Số học kỳ từ hoc_ky UEL: "HK01" / "hk1" / "1" → 1. Không nhận dạng được → null. */
