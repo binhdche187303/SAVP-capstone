@@ -802,8 +802,8 @@ describe('IotDevicesService', () => {
     it('status filter: andWhere status', async () => {
       qbMock.getManyAndCount.mockResolvedValue([[], 0]);
       await service.findAll({ page: 1, limit: 20, status: 'disabled' } as any);
-      expect(qbMock.andWhere).toHaveBeenCalledWith('d.status = :status', {
-        status: 'disabled',
+      expect(qbMock.andWhere).toHaveBeenCalledWith('d.status IN (:...status)', {
+        status: ['disabled'],
       });
     });
 

@@ -78,7 +78,7 @@ describe('CameraTraceService (họp 20/10 — truy vết theo camera/nhóm/khu v
     events = [row()];
     await service.trace(CALLER, { groupId: GROUP_ID, ...range });
     const resolve = captured.find((c) => c.sql.includes('FROM iot_devices d'))!;
-    expect(resolve.params).toEqual([null, GROUP_ID]);
+    expect(resolve.params).toEqual([null, [GROUP_ID]]);
     const evq = captured.find((c) => c.sql.includes('WITH ev AS'))!;
     expect(evq.params[0]).toEqual([DEVICE_ID]);
     expect(evq.sql).toContain('FROM gate_access_logs');
@@ -147,10 +147,10 @@ describe('CameraTraceService (họp 20/10 — truy vết theo camera/nhóm/khu v
     it('kind + q là tham số ràng buộc (không nối chuỗi) và ký tự LIKE được escape', async () => {
       await service.trace(CALLER, { deviceId: DEVICE_ID, ...range, kind: 'gate', q: '50%_a' });
       const { sql, params } = evSql();
-      expect(sql).toMatch(/x\.kind = \$\d+/);
+      expect(sql).toMatch(/x\.kind = ANY\(\$\d+::text\[\]\)/);
       expect(sql).toContain('u.full_name ILIKE');
       expect(sql).not.toContain('50%_a');
-      expect(params).toContain('gate');
+      expect(params).toContainEqual(['gate']);
       expect(params).toContain('%50\\%\\_a%');
     });
 

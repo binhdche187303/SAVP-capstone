@@ -140,15 +140,15 @@ describe('MinutesService.findMinutesList', () => {
 
   it('áp dụng filter status của client (AND thêm vào scope)', async () => {
     await service.findMinutesList({ status: 'archived' }, authUser);
-    expect(qb.andWhere).toHaveBeenCalledWith('minutes.status = :clientStatus', {
-      clientStatus: 'archived',
+    expect(qb.andWhere).toHaveBeenCalledWith('minutes.status IN (:...clientStatus)', {
+      clientStatus: ['archived'],
     });
   });
 
   it('không filter status khi client truyền "all"', async () => {
     await service.findMinutesList({ status: 'all' }, authUser);
     const statusCall = qb.andWhere.mock.calls.find(
-      (call: unknown[]) => call[0] === 'minutes.status = :clientStatus',
+      (call: unknown[]) => call[0] === 'minutes.status IN (:...clientStatus)',
     );
     expect(statusCall).toBeUndefined();
   });

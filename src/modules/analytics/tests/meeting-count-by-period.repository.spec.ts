@@ -63,7 +63,7 @@ describe('MeetingCountByPeriodRepository', () => {
       expect(values).toContainEqual(['d1', 'd2']);
     });
 
-    it('departmentId filter -> organizer_id subquery with single = param', async () => {
+    it('departmentId filter -> organizer_id subquery with uuid[] param', async () => {
       mockQuery.mockResolvedValue([]);
       const params = {
         ...baseParams,
@@ -72,7 +72,7 @@ describe('MeetingCountByPeriodRepository', () => {
       await repo.countMeetingsByBucket(params);
       const sql = mockQuery.mock.calls[0][0] as string;
       expect(sql).toContain(
-        'organizer_id IN (SELECT u2.id FROM users u2 WHERE u2.department_id = $',
+        'organizer_id IN (SELECT u2.id FROM users u2 WHERE u2.department_id = ANY($',
       );
     });
 

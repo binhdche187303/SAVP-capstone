@@ -2961,10 +2961,24 @@ describe('UsersService', () => {
       );
     }
 
+    // Chạy từng Brackets trên 1 bộ ghi để lấy điều kiện bên trong (where/orWhere + params).
+    function bracketConditions(qb: any): Array<[string, unknown]> {
+      const out: Array<[string, unknown]> = [];
+      const rec: any = {
+        where: (sql: string, params?: unknown) => (out.push([sql, params]), rec),
+        orWhere: (sql: string, params?: unknown) => (out.push([sql, params]), rec),
+        andWhere: (sql: string, params?: unknown) => (out.push([sql, params]), rec),
+      };
+      andWheres(qb)
+        .filter((a) => a instanceof Brackets)
+        .forEach((b: any) => b.whereFactory(rec));
+      return out;
+    }
+
     it('[M1] filter departmentId → andWhere department_id', async () => {
       const { mainQb } = setup({ actorIsSystemAdmin: true });
       await service.listUsersForManagement({ departmentId: 'dep-1' }, actorId);
-      expect(hasAndWhereStr(mainQb, 'u.departmentId = :departmentId')).toBe(
+      expect(hasAndWhereStr(mainQb, 'u.departmentId IN (:...departmentId)')).toBe(
         true,
       );
     });
@@ -2975,9 +2989,21 @@ describe('UsersService', () => {
         { accountStatus: 'locked' },
         actorId,
       );
-      expect(hasAndWhereStr(mainQb, 'u.accountStatus = :accountStatus')).toBe(
-        true,
+      expect(bracketConditions(mainQb)).toContainEqual([
+        'u.accountStatus IN (:...accountStatuses)',
+        { accountStatuses: ['locked'] },
+      ]);
+    });
+
+    it('[M2b] accountStatus=expired → tài khoản active đã quá hạn (không lọc account_status thường)', async () => {
+      const { mainQb } = setup({ actorIsSystemAdmin: true });
+      await service.listUsersForManagement(
+        { accountStatus: 'expired' },
+        actorId,
       );
+      const conds = bracketConditions(mainQb).map(([sql]) => sql);
+      expect(conds.some((sql) => sql.includes('u.accountExpiresAt <= :now'))).toBe(true);
+      expect(conds).not.toContain('u.accountStatus IN (:...accountStatuses)');
     });
 
     it('[M3] filter roleId → andWhere SUBQUERY user_roles (không innerJoin)', async () => {
@@ -3011,12 +3037,13 @@ describe('UsersService', () => {
         },
         actorId,
       );
-      expect(hasAndWhereStr(mainQb, 'u.departmentId = :departmentId')).toBe(
+      expect(hasAndWhereStr(mainQb, 'u.departmentId IN (:...departmentId)')).toBe(
         true,
       );
-      expect(hasAndWhereStr(mainQb, 'u.accountStatus = :accountStatus')).toBe(
-        true,
-      );
+      expect(bracketConditions(mainQb)).toContainEqual([
+        'u.accountStatus IN (:...accountStatuses)',
+        { accountStatuses: ['active'] },
+      ]);
       expect(hasAndWhereStr(mainQb, 'SELECT ur.user_id FROM user_roles')).toBe(
         true,
       );

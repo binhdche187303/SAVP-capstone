@@ -54,9 +54,9 @@ describe('AuditLogQueryRepository', () => {
       ];
       expect(sql).toMatch(/WHERE/i);
       expect(sql).toMatch(/al\.user_id = \$1/);
-      expect(sql).toMatch(/al\.action_type = \$2/);
+      expect(sql).toMatch(/al\.action_type = ANY\(\$2::text\[\]\)/);
       expect(params[0]).toBe('user-uuid-1');
-      expect(params[1]).toBe('meeting.create');
+      expect(params[1]).toEqual(['meeting.create']);
       // limit=20 at $3, offset=0 at $4
       expect(params[2]).toBe(20);
       expect(params[3]).toBe(0);
@@ -283,7 +283,7 @@ describe('AuditLogQueryRepository', () => {
         unknown[],
       ];
       expect(sql).toMatch(/WHERE/i);
-      expect(params).toContain('critical');
+      expect(params).toContainEqual(['critical']);
       expect(params).toContain('uid-x');
     });
   });
@@ -308,7 +308,7 @@ describe('AuditLogQueryRepository', () => {
       expect(sql).toMatch(/su\.email ILIKE/);
       expect(sql).toMatch(/al\.entity_type ILIKE/);
       expect(sql).toMatch(/al\.ip_address ILIKE/);
-      expect(sql).toMatch(/al\.severity = \$1 AND \(/);
+      expect(sql).toMatch(/al\.severity = ANY\(\$1::text\[\]\) AND \(/);
       expect(params).toContain('%admin%');
     });
 

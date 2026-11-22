@@ -111,7 +111,7 @@ describe('MeetingListService.list', () => {
   it('roomId filter → andWhere meeting.room_id', async () => {
     const { service, qb } = setup();
     await service.list(q({ roomId: '11111111-1111-1111-1111-111111111111' }));
-    expect(andWhereStrings(qb)).toContain('meeting.room_id = :roomId');
+    expect(andWhereStrings(qb)).toContain('meeting.room_id IN (:...roomId)');
   });
 
   it('organizerId filter → andWhere meeting.organizer_id', async () => {
@@ -139,12 +139,12 @@ describe('MeetingListService.list', () => {
       { deptIds: ['managed-dept'] },
     );
     expect(qb.andWhere).toHaveBeenCalledWith(
-      expect.stringContaining('organizer.department_id = :departmentId'),
-      { departmentId },
+      expect.stringContaining('organizer.department_id IN (:...departmentId)'),
+      { departmentId: [departmentId] },
     );
     expect(qb.andWhere).toHaveBeenCalledWith(
-      expect.stringContaining('selected_user.department_id = :departmentId'),
-      { departmentId },
+      expect.stringContaining('selected_user.department_id IN (:...departmentId)'),
+      { departmentId: [departmentId] },
     );
     expect(qb.getCount).toHaveBeenCalled();
   });
@@ -209,7 +209,7 @@ describe('MeetingListService.list', () => {
     );
     const strs = andWhereStrings(qb);
     expect(strs).toContain('meeting.status = :status');
-    expect(strs).toContain('meeting.room_id = :roomId');
+    expect(strs).toContain('meeting.room_id IN (:...roomId)');
     expect(strs).toContain('meeting.title ILIKE :search');
   });
 

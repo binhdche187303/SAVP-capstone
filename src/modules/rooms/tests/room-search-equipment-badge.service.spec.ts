@@ -122,7 +122,7 @@ describe('RoomSearchService - Equipment Fault Badges (ROOM-SEARCH-FAULT-BADGE-00
     });
 
     const [sqlQuery, params] = queryMock.mock.calls[0] as [string, unknown[]];
-    expect(params).toEqual([10, 20, 'Area 1', true, null, null, null, 10, 0]);
+    expect(params).toEqual([10, 20, 'Area 1', true, null, null, null, null, 10, 0]);
     expect(sqlQuery).toContain('r.capacity >= $1');
     expect(sqlQuery).toContain('r.capacity <= $2');
     expect(sqlQuery).toContain('r.area_name = $3');

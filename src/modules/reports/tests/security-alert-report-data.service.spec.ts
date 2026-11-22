@@ -83,16 +83,16 @@ describe('SecurityAlertReportDataService', () => {
       });
 
       expect(mockQb.andWhere).toHaveBeenCalledWith(
-        'sa.alertType = :alertType',
+        'sa.alertType IN (:...alertType)',
         {
-          alertType: 'intrusion',
+          alertType: ['intrusion'],
         },
       );
-      expect(mockQb.andWhere).toHaveBeenCalledWith('sa.zoneId = :zoneId', {
-        zoneId: 'zone-1',
+      expect(mockQb.andWhere).toHaveBeenCalledWith('sa.zoneId IN (:...zoneId)', {
+        zoneId: ['zone-1'],
       });
-      expect(mockQb.andWhere).toHaveBeenCalledWith('sa.status = :status', {
-        status: 'new',
+      expect(mockQb.andWhere).toHaveBeenCalledWith('sa.status IN (:...status)', {
+        status: ['new'],
       });
     });
 

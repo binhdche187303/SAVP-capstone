@@ -54,8 +54,8 @@ describe('ZoneTrafficHeatmapService — lọc nhóm camera + gom theo phút (h�
     expect(readWindowMock.resolve).not.toHaveBeenCalled();
     expect(dataSourceMock.query).toHaveBeenCalledTimes(2);
     for (const [sql, params] of dataSourceMock.query.mock.calls) {
-      expect(sql).toContain('camera_group_members WHERE group_id =');
-      expect(params).toContain(GROUP);
+      expect(sql).toContain('camera_group_members WHERE group_id = ANY(');
+      expect(params).toContainEqual([GROUP]);
       expect(sql).not.toContain(GROUP); // luôn bind, không nội suy
     }
   });

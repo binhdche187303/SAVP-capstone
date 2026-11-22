@@ -104,7 +104,7 @@ describe('SecurityAlertReportService', () => {
         SECURITY_ALERT_EXPORT_JOB_NAME,
         expect.objectContaining({
           backgroundJobId: 'job-123',
-          filters: { alertType: 'intrusion', zoneId: 'zone-1', status: 'new' },
+          filters: { alertType: 'intrusion', zoneId: 'zone-1', status: 'new', severity: null },
         }),
       );
       expect(result).toEqual({
@@ -126,7 +126,7 @@ describe('SecurityAlertReportService', () => {
         REPORT_EXPORT_QUEUE_NAME,
         SECURITY_ALERT_EXPORT_JOB_NAME,
         expect.objectContaining({
-          filters: { alertType: null, zoneId: null, status: null },
+          filters: { alertType: null, zoneId: null, status: null, severity: null },
         }),
       );
     });
