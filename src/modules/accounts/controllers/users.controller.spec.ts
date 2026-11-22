@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { Test, TestingModule } from '@nestjs/testing';
+import request from 'supertest';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { ParseUUIDPipe, HttpStatus, ValidationPipe } from '@nestjs/common';
 import { validate } from 'class-validator';
@@ -58,7 +59,7 @@ describe('UsersController', () => {
       importPartnerAccounts: jest.fn(),
     };
 
-    const module: TestingModule = await Test.createTestingModule({
+    const module: TestingModule = (moduleRef = await Test.createTestingModule({
       controllers: [UsersController],
       providers: [
         {
@@ -86,7 +87,7 @@ describe('UsersController', () => {
       .useValue({ canActivate: () => true })
       .overrideGuard(PermissionsGuard)
       .useValue({ canActivate: () => true })
-      .compile();
+      .compile());
 
     controller = module.get<UsersController>(UsersController);
   });
@@ -263,6 +264,26 @@ describe('UsersController', () => {
         error: { code: 'INVALID_USER_ID', details: {} },
       });
     });
+  });
+
+  // Gọi HTTP thật qua pipe của controller (test pipe tự dựng ở trên không bắt được lỗi này):
+  // exceptionFactory từng trả object thường → Nest coi là lỗi lạ → 500 thay vì 400.
+  describe('userId không phải UUID qua HTTP', () => {
+    it.each(['/users/import', '/users/not-a-uuid', '/users/abc/public-profile'])(
+      'GET %s → 400 INVALID_USER_ID (không phải 500)',
+      async (url) => {
+        const app = moduleRef.createNestApplication();
+        await app.init();
+        try {
+          const res = await request(app.getHttpServer()).get(url);
+          expect(res.status).toBe(400);
+          expect(res.body.error?.code).toBe('INVALID_USER_ID');
+          expect(service.getUserDetail).not.toHaveBeenCalled();
+        } finally {
+          await app.close();
+        }
+      },
+    );
   });
 
   describe('updateUserRoles', () => {

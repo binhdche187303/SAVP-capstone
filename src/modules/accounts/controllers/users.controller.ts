@@ -9,6 +9,7 @@ import {
   Ip,
   Param,
   ParseUUIDPipe,
+  BadRequestException,
   Patch,
   Post,
   Put,
@@ -413,13 +414,14 @@ export class UsersController {
       'userId',
       new ParseUUIDPipe({
         errorHttpStatusCode: HttpStatus.BAD_REQUEST,
-        exceptionFactory: () => ({
-          success: false,
-          message: 'Validation failed (uuid is expected)',
-          error: { code: 'INVALID_USER_ID', details: {} },
-          timestamp: new Date().toISOString(),
-          path: '/api/v1/users/:userId/roles',
-        }),
+        exceptionFactory: () =>
+          new BadRequestException({
+            success: false,
+            message: 'Validation failed (uuid is expected)',
+            error: { code: 'INVALID_USER_ID', details: {} },
+            timestamp: new Date().toISOString(),
+            path: '/api/v1/users/:userId/roles',
+          }),
       }),
     )
     userId: string,
@@ -491,13 +493,14 @@ export class UsersController {
       'userId',
       new ParseUUIDPipe({
         errorHttpStatusCode: HttpStatus.BAD_REQUEST,
-        exceptionFactory: () => ({
-          success: false,
-          message: 'Validation failed (uuid is expected)',
-          error: { code: 'INVALID_USER_ID', details: {} },
-          timestamp: new Date().toISOString(),
-          path: '/api/v1/users/:userId/status',
-        }),
+        exceptionFactory: () =>
+          new BadRequestException({
+            success: false,
+            message: 'Validation failed (uuid is expected)',
+            error: { code: 'INVALID_USER_ID', details: {} },
+            timestamp: new Date().toISOString(),
+            path: '/api/v1/users/:userId/status',
+          }),
       }),
     )
     userId: string,
@@ -569,13 +572,14 @@ export class UsersController {
       'userId',
       new ParseUUIDPipe({
         errorHttpStatusCode: HttpStatus.BAD_REQUEST,
-        exceptionFactory: () => ({
-          success: false,
-          message: 'Validation failed (uuid is expected)',
-          error: { code: 'INVALID_USER_ID', details: {} },
-          timestamp: new Date().toISOString(),
-          path: '/api/v1/users/:userId/lock',
-        }),
+        exceptionFactory: () =>
+          new BadRequestException({
+            success: false,
+            message: 'Validation failed (uuid is expected)',
+            error: { code: 'INVALID_USER_ID', details: {} },
+            timestamp: new Date().toISOString(),
+            path: '/api/v1/users/:userId/lock',
+          }),
       }),
     )
     userId: string,
@@ -644,13 +648,14 @@ export class UsersController {
       'userId',
       new ParseUUIDPipe({
         errorHttpStatusCode: HttpStatus.BAD_REQUEST,
-        exceptionFactory: () => ({
-          success: false,
-          message: 'Validation failed (uuid is expected)',
-          error: { code: 'INVALID_USER_ID', details: {} },
-          timestamp: new Date().toISOString(),
-          path: '/api/v1/users/:userId/unlock',
-        }),
+        exceptionFactory: () =>
+          new BadRequestException({
+            success: false,
+            message: 'Validation failed (uuid is expected)',
+            error: { code: 'INVALID_USER_ID', details: {} },
+            timestamp: new Date().toISOString(),
+            path: '/api/v1/users/:userId/unlock',
+          }),
       }),
     )
     userId: string,
@@ -710,13 +715,14 @@ export class UsersController {
       'userId',
       new ParseUUIDPipe({
         errorHttpStatusCode: HttpStatus.BAD_REQUEST,
-        exceptionFactory: () => ({
-          success: false,
-          message: 'Validation failed (uuid is expected)',
-          error: { code: 'INVALID_USER_ID', details: {} },
-          timestamp: new Date().toISOString(),
-          path: '/api/v1/users/:userId',
-        }),
+        exceptionFactory: () =>
+          new BadRequestException({
+            success: false,
+            message: 'Validation failed (uuid is expected)',
+            error: { code: 'INVALID_USER_ID', details: {} },
+            timestamp: new Date().toISOString(),
+            path: '/api/v1/users/:userId',
+          }),
       }),
     )
     userId: string,
@@ -783,13 +789,14 @@ export class UsersController {
       'userId',
       new ParseUUIDPipe({
         errorHttpStatusCode: HttpStatus.BAD_REQUEST,
-        exceptionFactory: () => ({
-          success: false,
-          message: 'Validation failed (uuid is expected)',
-          error: { code: 'INVALID_USER_ID', details: {} },
-          timestamp: new Date().toISOString(),
-          path: '/api/v1/users/:userId',
-        }),
+        exceptionFactory: () =>
+          new BadRequestException({
+            success: false,
+            message: 'Validation failed (uuid is expected)',
+            error: { code: 'INVALID_USER_ID', details: {} },
+            timestamp: new Date().toISOString(),
+            path: '/api/v1/users/:userId',
+          }),
       }),
     )
     userId: string,
@@ -1055,13 +1062,14 @@ export class UsersController {
       'userId',
       new ParseUUIDPipe({
         errorHttpStatusCode: HttpStatus.BAD_REQUEST,
-        exceptionFactory: () => ({
-          success: false,
-          message: 'Validation failed (uuid is expected)',
-          error: { code: 'INVALID_USER_ID', details: {} },
-          timestamp: new Date().toISOString(),
-          path: '/api/v1/users/:userId',
-        }),
+        exceptionFactory: () =>
+          new BadRequestException({
+            success: false,
+            message: 'Validation failed (uuid is expected)',
+            error: { code: 'INVALID_USER_ID', details: {} },
+            timestamp: new Date().toISOString(),
+            path: '/api/v1/users/:userId',
+          }),
       }),
     )
     userId: string,
@@ -1119,13 +1127,14 @@ export class UsersController {
       'userId',
       new ParseUUIDPipe({
         errorHttpStatusCode: HttpStatus.BAD_REQUEST,
-        exceptionFactory: () => ({
-          success: false,
-          message: 'Validation failed (uuid is expected)',
-          error: { code: 'INVALID_USER_ID', details: {} },
-          timestamp: new Date().toISOString(),
-          path: '/api/v1/users/:userId/public-profile',
-        }),
+        exceptionFactory: () =>
+          new BadRequestException({
+            success: false,
+            message: 'Validation failed (uuid is expected)',
+            error: { code: 'INVALID_USER_ID', details: {} },
+            timestamp: new Date().toISOString(),
+            path: '/api/v1/users/:userId/public-profile',
+          }),
       }),
     )
     userId: string,
