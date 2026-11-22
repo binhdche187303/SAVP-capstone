@@ -1302,6 +1302,24 @@ describe('MeetingsService', () => {
       expect(result.requestId).toBeDefined();
     });
 
+    it('rejects a non-host without meeting.time.update.any', async () => {
+      setupMocks();
+      const spy = jest.spyOn(service, 'checkUserPermission').mockResolvedValue(false);
+      await expect(
+        service.updateMeetingTime('meeting-uuid', validDto, { userId: 'other-user' }, clientContext),
+      ).rejects.toThrow('Bạn không có quyền thay đổi thời gian cuộc họp này.');
+      expect(spy).toHaveBeenCalledWith('other-user', 'meeting.time.update.any');
+      spy.mockRestore();
+    });
+
+    it('lets a non-host with meeting.time.update.any update the time', async () => {
+      setupMocks();
+      const spy = jest.spyOn(service, 'checkUserPermission').mockResolvedValue(true);
+      const result = await service.updateMeetingTime('meeting-uuid', validDto, { userId: 'admin-user' }, clientContext);
+      expect(result.meetingId).toBe('meeting-uuid');
+      spy.mockRestore();
+    });
+
     it('[FIX 2026-08-19] should throw ROOM_NOT_AVAILABLE when newRoomId.administrativeStatus is inactive', async () => {
       setupMocks();
       const inactiveRoom = {

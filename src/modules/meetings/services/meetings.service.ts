@@ -1699,9 +1699,11 @@ export class MeetingsService {
       });
     }
 
+    // Host/organizer luôn được đổi giờ; người khác cần quyền override meeting.time.update.any.
     const hasAnyPermission =
       authUser.userId === meeting.organizerId ||
-      authUser.userId === meeting.hostId;
+      authUser.userId === meeting.hostId ||
+      (await this.checkUserPermission(authUser.userId, 'meeting.time.update.any'));
 
     if (!hasAnyPermission) {
       throw new ForbiddenException({

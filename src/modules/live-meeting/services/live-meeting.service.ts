@@ -2150,6 +2150,7 @@ export class LiveMeetingService {
     meetingId: string,
     authUser: AuthUser,
     clientContext: ClientContext,
+    options: { canEndAny?: boolean } = {},
   ): Promise<EndMeetingResponseDto> {
     // ── Step 1: Load meeting ──
     const meeting = await this.dataSource.getRepository(MeetingEntity).findOne({
@@ -2168,12 +2169,13 @@ export class LiveMeetingService {
     }
 
     // ── Step 2: Authorization — Host, Organizer, or override ──
+    // Người không phải host/organizer chỉ được kết thúc khi có quyền override
+    // meeting.session.end.any (controller tra quyền và truyền vào options.canEndAny).
     if (
       meeting.organizerId !== authUser.userId &&
-      meeting.hostId !== authUser.userId
+      meeting.hostId !== authUser.userId &&
+      !options.canEndAny
     ) {
-      // Check for override permission: meeting.session.end.any
-      // (permission check is done at controller guard; here we verify ownership only)
       throw new ForbiddenException({
         success: false,
         message: 'Bạn không có quyền kết thúc phiên họp này',

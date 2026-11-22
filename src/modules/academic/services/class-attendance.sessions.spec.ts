@@ -1,7 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { ClassAttendanceService } from './class-attendance.service.js';
 
-/** listSessions: validate khoảng ngày + phạm vi theo role + map kết quả. */
+/** listSessions: validate khoảng ngày + phạm vi theo QUYỀN (class.attendance.read.all) + map kết quả. */
 describe('ClassAttendanceService.listSessions', () => {
   const sessionRow = {
     id: 'se-1',
@@ -24,21 +24,21 @@ describe('ClassAttendanceService.listSessions', () => {
     student_count: '65',
   };
 
-  function makeService(roles: string[]) {
-    const query = jest.fn(async (sql: string) =>
-      sql.includes('FROM user_roles')
-        ? roles.map((role_code) => ({ role_code }))
-        : [sessionRow],
-    );
+  function makeService(permissions: string[]) {
+    const query = jest.fn(async () => [sessionRow]);
+    const authzRepo = {
+      getEffectiveRolesAndPermissions: jest.fn(async () => ({ roles: [], permissions })),
+    };
     const service = new ClassAttendanceService(
       { manager: { query } } as never,
       {} as never,
+      authzRepo as never,
     );
     return { service, query };
   }
 
   it('từ chối ngày sai định dạng / khoảng ngược / quá 62 ngày', async () => {
-    const { service, query } = makeService(['TEACHER']);
+    const { service, query } = makeService(['class.attendance.manage']);
     await expect(
       service.listSessions('u1', '11/11/2026', '2026-11-17'),
     ).rejects.toBeInstanceOf(BadRequestException);
@@ -54,10 +54,10 @@ describe('ClassAttendanceService.listSessions', () => {
     expect(query).not.toHaveBeenCalled();
   });
 
-  it('GV: lọc theo lecturer_user_id, tham số ngày sau userId', async () => {
-    const { service, query } = makeService(['EMPLOYEE', 'TEACHER']);
+  it('không có read.all (GV): chỉ lớp mình dạy/học, tham số ngày sau userId', async () => {
+    const { service, query } = makeService(['class.attendance.manage', 'class.attendance.export']);
     const data = await service.listSessions('u1', '2026-11-09', '2026-11-15');
-    const [sql, params] = query.mock.calls[1] as unknown as [string, unknown[]];
+    const [sql, params] = query.mock.calls[0] as unknown as [string, unknown[]];
     expect(sql).toContain('cs.lecturer_user_id = $1');
     expect(sql).toContain('BETWEEN $2::date AND $3::date');
     expect(params).toEqual(['u1', '2026-11-09', '2026-11-15']);
@@ -76,18 +76,19 @@ describe('ClassAttendanceService.listSessions', () => {
     ]);
   });
 
-  it('admin: không lọc theo user, ngày là $1/$2', async () => {
-    const { service, query } = makeService(['SYSTEM_ADMIN']);
+  it('có class.attendance.read.all: không lọc theo user, ngày là $1/$2', async () => {
+    const { service, query } = makeService(['class.attendance.read.all']);
     await service.listSessions('u1', '2026-11-09', '2026-11-15');
-    const [sql, params] = query.mock.calls[1] as unknown as [string, unknown[]];
+    const [sql, params] = query.mock.calls[0] as unknown as [string, unknown[]];
     expect(sql).toContain('BETWEEN $1::date AND $2::date');
     expect(params).toEqual(['2026-11-09', '2026-11-15']);
+    expect(sql).not.toContain('lecturer_user_id = $1');
   });
 
-  it('SV: lọc theo lớp đã đăng ký', async () => {
-    const { service, query } = makeService(['STUDENT']);
+  it('SV (chỉ read.self): lọc theo lớp đã đăng ký', async () => {
+    const { service, query } = makeService(['class.attendance.read.self']);
     await service.listSessions('u1', '2026-11-09', '2026-11-15');
-    const [sql] = query.mock.calls[1] as unknown as [string];
+    const [sql] = query.mock.calls[0] as unknown as [string];
     expect(sql).toContain('st2.user_id = $1');
   });
 });

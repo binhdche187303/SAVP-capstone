@@ -6,14 +6,7 @@ import {
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { HgVisionRecognizedFace, HgVisionService } from './hgvision.service.js';
-
-type RoleCode =
-  | 'SYSTEM_ADMIN'
-  | 'ADMIN'
-  | 'BUSINESS_ADMIN'
-  | 'TEACHER'
-  | 'STUDENT'
-  | string;
+import { AuthzReadRepository } from '../../auth/repositories/authz-read.repository.js';
 
 interface ClassRow {
   id: string;
@@ -100,12 +93,20 @@ const CLASS_ATTENDANCE_AUTO_SCAN_INTERVAL_KEY =
 const CLASS_ATTENDANCE_ABSENCE_WARNING_KEY =
   'class_attendance.absence_warning_percent';
 const DEFAULT_ABSENCE_WARNING_PERCENT = 20;
-const REPORT_ROLES: RoleCode[] = [
-  'TEACHER',
-  'SYSTEM_ADMIN',
-  'ADMIN',
-  'BUSINESS_ADMIN',
-];
+/**
+ * Quyền điểm danh lớp học (bật/tắt được trong Bảng phân quyền).
+ * Phạm vi dữ liệu: có READ_ALL → mọi lớp; không có → chỉ lớp mình dạy (GV) / mình học (SV).
+ */
+const PERM = {
+  MANAGE: 'class.attendance.manage', // điểm danh: quét camera, điểm danh tay
+  STATS: 'class.attendance.stats.read', // xem dữ liệu/báo cáo chuyên cần của lớp
+  EXPORT: 'class.attendance.export', // xuất CSV
+  READ_SELF: 'class.attendance.read.self', // SV xem chuyên cần của chính mình
+  READ_ALL: 'class.attendance.read.all', // phạm vi mọi lớp
+  CONFIG: 'admin.manage_config', // sửa cấu hình điểm danh (trang Cấu hình hệ thống)
+} as const;
+/** Xem dữ liệu cả lớp: người điểm danh (GV) hoặc người xem thống kê (BA). */
+const VIEW_CLASS_PERMS = [PERM.MANAGE, PERM.STATS];
 
 type AbsenceLevel = 'ok' | 'near' | 'exceeded';
 type DayStatus = 'on_time' | 'late' | 'absent' | 'unmarked' | 'none';
@@ -153,6 +154,7 @@ export class ClassAttendanceService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly hgVisionService: HgVisionService,
+    private readonly authzRepo: AuthzReadRepository,
   ) {}
 
   async getSettings(classId?: string, administrativeClass?: string) {
@@ -181,12 +183,11 @@ export class ClassAttendanceService {
       administrativeClass?: string;
     },
   ) {
-    const roles = await this.getRoleCodes(currentUserId);
-    if (!roles.includes('SYSTEM_ADMIN') && !roles.includes('ADMIN')) {
-      throw new ForbiddenException(
-        'Bạn không có quyền cập nhật cấu hình điểm danh lớp học.',
-      );
-    }
+    await this.requireAnyPermission(
+      currentUserId,
+      [PERM.CONFIG],
+      'Bạn không có quyền cập nhật cấu hình điểm danh lớp học.',
+    );
 
     const current = await this.getSettings(
       body.classId,
@@ -275,8 +276,7 @@ export class ClassAttendanceService {
     if (source && !['manual', 'uel_api'].includes(source)) {
       throw new BadRequestException('Nguồn lớp học không hợp lệ.');
     }
-    const roles = await this.getRoleCodes(currentUserId);
-    const where = this.classScopeWhere(roles);
+    const where = this.classScopeWhere(await this.getPermissions(currentUserId));
     const params = [...where.params(currentUserId), date];
     const dateParam = `$${params.length}`;
     if (source) params.push(source);
@@ -386,8 +386,7 @@ export class ClassAttendanceService {
       );
     }
 
-    const roles = await this.getRoleCodes(currentUserId);
-    const where = this.classScopeWhere(roles);
+    const where = this.classScopeWhere(await this.getPermissions(currentUserId));
     const params: unknown[] = [...where.params(currentUserId), from, to];
     const fromIdx = params.length - 1;
     const rows = (await this.dataSource.manager.query(
@@ -449,9 +448,11 @@ export class ClassAttendanceService {
     classId: string,
     date = this.todayKey(),
   ) {
+    // SV chỉ xem chuyên cần của chính mình qua /student/me — không được lấy dữ liệu cả lớp.
     const resolvedClassId = await this.assertClassAccess(
       currentUserId,
       classId,
+      VIEW_CLASS_PERMS,
     );
     const students = await this.getClassStudents(resolvedClassId);
     const records = (await this.dataSource.manager.query(
@@ -525,6 +526,7 @@ export class ClassAttendanceService {
     const resolvedClassId = await this.assertClassAccess(
       currentUserId,
       classId,
+      VIEW_CLASS_PERMS,
     );
     const rows = await this.dataSource.manager.query(
       `SELECT e.id, e.student_id, st.student_code, u.full_name AS student_name,
@@ -574,9 +576,7 @@ export class ClassAttendanceService {
       throw new BadRequestException('classId is required');
     }
     const classId = await this.assertClassAccess(currentUserId, body.classId, [
-      'TEACHER',
-      'SYSTEM_ADMIN',
-      'ADMIN',
+      PERM.MANAGE,
     ]);
 
     const direction =
@@ -770,10 +770,7 @@ export class ClassAttendanceService {
       );
     }
     const classId = await this.assertClassAccess(currentUserId, body.classId, [
-      'TEACHER',
-      'SYSTEM_ADMIN',
-      'ADMIN',
-      'BUSINESS_ADMIN',
+      PERM.MANAGE,
     ]);
     const students = await this.getClassStudents(classId);
     const student = students.find((item) => item.id === body.studentId);
@@ -871,21 +868,19 @@ export class ClassAttendanceService {
       subjectCode?: string;
     },
   ) {
-    const roles = await this.getRoleCodes(currentUserId);
+    // Có studentId = xem SV khác (GV/BA) → cần quyền xem dữ liệu lớp; không có = SV xem của mình.
+    const perms = await this.requireAnyPermission(
+      currentUserId,
+      query.studentId ? VIEW_CLASS_PERMS : [PERM.READ_SELF],
+      'Bạn không có quyền xem chuyên cần này.',
+    );
     const student = await this.resolveStudent(
       currentUserId,
       query.studentId,
-      roles,
     );
-    // GV (không kiêm admin) chỉ xem được SV học lớp mình dạy, và chỉ thấy các lớp đó.
+    // Không có quyền xem mọi lớp → chỉ xem được SV học lớp mình dạy, và chỉ thấy các lớp đó.
     const lecturerScope =
-      query.studentId &&
-      roles.includes('TEACHER') &&
-      !roles.some((role) =>
-        ['SYSTEM_ADMIN', 'ADMIN', 'BUSINESS_ADMIN'].includes(role),
-      )
-        ? currentUserId
-        : null;
+      query.studentId && !perms.has(PERM.READ_ALL) ? currentUserId : null;
     if (lecturerScope) {
       const owned = (await this.dataSource.manager.query(
         `SELECT 1
@@ -971,6 +966,11 @@ export class ClassAttendanceService {
   }
 
   async getStats(currentUserId: string) {
+    await this.requireAnyPermission(
+      currentUserId,
+      VIEW_CLASS_PERMS,
+      'Bạn không có quyền xem thống kê chuyên cần.',
+    );
     const classes = await this.listClasses(currentUserId);
     const today = this.todayKey();
     const rows = await Promise.all(
@@ -1167,6 +1167,11 @@ export class ClassAttendanceService {
       anchorDate?: string;
     },
   ) {
+    await this.requireAnyPermission(
+      currentUserId,
+      [PERM.EXPORT],
+      'Bạn không có quyền xuất bảng chuyên cần.',
+    );
     const classes = await this.getReportClasses(
       currentUserId,
       query.classId,
@@ -1301,70 +1306,60 @@ export class ClassAttendanceService {
     };
   }
 
-  private async getRoleCodes(userId: string): Promise<RoleCode[]> {
-    const rows = (await this.dataSource.manager.query(
-      `SELECT r.role_code
-         FROM user_roles ur
-         JOIN roles r ON r.id = ur.role_id
-        WHERE ur.user_id = $1
-          AND ur.is_active = true
-          AND r.is_active = true`,
-      [userId],
-    )) as Array<{ role_code: string }>;
-    return rows.map((row) => row.role_code);
+  /** Quyền hiệu lực của user (đã bỏ vai trò hết hạn / bị khoá; cache 3s trong AuthzReadRepository). */
+  private async getPermissions(userId: string): Promise<Set<string>> {
+    const { permissions } =
+      await this.authzRepo.getEffectiveRolesAndPermissions(userId);
+    return new Set(permissions);
   }
 
-  private classScopeWhere(roles: RoleCode[]) {
-    if (
-      roles.includes('SYSTEM_ADMIN') ||
-      roles.includes('ADMIN') ||
-      roles.includes('BUSINESS_ADMIN')
-    ) {
+  private async requireAnyPermission(
+    userId: string,
+    codes: readonly string[],
+    message: string,
+  ): Promise<Set<string>> {
+    const perms = await this.getPermissions(userId);
+    if (!codes.some((code) => perms.has(code))) {
+      throw new ForbiddenException(message);
+    }
+    return perms;
+  }
+
+  /** Phạm vi lớp: READ_ALL → mọi lớp; còn lại → lớp mình dạy hoặc lớp mình đang học. */
+  private classScopeWhere(perms: Set<string>) {
+    if (perms.has(PERM.READ_ALL)) {
       return {
         sql: `WHERE cs.deleted_at IS NULL`,
         params: (_userId: string) => [],
       };
     }
-    if (roles.includes('TEACHER')) {
-      return {
-        sql: `WHERE cs.deleted_at IS NULL AND cs.lecturer_user_id = $1`,
-        params: (userId: string) => [userId],
-      };
-    }
-    if (roles.includes('STUDENT')) {
-      return {
-        sql: `WHERE cs.deleted_at IS NULL AND EXISTS (
+    return {
+      sql: `WHERE cs.deleted_at IS NULL AND (cs.lecturer_user_id = $1 OR EXISTS (
           SELECT 1 FROM class_enrollments ce2
           JOIN students st2 ON st2.id = ce2.student_id
           WHERE ce2.class_section_id = cs.id
             AND ce2.status = 'active'
             AND st2.user_id = $1
             AND st2.deleted_at IS NULL
-        )`,
-        params: (userId: string) => [userId],
-      };
-    }
-    return { sql: `WHERE 1 = 0`, params: (_userId: string) => [] };
+        ))`,
+      params: (userId: string) => [userId],
+    };
   }
 
   private async assertClassAccess(
     userId: string,
     classIdentifier: string,
-    allowedRoleCodes?: RoleCode[],
+    requiredPermissions?: readonly string[],
   ): Promise<string> {
     const classId = await this.resolveClassSectionId(classIdentifier);
-    const roles = await this.getRoleCodes(userId);
+    const perms = await this.getPermissions(userId);
     if (
-      allowedRoleCodes &&
-      !allowedRoleCodes.some((role) => roles.includes(role))
+      requiredPermissions &&
+      !requiredPermissions.some((code) => perms.has(code))
     ) {
       throw new ForbiddenException('Bạn không có quyền thao tác lớp học này.');
     }
-    if (
-      roles.includes('SYSTEM_ADMIN') ||
-      roles.includes('ADMIN') ||
-      roles.includes('BUSINESS_ADMIN')
-    ) {
+    if (perms.has(PERM.READ_ALL)) {
       return classId;
     }
 
@@ -1383,13 +1378,6 @@ export class ClassAttendanceService {
                AND ce.status = 'active'
                AND st.user_id = $2
                AND st.deleted_at IS NULL
-           )
-           OR EXISTS (
-             SELECT 1 FROM user_roles ur
-             JOIN roles r ON r.id = ur.role_id
-             WHERE ur.user_id = $2
-               AND ur.is_active = true
-               AND r.role_code IN ('SYSTEM_ADMIN', 'ADMIN', 'BUSINESS_ADMIN')
            )
          )
       `,
@@ -1503,6 +1491,12 @@ export class ClassAttendanceService {
     subjectCode?: FilterSelection<string>,
     source?: string,
   ) {
+    // Báo cáo / cảnh báo / CSV trả dữ liệu cả lớp → cần quyền xem dữ liệu lớp (SV dùng /student/me).
+    await this.requireAnyPermission(
+      currentUserId,
+      VIEW_CLASS_PERMS,
+      'Bạn không có quyền xem báo cáo lớp học.',
+    );
     let classes = await this.listClasses(currentUserId, undefined, source);
     if (semester && semester !== 'all') {
       classes = classes.filter(
@@ -1514,12 +1508,11 @@ export class ClassAttendanceService {
       classes = classes.filter((klass) => filterValues(subjectCode).includes(klass.subjectCode));
     }
     if (classId && classId !== 'all') {
-      const resolvedId = await this.assertClassAccess(currentUserId, classId, [
-        'TEACHER',
-        'SYSTEM_ADMIN',
-        'ADMIN',
-        'BUSINESS_ADMIN',
-      ]);
+      const resolvedId = await this.assertClassAccess(
+        currentUserId,
+        classId,
+        VIEW_CLASS_PERMS,
+      );
       classes = classes.filter((klass) => klass.id === resolvedId);
     }
     return classes;
@@ -1652,7 +1645,7 @@ export class ClassAttendanceService {
     const resolvedId = await this.assertClassAccess(
       currentUserId,
       classId,
-      REPORT_ROLES,
+      VIEW_CLASS_PERMS,
     );
     const klass =
       (await this.listClasses(currentUserId)).find(
@@ -2487,18 +2480,11 @@ export class ClassAttendanceService {
   private async resolveStudent(
     userId: string,
     requestedStudentId: string | undefined,
-    roles: RoleCode[],
   ) {
     const params: unknown[] = [];
     let where = `st.user_id = $1`;
     params.push(userId);
-    if (
-      requestedStudentId &&
-      (roles.includes('SYSTEM_ADMIN') ||
-        roles.includes('ADMIN') ||
-        roles.includes('BUSINESS_ADMIN') ||
-        roles.includes('TEACHER'))
-    ) {
+    if (requestedStudentId) {
       where = `(st.id::text = $1::text OR st.student_code = $1::varchar)`;
       params[0] = requestedStudentId;
     }

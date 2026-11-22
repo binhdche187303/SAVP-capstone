@@ -295,10 +295,14 @@ export class LiveMeetingController {
   }> {
     const user = request['user'] as { userId: string } | undefined;
 
+    const { permissions } =
+      await this.authzRepo.getEffectiveRolesAndPermissions(user!.userId);
+
     const result = await this.liveMeetingService.endMeeting(
       meetingId,
       { userId: user!.userId },
       { ipAddress, userAgent },
+      { canEndAny: permissions.includes('meeting.session.end.any') },
     );
 
     return {

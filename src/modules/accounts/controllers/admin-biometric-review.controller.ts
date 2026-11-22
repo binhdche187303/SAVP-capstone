@@ -15,9 +15,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard.js';
-import { RolesGuard } from '../../auth/guards/roles.guard.js';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard.js';
-import { RequireRoles } from '../../auth/decorators/require-roles.decorator.js';
 import { RequirePermissions } from '../../auth/decorators/require-permissions.decorator.js';
 import { AdminBiometricReviewService } from '../services/admin-biometric-review.service.js';
 import { ListBiometricSubmissionsQueryDto } from '../dto/list-biometric-submissions-query.dto.js';
@@ -38,12 +36,11 @@ interface AuthenticatedRequest extends Request {
  */
 @Controller('admin/biometric-submissions')
 @UseFilters(AdminBiometricReviewHttpExceptionFilter)
-@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class AdminBiometricReviewController {
   constructor(private readonly service: AdminBiometricReviewService) {}
 
   @Get()
-  @RequireRoles('SYSTEM_ADMIN', 'BUSINESS_ADMIN')
   @RequirePermissions('account.biometric.review')
   @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   async list(@Query() query: ListBiometricSubmissionsQueryDto) {
@@ -56,7 +53,6 @@ export class AdminBiometricReviewController {
   }
 
   @Get(':faceProfileId')
-  @RequireRoles('SYSTEM_ADMIN', 'BUSINESS_ADMIN')
   @RequirePermissions('account.biometric.review')
   async detail(
     @Param('faceProfileId', biometricSubmissionIdPipe()) faceProfileId: string,
@@ -70,7 +66,6 @@ export class AdminBiometricReviewController {
   }
 
   @Get(':faceProfileId/download-url')
-  @RequireRoles('SYSTEM_ADMIN', 'BUSINESS_ADMIN')
   @RequirePermissions('account.biometric.download')
   async downloadUrl(
     @Param('faceProfileId', biometricSubmissionIdPipe()) faceProfileId: string,
@@ -89,7 +84,6 @@ export class AdminBiometricReviewController {
 
   @Post(':faceProfileId/approve')
   @HttpCode(200)
-  @RequireRoles('SYSTEM_ADMIN', 'BUSINESS_ADMIN')
   @RequirePermissions('account.biometric.review')
   async approve(
     @Param('faceProfileId', biometricSubmissionIdPipe()) faceProfileId: string,
@@ -108,7 +102,6 @@ export class AdminBiometricReviewController {
 
   @Post(':faceProfileId/reject')
   @HttpCode(200)
-  @RequireRoles('SYSTEM_ADMIN', 'BUSINESS_ADMIN')
   @RequirePermissions('account.biometric.review')
   @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   async reject(
@@ -126,7 +119,6 @@ export class AdminBiometricReviewController {
 
   @Delete(':faceProfileId')
   @HttpCode(200)
-  @RequireRoles('SYSTEM_ADMIN', 'BUSINESS_ADMIN')
   @RequirePermissions('account.biometric.delete')
   async remove(
     @Param('faceProfileId', biometricSubmissionIdPipe()) faceProfileId: string,

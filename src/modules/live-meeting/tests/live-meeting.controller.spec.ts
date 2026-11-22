@@ -21,11 +21,15 @@ describe('LiveMeetingController', () => {
 
   const mockLiveMeetingService = mockService;
 
+  const mockAuthzRepo = {
+    getEffectiveRolesAndPermissions: jest.fn().mockResolvedValue({ roles: [], permissions: [] }),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [LiveMeetingController],
       providers: [
-        { provide: AuthzReadRepository, useValue: {} },
+        { provide: AuthzReadRepository, useValue: mockAuthzRepo },
         {
           provide: LiveMeetingService,
           useValue: mockService,
@@ -121,6 +125,7 @@ describe('LiveMeetingController', () => {
         meetingId,
         { userId: 'host-1' },
         { ipAddress: '127.0.0.1', userAgent: 'test-agent' },
+        { canEndAny: false },
       );
 
       expect(result.success).toBe(true);
@@ -129,6 +134,23 @@ describe('LiveMeetingController', () => {
       expect(result.data.status).toBe('completed');
       expect(result.data.duration).toBe(85);
       expect(result.data.roomReleased).toBe(true);
+    });
+
+    it('T014-01b: passes canEndAny=true when the user has meeting.session.end.any', async () => {
+      mockAuthzRepo.getEffectiveRolesAndPermissions.mockResolvedValueOnce({
+        roles: ['BUSINESS_ADMIN'],
+        permissions: ['meeting.session.end', 'meeting.session.end.any'],
+      });
+      mockLiveMeetingService.endMeeting.mockResolvedValue({ meetingId: 'm-002', status: 'completed' });
+
+      await controller.endMeeting('m-002', { user: { userId: 'admin-1' } } as any, '127.0.0.1', 'ua');
+
+      expect(mockLiveMeetingService.endMeeting).toHaveBeenLastCalledWith(
+        'm-002',
+        { userId: 'admin-1' },
+        { ipAddress: '127.0.0.1', userAgent: 'ua' },
+        { canEndAny: true },
+      );
     });
 
       // ========================================================

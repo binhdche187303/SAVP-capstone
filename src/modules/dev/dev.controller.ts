@@ -1,4 +1,5 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
@@ -73,6 +74,7 @@ const MOCK_FACE_EVENT_TYPE = 'camera_face_event';
  */
 @ApiTags('Dev (chỉ NODE_ENV=development)')
 @Controller('dev')
+@UseGuards(JwtAuthGuard)
 export class DevController {
   constructor(
     private readonly mailService: MailService,

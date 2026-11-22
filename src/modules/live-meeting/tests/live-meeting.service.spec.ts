@@ -778,6 +778,18 @@ describe('LiveMeetingService', () => {
       ).rejects.toThrow(ForbiddenException);
     });
 
+    it('T013-04b: meeting.session.end.any (canEndAny) lets a non-host pass authorization', async () => {
+      // SCHEDULED dừng ngay ở bước kiểm trạng thái → Conflict chứng tỏ đã qua bước phân quyền.
+      jest.spyOn(meetingRepo, 'findOne').mockResolvedValue({
+        ...baseMeeting,
+        status: MeetingStatus.SCHEDULED,
+      } as MeetingEntity);
+
+      await expect(
+        service.endMeeting('m-001', { userId: 'stranger' }, {}, { canEndAny: true }),
+      ).rejects.toThrow(ConflictException);
+    });
+
     // ────────────────────────────────────────
     //  Status validation
     // ────────────────────────────────────────
