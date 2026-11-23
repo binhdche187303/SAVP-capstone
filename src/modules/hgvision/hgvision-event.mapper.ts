@@ -3,6 +3,28 @@ import type { VehicleEvent } from '../../common/ports/vehicle-event-hook.js';
 import { normalizePlate } from '../anpr/utils/normalize-plate.js';
 import type { HgvisionHistoryObject } from './hgvision.client.js';
 
+const cameraNameKey = (name: string): string => name
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/[đĐ]/g, 'd')
+  .trim()
+  .replace(/\s+/g, ' ')
+  .toLowerCase();
+
+/** Prefer the exact upstream identifier; only use an unambiguous name alias. */
+export function resolveCameraChannel(
+  name: string,
+  map: Record<string, number>,
+): number | undefined {
+  if (Object.prototype.hasOwnProperty.call(map, name)) return map[name];
+  const key = cameraNameKey(name);
+  if (!key) return undefined;
+  const channels = new Set(Object.entries(map)
+    .filter(([candidate]) => cameraNameKey(candidate) === key)
+    .map(([, channel]) => channel));
+  return channels.size === 1 ? channels.values().next().value : undefined;
+}
+
 /**
  * Đổi 1 sự kiện lịch sử HGVision → IvssFaceEvent để đi chung pipeline presence
  * (IvssPresenceIngestionService) mà KHÔNG sửa nghiệp vụ.
@@ -30,7 +52,7 @@ export function toIvssFaceEvent(
     return null;
   }
 
-  const channelId = cameraChannelMap[obj.camera_id];
+  const channelId = resolveCameraChannel(obj.camera_id, cameraChannelMap);
   if (channelId === undefined) return null;
 
   const ts = obj.first_timestamp ?? obj.last_timestamp;
@@ -59,7 +81,7 @@ export function toVehicleEvent(
   const plateRaw = obj.lp_text?.trim();
   if (!plateRaw) return null;
 
-  const channelId = cameraChannelMap[obj.camera_id];
+  const channelId = resolveCameraChannel(obj.camera_id, cameraChannelMap);
   if (channelId === undefined) return null;
 
   const ts = obj.first_timestamp ?? obj.last_timestamp;
