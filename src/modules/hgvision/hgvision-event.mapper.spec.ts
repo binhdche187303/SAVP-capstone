@@ -1,10 +1,36 @@
 import {
   parseCameraChannelMap,
+  resolveCameraChannel,
   toIvssFaceEvent,
+  toVehicleEvent,
 } from './hgvision-event.mapper';
 
 describe('hgvision-event.mapper', () => {
   const map = { 'Phong C401': 3 };
+
+  it('nhận camera phòng IT khi HGVision trả tên không dấu', () => {
+    const event = toIvssFaceEvent({
+      object_id: 'it-person', camera_id: 'Camera phong IT',
+      object_type: 'pedestrian', object_image_path: 'OBJECT_IMAGE/it.jpg',
+      first_timestamp: 1760090000,
+    }, { 'Camera phòng IT': 7 });
+    expect(event?.channelId).toBe(7);
+    expect(resolveCameraChannel(' CAMERA   PHONG IT ', { 'Camera phòng IT': 7 })).toBe(7);
+  });
+
+  it('áp dụng cùng cách khớp tên cho sự kiện biển số', () => {
+    expect(toVehicleEvent({
+      object_id: 'gate-car', camera_id: 'Cong 1 huong ra', lp_text: '30A12345',
+      first_timestamp: 1760090000,
+    }, { 'Cổng 1 hướng ra': 8 })?.channelId).toBe(8);
+  });
+
+  it('ưu tiên tên chính xác và không đoán kênh khi tên bỏ dấu bị trùng', () => {
+    const channels = { 'Camera phòng IT': 7, 'Camera phong IT': 9 };
+    expect(resolveCameraChannel('Camera phong IT', channels)).toBe(9);
+    expect(resolveCameraChannel('CAMERA PHONG IT', channels)).toBeUndefined();
+    expect(resolveCameraChannel('Camera phong IT 2', channels)).toBeUndefined();
+  });
 
   it('đổi sự kiện khuôn mặt → IvssFaceEvent', () => {
     expect(
