@@ -307,6 +307,36 @@ export class HgvisionClient {
     };
   }
 
+  /**
+   * Như fetchPublicMedia nhưng KHÔNG đọc hết vào RAM: trả luồng body để BE pipe thẳng
+   * về trình duyệt (tải video xem lại). Timeout riêng vì ghép MP4 lâu hơn gọi API thường.
+   */
+  async streamPublicMedia(
+    path: string,
+    timeoutMs: number,
+  ): Promise<{ status: number; headers: Headers; body: ReadableStream }> {
+    if (!path.startsWith('/') || path.startsWith('//')) {
+      throw new HgvisionError('Đường dẫn media không hợp lệ.', 400);
+    }
+    if (!this.deps.baseUrl) {
+      throw new HgvisionError('HGVISION_BASE_URL chưa cấu hình.', 0);
+    }
+    let res: Response;
+    try {
+      res = await fetch(new URL(path, this.deps.baseUrl), {
+        method: 'GET',
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (e) {
+      throw new HgvisionError(
+        `Không kết nối được HGVision: ${e instanceof Error ? e.message : 'unknown'}`,
+        0,
+      );
+    }
+    if (!res.ok || !res.body) throw await this.toError(res);
+    return { status: res.status, headers: res.headers, body: res.body };
+  }
+
   /** Thử lấy token: dùng cho trang kiểm tra kết nối. */
   async ping(): Promise<void> {
     await this.accessToken();
