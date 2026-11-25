@@ -1,3 +1,4 @@
+import { FaceEnrollmentHook } from './face-enrollment.hook.js';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
@@ -11,6 +12,7 @@ import { StorageService } from '../../storage/storage.service.js';
 
 describe('AdminBiometricReviewService', () => {
   let service: AdminBiometricReviewService;
+  let hook: { notifyChanged: jest.Mock };
   let faceProfileRepo: Repository<FaceProfileEntity>;
   let dataSource: DataSource;
 
@@ -71,9 +73,14 @@ describe('AdminBiometricReviewService', () => {
           provide: ConfigService,
           useValue: mockConfigService,
         },
+        {
+          provide: FaceEnrollmentHook,
+          useValue: { notifyChanged: jest.fn().mockResolvedValue(undefined) },
+        },
       ],
     }).compile();
 
+    hook = module.get(FaceEnrollmentHook);
     service = module.get<AdminBiometricReviewService>(
       AdminBiometricReviewService,
     );
@@ -274,7 +281,16 @@ describe('AdminBiometricReviewService', () => {
       expect(mockRepository.createQueryBuilder).toHaveBeenCalledWith('fp');
       expect(result.data).toHaveLength(1);
       expect(result.data[0]).toEqual({
-        classSections: [], roleCode: null, roleName: null, consentAt: undefined,
+        classSections: [],
+        roleCode: null,
+        sampleCount: 1,
+        source: null,
+        serverCheck: null,
+        flagReason: null,
+        flagMatches: [],
+        reviewReason: null,
+        roleName: null,
+        consentAt: undefined,
         faceProfileId: 'fp-1',
         userId: 'user-1',
         fullName: 'Nguyen Van A',
@@ -425,6 +441,109 @@ describe('AdminBiometricReviewService', () => {
 
       expect(detail.avatarUrl).toBe(AVATAR);
       expect(list.data[0].avatarUrl).toBe(AVATAR);
+    });
+  });
+  // [2026-11-23] Hậu kiểm: "Gỡ" hồ sơ active → revoked + gỡ HGVision; duyệt → đồng bộ.
+  // Mock jest (expect.objectContaining / mock.calls) trả any.
+  /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
+  describe('hậu kiểm (tự duyệt)', () => {
+    const wire = (status: FaceProfileStatus) => {
+      const rows: unknown[][] = [
+        [
+          {
+            id: 'fp-1',
+            userId: 'user-1',
+            status,
+            metadataJson: { source: 'webcam_scan' },
+          },
+        ],
+        [{ id: 'user-1', accountStatus: 'active', deletedAt: null }],
+      ];
+      let i = 0;
+      const qb = {
+        setLock: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getMany: jest.fn(() => Promise.resolve(rows[i++] ?? [])),
+      };
+      const manager = {
+        createQueryBuilder: jest.fn(() => qb),
+        update: jest.fn().mockResolvedValue(undefined),
+        insert: jest.fn().mockResolvedValue(undefined),
+        getRepository: jest.fn(() => ({
+          insert: jest.fn().mockResolvedValue({}),
+        })),
+        query: jest.fn().mockResolvedValue([]),
+      };
+      mockDataSource.transaction.mockImplementation(
+        (cb: (m: unknown) => unknown) => cb(manager),
+      );
+      return manager;
+    };
+
+    it('Gỡ hồ sơ ACTIVE → revoked, giữ metadata cũ + lý do, audit biometric.revoke, đồng bộ HGVision', async () => {
+      const manager = wire(FaceProfileStatus.ACTIVE);
+      const r = await service.rejectBiometricSubmission(
+        'fp-1',
+        'Ảnh không phải chính chủ',
+        'admin-1',
+      );
+      expect(r.status).toBe(FaceProfileStatus.REVOKED);
+      expect(manager.update).toHaveBeenCalledWith(
+        FaceProfileEntity,
+        'fp-1',
+        expect.objectContaining({
+          status: FaceProfileStatus.REVOKED,
+          metadataJson: expect.objectContaining({
+            source: 'webcam_scan',
+            review: expect.objectContaining({
+              rejectionReason: 'Ảnh không phải chính chủ',
+            }),
+          }),
+        }),
+      );
+      const audit = manager.insert.mock.calls.find(
+        (c: unknown[]) => (c[1] as { actionType?: string })?.actionType,
+      );
+      expect((audit?.[1] as { actionType: string }).actionType).toBe(
+        'biometric.revoke',
+      );
+      expect(hook.notifyChanged).toHaveBeenCalledWith('user-1');
+    });
+
+    it('Gỡ hồ sơ "Cần kiểm tra" → rejected', async () => {
+      wire(FaceProfileStatus.PENDING_REVIEW);
+      const r = await service.rejectBiometricSubmission(
+        'fp-1',
+        'Trùng người khác',
+        'admin-1',
+      );
+      expect(r.status).toBe(FaceProfileStatus.REJECTED);
+    });
+
+    it('Gỡ hồ sơ đã revoked → 409', async () => {
+      wire(FaceProfileStatus.REVOKED);
+      await expect(
+        service.rejectBiometricSubmission('fp-1', 'x lý do', 'admin-1'),
+      ).rejects.toMatchObject({
+        response: { code: 'BIOMETRIC_SUBMISSION_NOT_PENDING' },
+      });
+      expect(hook.notifyChanged).not.toHaveBeenCalled();
+    });
+
+    it("lọc status='all' → không thêm điều kiện status; có lọc ngày", async () => {
+      mockQueryBuilder.getManyAndCount.mockResolvedValue([[], 0]);
+      await service.listBiometricSubmissions({
+        status: 'all',
+        fromDate: '2026-11-01',
+        toDate: '2026-11-23',
+      });
+      const sqls = mockQueryBuilder.andWhere.mock.calls.map((c: unknown[]) =>
+        String(c[0]),
+      );
+      expect(sqls.some((s) => s.includes('fp.status IN'))).toBe(false);
+      expect(sqls.some((s) => s.includes(':fromDate'))).toBe(true);
+      expect(sqls.some((s) => s.includes(':toDate'))).toBe(true);
     });
   });
 });

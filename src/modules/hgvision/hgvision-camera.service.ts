@@ -23,6 +23,28 @@ import { HGVISION_CLIENT } from './hgvision.constants.js';
 const API_PREFIX = '/api/v1';
 const LIST_TTL_MS = 5_000;
 const STATIC_TTL_MS = 60_000;
+/** Khoảng tìm xem lại tối đa (giống nút "1 ngày" trên HGVision). */
+export const PLAYBACK_MAX_WINDOW_MS = 24 * 3600_000;
+/** Tải MP4 tối đa 1 giờ: HGVision ghép file khi tải, khoảng dài rất nặng. */
+export const PLAYBACK_MAX_DOWNLOAD_MS = 3600_000;
+const PLAYBACK_DOWNLOAD_TIMEOUT_MS = 10 * 60_000;
+
+interface HgSegment {
+  start_ms: number;
+  end_ms: number;
+  thumb_url?: string;
+  file_url?: string;
+}
+
+export interface PlaybackRecordings {
+  camera: string;
+  fromMs: number;
+  toMs: number;
+  /** Các khoảng liên tục có ghi hình (đã cắt theo khoảng tìm). */
+  ranges: { startMs: number; endMs: number }[];
+  /** Từng đoạn ghi; thumbUrl là path trên BE (đã gồm /api/v1), cần Bearer token. */
+  segments: { startMs: number; endMs: number; thumbUrl: string | null }[];
+}
 
 export interface CameraOverviewItem {
   name: string;
@@ -300,6 +322,105 @@ export class HgvisionCameraService {
     return { status: res.status, contentType: type, body: res.body, headers };
   }
 
+  // ───────────── Xem lại (playback) ─────────────
+
+  /**
+   * Các khoảng có ghi hình + danh sách đoạn ghi (kèm thumbnail qua proxy BE) của 1 camera.
+   * HGVision trả 404 khi không có bản ghi ⇒ coi là rỗng. Danh sách đoạn lỗi (vd 503
+   * playback DB chưa sẵn sàng) không làm hỏng danh sách khoảng.
+   */
+  async playbackRecordings(
+    camera: string,
+    fromMs: number,
+    toMs: number,
+  ): Promise<PlaybackRecordings> {
+    assertPlaybackWindow(fromMs, toMs, PLAYBACK_MAX_WINDOW_MS);
+    await this.assertCameraExists(camera);
+    const q = playbackQuery(camera, fromMs, toMs);
+    const json = async <T>(path: string): Promise<T[]> => {
+      try {
+        const res = await this.call(() => this.client.fetchPublicMedia(path));
+        const data = JSON.parse(res.body.toString('utf8')) as unknown;
+        return Array.isArray(data) ? (data as T[]) : [];
+      } catch (e) {
+        if (e instanceof HttpException && e.getStatus() === 404) return [];
+        throw e;
+      }
+    };
+    const [ranges, segments] = await Promise.all([
+      json<{ start_ms: number; end_ms: number }>(
+        `/api/playback/recordings?${q}`,
+      ),
+      json<HgSegment>(`/api/recording/segments?${q}`).catch(
+        (e: unknown): HgSegment[] => {
+          this.logger.warn(`Không lấy được recording/segments: ${String(e)}`);
+          return [];
+        },
+      ),
+    ]);
+    const clip = (s: number, e: number) => ({
+      startMs: Math.max(Number(s), fromMs),
+      endMs: Math.min(Number(e), toMs),
+    });
+    return {
+      camera,
+      fromMs,
+      toMs,
+      ranges: ranges
+        .filter((r) => Number.isFinite(r.start_ms) && Number.isFinite(r.end_ms))
+        .map((r) => clip(r.start_ms, r.end_ms))
+        .filter((r) => r.endMs > r.startMs)
+        .sort((a, b) => a.startMs - b.startMs),
+      segments: segments
+        .filter((s) => Number.isFinite(s.start_ms) && Number.isFinite(s.end_ms))
+        .map((s) => ({
+          ...clip(s.start_ms, s.end_ms),
+          thumbUrl: proxiedMediaUrl(s.thumb_url),
+        }))
+        .filter((s) => s.endMs > s.startMs)
+        .sort((a, b) => a.startMs - b.startMs),
+    };
+  }
+
+  /** Playlist HLS xem lại trong khoảng thời gian, URI đã viết lại qua proxy BE. */
+  async playbackPlaylist(
+    camera: string,
+    fromMs: number,
+    toMs: number,
+  ): Promise<string> {
+    assertPlaybackWindow(fromMs, toMs, PLAYBACK_MAX_WINDOW_MS);
+    await this.assertCameraExists(camera);
+    const path = `/api/playback/playlist?${playbackQuery(camera, fromMs, toMs)}`;
+    const res = await this.call(() => this.client.fetchPublicMedia(path));
+    const body = res.body.toString('utf8');
+    assertHlsPlaylist(body);
+    return rewritePlaylist(body, path);
+  }
+
+  /** Luồng MP4 để tải đoạn xem lại (tối đa PLAYBACK_MAX_DOWNLOAD_MS). */
+  async playbackDownload(camera: string, fromMs: number, toMs: number) {
+    assertPlaybackWindow(fromMs, toMs, PLAYBACK_MAX_DOWNLOAD_MS);
+    await this.assertCameraExists(camera);
+    const path = `/api/playback/download?${playbackQuery(camera, fromMs, toMs)}`;
+    const res = await this.call(() =>
+      this.client.streamPublicMedia(path, PLAYBACK_DOWNLOAD_TIMEOUT_MS),
+    );
+    return {
+      body: res.body,
+      contentLength: res.headers.get('content-length'),
+      fileName: playbackFileName(camera, fromMs, toMs),
+    };
+  }
+
+  private async assertCameraExists(name: string): Promise<void> {
+    const cams = await this.cached('cameras', LIST_TTL_MS, () =>
+      this.client.listCameras(),
+    );
+    if (!cams.some((c) => c.camera_name === name)) {
+      throw new NotFoundException('Camera không tồn tại trên HGVision');
+    }
+  }
+
   private cached<T>(
     key: string,
     ttl: number,
@@ -476,6 +597,71 @@ export function rewritePlaylist(
       return proxied(t);
     })
     .join('\n');
+}
+
+/** from < to, cả hai hợp lệ, độ dài không vượt max. */
+export function assertPlaybackWindow(
+  fromMs: number,
+  toMs: number,
+  maxMs: number,
+): void {
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs <= 0) {
+    throw new BadRequestException('Thời gian bắt đầu/kết thúc không hợp lệ');
+  }
+  if (toMs <= fromMs) {
+    throw new BadRequestException(
+      'Thời gian kết thúc phải sau thời gian bắt đầu',
+    );
+  }
+  if (toMs - fromMs > maxMs) {
+    throw new BadRequestException(
+      `Khoảng thời gian tối đa ${Math.round(maxMs / 60_000)} phút`,
+    );
+  }
+}
+
+function playbackQuery(camera: string, fromMs: number, toMs: number): string {
+  return new URLSearchParams({
+    camera_id: camera,
+    start_time: String(Math.floor(fromMs)),
+    end_time: String(Math.floor(toMs)),
+  }).toString();
+}
+
+/**
+ * thumb_url/file_url của HGVision là URL tuyệt đối theo Host BE đã gọi ⇒ chỉ giữ path,
+ * đưa qua proxy /hgvision/stream (chỉ nhận /api/recording/... và /api/playback/...).
+ */
+export function proxiedMediaUrl(raw: string | undefined | null): string | null {
+  if (!raw) return null;
+  try {
+    const u = new URL(raw, 'http://hg.local');
+    const path = u.pathname + u.search;
+    assertMediaPath(path);
+    return `${API_PREFIX}/hgvision/stream?path=${encodeURIComponent(path)}`;
+  } catch {
+    return null;
+  }
+}
+
+/** Tên file tải: <camera>_<yyyyMMdd-HHmm>_<HHmm>.mp4 theo giờ Việt Nam, bỏ ký tự lạ. */
+export function playbackFileName(
+  camera: string,
+  fromMs: number,
+  toMs: number,
+): string {
+  const vn = (ms: number) =>
+    new Date(ms + 7 * 3600_000).toISOString().replace(/[-:]/g, '');
+  const safe =
+    camera
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/gi, 'd')
+      .replace(/[^A-Za-z0-9_-]+/g, '_')
+      .replace(/^_+|_+$/g, '') || 'camera';
+  const a = vn(fromMs);
+  const b = vn(toMs);
+  return `${safe}_${a.slice(0, 8)}-${a.slice(9, 13)}_${b.slice(9, 13)}.mp4`;
 }
 
 function toHttp(e: unknown): HttpException {

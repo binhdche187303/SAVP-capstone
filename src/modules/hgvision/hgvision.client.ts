@@ -179,6 +179,17 @@ export interface HgvisionFaceUpload {
   contentType?: string; // image/jpeg | image/png
 }
 
+interface HgvisionFaceSearchRaw {
+  total_faces?: number;
+  faces?: Array<{ matches?: Array<{ face_ident?: string; score?: number }> }>;
+  results?: Array<{ matches?: Array<{ face_ident?: string; score?: number }> }>;
+}
+
+export interface HgvisionFaceSearchResult {
+  faceCount: number;
+  matches: Array<{ faceIdent: string; score: number }>;
+}
+
 export interface HgvisionRegisterFaceInput {
   faceIdent: string; // = mã người dùng SAVP
   faceInfor?: string; // họ tên
@@ -307,6 +318,36 @@ export class HgvisionClient {
     };
   }
 
+  /**
+   * Như fetchPublicMedia nhưng KHÔNG đọc hết vào RAM: trả luồng body để BE pipe thẳng
+   * về trình duyệt (tải video xem lại). Timeout riêng vì ghép MP4 lâu hơn gọi API thường.
+   */
+  async streamPublicMedia(
+    path: string,
+    timeoutMs: number,
+  ): Promise<{ status: number; headers: Headers; body: ReadableStream }> {
+    if (!path.startsWith('/') || path.startsWith('//')) {
+      throw new HgvisionError('Đường dẫn media không hợp lệ.', 400);
+    }
+    if (!this.deps.baseUrl) {
+      throw new HgvisionError('HGVISION_BASE_URL chưa cấu hình.', 0);
+    }
+    let res: Response;
+    try {
+      res = await fetch(new URL(path, this.deps.baseUrl), {
+        method: 'GET',
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (e) {
+      throw new HgvisionError(
+        `Không kết nối được HGVision: ${e instanceof Error ? e.message : 'unknown'}`,
+        0,
+      );
+    }
+    if (!res.ok || !res.body) throw await this.toError(res);
+    return { status: res.status, headers: res.headers, body: res.body };
+  }
+
   /** Thử lấy token: dùng cho trang kiểm tra kết nối. */
   async ping(): Promise<void> {
     await this.accessToken();
@@ -423,6 +464,35 @@ export class HgvisionClient {
       if (e instanceof HgvisionError && e.status === 404) return null;
       throw e;
     }
+  }
+
+  /**
+   * Tìm khuôn mặt trong ảnh so với kho định danh (faces:read). Trả số mặt phát hiện +
+   * danh sách khớp (điểm giảm dần). Dùng kiểm tra ảnh đăng ký FaceID (đúng 1 mặt, trùng người khác).
+   */
+  async searchFace(
+    image: HgvisionFaceUpload,
+    topK = 3,
+  ): Promise<HgvisionFaceSearchResult> {
+    const form = new FormData();
+    form.set('top_k', String(topK));
+    this.appendImages(form, [image]);
+    const data = await this.request<HgvisionFaceSearchRaw>(
+      'POST',
+      '/api/identification/faces/search',
+      { form },
+    );
+    const groups = [...(data?.faces ?? []), ...(data?.results ?? [])];
+    const faceCount = Number(data?.total_faces ?? groups.length) || 0;
+    const matches = groups
+      .flatMap((g) => g.matches ?? [])
+      .filter((m) => m.face_ident)
+      .map((m) => ({
+        faceIdent: String(m.face_ident),
+        score: Number(m.score ?? 0),
+      }))
+      .sort((a, b) => b.score - a.score);
+    return { faceCount, matches };
   }
 
   listPlates(q: HgvisionListQuery = {}): Promise<HgvisionPage<HgvisionPlate>> {

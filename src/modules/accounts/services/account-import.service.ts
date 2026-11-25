@@ -7,7 +7,6 @@ import {
 import { DataSource, In, IsNull } from 'typeorm';
 import * as ExcelJS from 'exceljs';
 import JSZip from 'jszip';
-import { randomUUID } from 'crypto';
 
 import {
   UsersService,
@@ -28,20 +27,12 @@ import {
 import { DepartmentEntity } from '../entities/department.entity.js';
 import { RoleEntity } from '../entities/role.entity.js';
 import {
-  FaceProfileEntity,
-  FaceProfileStatus,
-} from '../entities/face-profile.entity.js';
-import {
-  MediaFileEntity,
-  MediaFileType,
-} from '../../recording/entities/media-file.entity.js';
-import {
   AuditLogEntity,
   AuditLogSeverity,
 } from '../../administration/entities/audit-log.entity.js';
+import { BiometricSubmissionService } from './biometric-submission.service.js';
 import { CloudinaryService } from '../../storage/cloudinary.service.js';
 import { detectImageMimeType } from '../utils/image-magic-bytes.util.js';
-import { generateFaceProfileCode } from '../utils/face-profile-code.util.js';
 import { isBiometricExemptRole } from '../../../common/utils/biometric-exempt-roles.util.js';
 import { VehicleRegistrationService } from '../../anpr/services/vehicle-registration.service.js';
 import { normalizePlate } from '../../anpr/utils/normalize-plate.js';
@@ -107,6 +98,7 @@ export class AccountImportService {
     private readonly notificationsService: NotificationsService,
     private readonly cloudinaryService: CloudinaryService,
     private readonly vehicleRegistrationService: VehicleRegistrationService,
+    private readonly biometricSubmissionService: BiometricSubmissionService,
   ) {}
 
   // ════════════════════════════════════════════════════════════════
@@ -897,9 +889,8 @@ export class AccountImportService {
   }
 
   /**
-   * Upload ảnh + tạo media_files/face_profiles(status=pending_review), mirror
-   * transaction pattern của `BiometricSubmissionService.submit` nhưng khởi tạo
-   * bởi admin lúc import (enrolledBy=actorId, không phải chính user).
+   * [2026-11-23] Đính ảnh kèm import → đi qua `BiometricSubmissionService.submitScan`
+   * (tự duyệt, cùng các lớp kiểm tra như tự quét). enrolledBy = admin import.
    *
    * KHÔNG bao giờ throw — mọi lỗi được bắt và trả về status code tương ứng,
    * vì tài khoản đã tạo thành công rồi và không được phép bị đổi thành FAILED
@@ -913,78 +904,40 @@ export class AccountImportService {
     if (photo.size > MAX_BIOMETRIC_PHOTO_BYTES) {
       return ImportAccountBiometricStatus.FILE_TOO_LARGE;
     }
-
-    const detectedMime = detectImageMimeType(photo.buffer);
-    if (!detectedMime) {
+    if (!detectImageMimeType(photo.buffer)) {
       return ImportAccountBiometricStatus.INVALID_IMAGE;
     }
-
-    let upload: { publicId: string; secureUrl: string };
     try {
-      upload = await this.cloudinaryService.uploadImage(photo.buffer);
+      const res = await this.biometricSubmissionService.submitScan(
+        userId,
+        [{ ...photo, mimetype: photo.mimetype ?? '' }],
+        ['front'],
+        true,
+        {
+          minImages: 1,
+          actorId,
+          source: 'excel_import',
+          skipConsent: true,
+        },
+      );
+      return res.biometricReviewStatus === 'approved'
+        ? ImportAccountBiometricStatus.ATTACHED
+        : ImportAccountBiometricStatus.FLAGGED;
     } catch (error) {
+      const code = (
+        error as { getResponse?: () => { code?: string } }
+      ).getResponse?.()?.code;
+      if (code === 'BIOMETRIC_NO_FACE' || code === 'BIOMETRIC_MULTIPLE_FACES') {
+        return ImportAccountBiometricStatus.FACE_CHECK_FAILED;
+      }
+      if (code === 'BIOMETRIC_FILE_TYPE_INVALID') {
+        return ImportAccountBiometricStatus.INVALID_IMAGE;
+      }
       this.logger.error(
-        `[AccountImport] Cloudinary upload failed for user ${userId}: ${(error as Error).message}`,
+        `[AccountImport] Biometric attach failed for user ${userId}: ${(error as Error).message}`,
       );
       return ImportAccountBiometricStatus.UPLOAD_FAILED;
     }
-
-    const now = new Date();
-    const faceProfileId = randomUUID();
-    const mediaFileId = randomUUID();
-
-    try {
-      await this.dataSource.transaction(async (manager) => {
-        await manager.getRepository(MediaFileEntity).insert({
-          id: mediaFileId,
-          fileName: upload.publicId.split('/').pop() ?? upload.publicId,
-          fileType: MediaFileType.IMAGE,
-          mimeType: detectedMime,
-          storageProvider: this.cloudinaryService.resolveMediaStorageProvider(),
-          storageKey: upload.publicId,
-          fileUrl: upload.secureUrl,
-          relatedEntityType: 'face_profile',
-          relatedEntityId: faceProfileId,
-          uploadedBy: actorId,
-          isActive: true,
-        });
-
-        await manager.getRepository(FaceProfileEntity).insert({
-          id: faceProfileId,
-          userId,
-          profileCode: generateFaceProfileCode(),
-          status: FaceProfileStatus.PENDING_REVIEW,
-          primaryImageFileId: mediaFileId,
-          consentAt: now,
-          enrolledBy: actorId,
-          enrolledAt: now,
-          lastUpdatedAt: now,
-          sampleCount: 1,
-          metadataJson: { source: 'excel_import' },
-        });
-
-        await manager.getRepository(AuditLogEntity).insert({
-          userId,
-          actionType: 'biometric.import_upload',
-          entityType: 'face_profile',
-          entityId: faceProfileId,
-          newValueJson: {
-            status: 'pending_review',
-            mediaFileId,
-            source: 'excel_import',
-            enrolledBy: actorId,
-          },
-        });
-      });
-    } catch (error) {
-      await this.cleanupCloudinary(upload.publicId);
-      this.logger.error(
-        `[AccountImport] Biometric attach DB transaction failed for user ${userId}: ${(error as Error).message}`,
-      );
-      return ImportAccountBiometricStatus.UPLOAD_FAILED;
-    }
-
-    return ImportAccountBiometricStatus.ATTACHED;
   }
 
   /** Best-effort xóa Cloudinary object orphan; KHÔNG ném lỗi ra ngoài. */

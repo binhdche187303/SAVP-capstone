@@ -18,6 +18,8 @@ import { isBiometricExemptRole } from '../../../common/utils/biometric-exempt-ro
 const ALLOWED_ROUTE_PREFIXES = [
   '/api/v1/me/biometric-status',
   '/api/v1/me/biometric-submission',
+  // [2026-11-23] Quét FaceID webcam 5 góc (tự duyệt).
+  '/api/v1/me/biometric-scan',
   '/api/v1/auth/refresh',
   '/api/v1/auth/logout',
   '/api/v1/auth/me',

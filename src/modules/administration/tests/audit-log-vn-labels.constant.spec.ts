@@ -54,6 +54,9 @@ describe('audit-log-vn-labels.constant', () => {
       expect(translateActionTypeToVn('export_audit_logs')).toBe(
         'Xuất nhật ký hệ thống',
       );
+      expect(translateActionTypeToVn('expire')).toBe('Hết hạn');
+      expect(translateActionTypeToVn('assign_room')).toBe('Gán phòng');
+      expect(translateActionTypeToVn('Assign Room')).toBe('Gán phòng');
     });
 
     it('translates known prefixes for unmapped codes', () => {

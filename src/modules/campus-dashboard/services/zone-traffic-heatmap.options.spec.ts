@@ -17,7 +17,11 @@ describe('ZoneTrafficHeatmapService — lọc nhóm camera + gom theo phút (h�
 
   beforeEach(async () => {
     repoMock = {
-      loadZoneHierarchy: jest.fn().mockResolvedValue([{ id: 'zone-1', zoneName: 'Sảnh A', building: 'A', floor: '1' }]),
+      loadZoneHierarchy: jest
+        .fn()
+        .mockResolvedValue([
+          { id: 'zone-1', zoneName: 'Sảnh A', building: 'A', floor: '1' },
+        ]),
     };
     dataSourceMock = { query: jest.fn().mockResolvedValue([]) };
     readWindowMock = { resolve: jest.fn() };
@@ -32,17 +36,23 @@ describe('ZoneTrafficHeatmapService — lọc nhóm camera + gom theo phút (h�
     service = module.get(ZoneTrafficHeatmapService);
   });
 
-  const sqls = (): string[] => dataSourceMock.query.mock.calls.map((c: any[]) => c[0] as string);
+  const sqls = (): string[] =>
+    dataSourceMock.query.mock.calls.map((c: any[]) => c[0] as string);
 
   it('bucket=minute: đọc raw (không qua rollup theo giờ) và gom theo phút', async () => {
-    await service.getTraffic(from, to, undefined, undefined, { bucket: 'minute' });
+    await service.getTraffic(from, to, undefined, undefined, {
+      bucket: 'minute',
+    });
     expect(readWindowMock.resolve).not.toHaveBeenCalled();
     expect(sqls().some((s) => s.includes("date_trunc('minute'"))).toBe(true);
     expect(sqls().every((s) => !s.includes('kpi_zone_hourly'))).toBe(true);
   });
 
   it('mặc định vẫn gom theo giờ và dùng rollup', async () => {
-    readWindowMock.resolve.mockResolvedValue({ agg: null, raw: [{ from, to, toInclusive: true }] });
+    readWindowMock.resolve.mockResolvedValue({
+      agg: null,
+      raw: [{ from, to, toInclusive: true }],
+    });
     await service.getTraffic(from, to);
     expect(readWindowMock.resolve).toHaveBeenCalled();
     expect(sqls().some((s) => s.includes("date_trunc('hour'"))).toBe(true);
@@ -50,7 +60,9 @@ describe('ZoneTrafficHeatmapService — lọc nhóm camera + gom theo phút (h�
   });
 
   it('groupId: đọc raw và lọc device_id theo camera_group_members với tham số bind', async () => {
-    await service.getTraffic(from, to, undefined, undefined, { groupId: GROUP });
+    await service.getTraffic(from, to, undefined, undefined, {
+      groupId: GROUP,
+    });
     expect(readWindowMock.resolve).not.toHaveBeenCalled();
     expect(dataSourceMock.query).toHaveBeenCalledTimes(2);
     for (const [sql, params] of dataSourceMock.query.mock.calls) {
@@ -62,7 +74,13 @@ describe('ZoneTrafficHeatmapService — lọc nhóm camera + gom theo phút (h�
 
   it('bucket=minute với khoảng > 24 giờ → 400', async () => {
     await expect(
-      service.getTraffic(from, new Date('2026-07-03T09:00:00Z'), undefined, undefined, { bucket: 'minute' }),
+      service.getTraffic(
+        from,
+        new Date('2026-07-03T09:00:00Z'),
+        undefined,
+        undefined,
+        { bucket: 'minute' },
+      ),
     ).rejects.toThrow(BadRequestException);
   });
 });

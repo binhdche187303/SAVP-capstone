@@ -70,10 +70,14 @@ export class AdminBiometricReviewController {
   async downloadUrl(
     @Param('faceProfileId', biometricSubmissionIdPipe()) faceProfileId: string,
     @Req() request: AuthenticatedRequest,
+    @Query('mediaFileId') mediaFileId?: string,
   ) {
     const data = await this.service.getBiometricDownloadUrl(
       faceProfileId,
       request.user.userId,
+      mediaFileId && /^[0-9a-f-]{36}$/i.test(mediaFileId)
+        ? mediaFileId
+        : undefined,
     );
     return {
       success: true,

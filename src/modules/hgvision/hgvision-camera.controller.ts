@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   DefaultValuePipe,
   Get,
@@ -13,6 +14,8 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
+import { Readable } from 'node:stream';
+import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { PermissionsGuard } from '../auth/guards/permissions.guard.js';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator.js';
@@ -22,6 +25,12 @@ import { HgvisionSnapshotService } from './hgvision-snapshot.service.js';
 
 export const HGVISION_CAMERA_READ = 'hgvision.camera.read';
 export const HGVISION_SYSTEM_READ = 'hgvision.system.read';
+
+const requireCamera = (camera: string | undefined): string => {
+  const v = (camera ?? '').trim();
+  if (!v) throw new BadRequestException('Thiếu tên camera');
+  return v;
+};
 
 /**
  * Camera HGVision cho FE: danh sách + tình trạng, nhật ký, nhóm, tài nguyên máy chủ và
@@ -178,6 +187,79 @@ export class HgvisionCameraController {
         'Cache-Control': 'no-cache',
       })
       .send(body);
+  }
+
+  @Get('playback/recordings')
+  @RequirePermissions(HGVISION_CAMERA_READ)
+  @ApiOperation({
+    summary:
+      'Xem lại: các khoảng có ghi hình + đoạn ghi của 1 camera (from/to epoch ms, tối đa 24 giờ)',
+  })
+  async playbackRecordings(
+    @Query('camera') camera: string,
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ) {
+    return {
+      success: true,
+      message: 'Playback recordings',
+      data: await this.cameras.playbackRecordings(
+        requireCamera(camera),
+        Number(from),
+        Number(to),
+      ),
+    };
+  }
+
+  @Get('playback/playlist.m3u8')
+  @RequirePermissions(HGVISION_CAMERA_READ)
+  @ApiOperation({ summary: 'Xem lại: playlist HLS trong khoảng thời gian' })
+  async playbackPlaylist(
+    @Query('camera') camera: string,
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const body = await this.cameras.playbackPlaylist(
+      requireCamera(camera),
+      Number(from),
+      Number(to),
+    );
+    res
+      .status(200)
+      .set({
+        'Content-Type': 'application/vnd.apple.mpegurl',
+        'Cache-Control': 'no-cache',
+      })
+      .send(body);
+  }
+
+  @Get('playback/download')
+  @RequirePermissions(HGVISION_CAMERA_READ)
+  @ApiOperation({
+    summary: 'Xem lại: tải MP4 trong khoảng thời gian (tối đa 1 giờ)',
+  })
+  async playbackDownload(
+    @Query('camera') camera: string,
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const f = await this.cameras.playbackDownload(
+      requireCamera(camera),
+      Number(from),
+      Number(to),
+    );
+    res.status(200).set({
+      'Content-Type': 'video/mp4',
+      'Content-Disposition': `attachment; filename="${f.fileName}"`,
+      'Cache-Control': 'private, no-store',
+      ...(f.contentLength ? { 'Content-Length': f.contentLength } : {}),
+    });
+    const stream = Readable.fromWeb(f.body as NodeReadableStream);
+    stream.on('error', () => res.destroy());
+    res.on('close', () => stream.destroy());
+    stream.pipe(res);
   }
 
   @Get('stream')

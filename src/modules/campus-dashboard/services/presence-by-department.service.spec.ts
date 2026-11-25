@@ -74,4 +74,32 @@ describe('PresenceByDepartmentService (2.12)', () => {
     expect(result.departments).toEqual([]);
     expect(result.totalPresent).toBe(0);
   });
+
+  it('getPresentPeople: lọc theo phòng ban (null = chưa gán), chỉ enter, map DTO', async () => {
+    dataSourceMock.query.mockResolvedValue([
+      {
+        user_id: 'u1',
+        full_name: 'Nguyen Van A',
+        employee_code: 'NV01',
+        avatar_url: null,
+        entered_at: new Date('2026-11-23T01:00:00Z'),
+        zone_name: 'Cong chinh',
+      },
+    ]);
+    const result = await service.getPresentPeople(null);
+    const [sql, params] = dataSourceMock.query.mock.calls[0];
+    expect(sql).toContain("l.direction = 'enter'");
+    expect(sql).toContain('IS NOT DISTINCT FROM $2::uuid');
+    expect(params[1]).toBeNull();
+    expect(result).toEqual([
+      {
+        userId: 'u1',
+        fullName: 'Nguyen Van A',
+        employeeCode: 'NV01',
+        avatarUrl: null,
+        enteredAt: '2026-11-23T01:00:00.000Z',
+        zoneName: 'Cong chinh',
+      },
+    ]);
+  });
 });

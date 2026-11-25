@@ -9,13 +9,18 @@ describe('BiometricStatusService', () => {
   let service: BiometricStatusService;
   let userRepo: { findOne: jest.Mock };
   let faceProfileRepo: { find: jest.Mock };
-  let dataSource: { manager: { find: jest.Mock } };
+  let dataSource: { manager: { find: jest.Mock; query: jest.Mock } };
 
   beforeEach(() => {
     userRepo = { findOne: jest.fn() };
     faceProfileRepo = { find: jest.fn() };
     // default: user không giữ role nào → không exempt sinh trắc học (BA 2026-08-03).
-    dataSource = { manager: { find: jest.fn().mockResolvedValue([]) } };
+    dataSource = {
+      manager: {
+        find: jest.fn().mockResolvedValue([]),
+        query: jest.fn().mockResolvedValue([]),
+      },
+    };
     service = new BiometricStatusService(
       userRepo as never,
       faceProfileRepo as never,
@@ -139,5 +144,57 @@ describe('BiometricStatusService', () => {
     const result = await service.getStatus('u1');
     expect(result.biometricRequired).toBe(true);
     expect(result.shouldShowBiometricPopup).toBe(true);
+  });
+});
+
+// [2026-11-23] Hồ sơ hiển thị + ảnh từng góc cho màn FaceID.
+describe('BiometricStatusService — profile view', () => {
+  it('chọn hồ sơ Cần kiểm tra trước, ảnh sắp theo thứ tự góc, có lý do', async () => {
+    const userRepo = {
+      findOne: jest.fn().mockResolvedValue({ id: 'u1', avatarUrl: null }),
+    };
+    const t = new Date('2026-11-20T00:00:00Z');
+    const faceProfileRepo = {
+      find: jest.fn().mockResolvedValue([
+        { id: 'a', status: 'active', lastUpdatedAt: t, enrolledAt: t },
+        {
+          id: 'p',
+          status: 'pending_review',
+          lastUpdatedAt: t,
+          enrolledAt: t,
+          sampleCount: 2,
+          metadataJson: {
+            poses: ['front', 'left'],
+            flag: { message: 'trùng định danh' },
+          },
+        },
+      ]),
+    };
+    const query = jest.fn().mockResolvedValue([
+      { id: 'm2', file_url: 'u2', file_name: 'left-x' },
+      { id: 'm1', file_url: 'u1', file_name: 'front-y' },
+    ]);
+    const svc = new BiometricStatusService(
+      userRepo as never,
+      faceProfileRepo as never,
+      { manager: { find: jest.fn().mockResolvedValue([]), query } } as never,
+    );
+    const r = await svc.getStatus('u1');
+    expect(r.profile?.faceProfileId).toBe('p');
+    expect(r.profile?.reason).toBe('trùng định danh');
+    expect(r.profile?.images.map((i) => i.pose)).toEqual(['front', 'left']);
+  });
+
+  it('chưa có hồ sơ → profile null', async () => {
+    const svc = new BiometricStatusService(
+      {
+        findOne: jest.fn().mockResolvedValue({ id: 'u1', avatarUrl: null }),
+      } as never,
+      { find: jest.fn().mockResolvedValue([]) } as never,
+      {
+        manager: { find: jest.fn().mockResolvedValue([]), query: jest.fn() },
+      } as never,
+    );
+    expect((await svc.getStatus('u1')).profile).toBeNull();
   });
 });
