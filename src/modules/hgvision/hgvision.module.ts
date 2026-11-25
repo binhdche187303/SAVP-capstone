@@ -11,6 +11,8 @@ import { HgvisionCameraController } from './hgvision-camera.controller.js';
 import { HgvisionSnapshotService } from './hgvision-snapshot.service.js';
 import { HgvisionPlateSyncService } from './hgvision-plate-sync.service.js';
 import { HgvisionPlateReconcileService } from './hgvision-plate-reconcile.service.js';
+import { AccountsModule } from '../accounts/accounts.module.js';
+import { HgvisionFaceSyncService } from './hgvision-face-sync.service.js';
 import { NotificationsModule } from '../notifications/notifications.module.js';
 
 /**
@@ -20,7 +22,13 @@ import { NotificationsModule } from '../notifications/notifications.module.js';
  * AnprModule để lấy VEHICLE_EVENT_HANDLER (pipeline biển số dùng chung).
  */
 @Module({
-  imports: [IvssModule, AnprModule, AuthModule, NotificationsModule],
+  imports: [
+    IvssModule,
+    AnprModule,
+    AuthModule,
+    NotificationsModule,
+    AccountsModule,
+  ],
   controllers: [HgvisionCameraController],
   providers: [
     {
@@ -42,6 +50,7 @@ import { NotificationsModule } from '../notifications/notifications.module.js';
     HgvisionSnapshotService,
     HgvisionPlateSyncService,
     HgvisionPlateReconcileService,
+    HgvisionFaceSyncService,
   ],
   exports: [HGVISION_CLIENT, HgvisionCameraService],
 })

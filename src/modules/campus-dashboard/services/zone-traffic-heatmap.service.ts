@@ -1,4 +1,7 @@
-import { filterValues, type FilterSelection } from '../../../common/utils/filter-selection.js';
+import {
+  filterValues,
+  type FilterSelection,
+} from '../../../common/utils/filter-selection.js';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { CampusDashboardRepository } from '../repositories/campus-dashboard.repository.js';
@@ -29,7 +32,11 @@ export interface TrafficOptions {
 }
 
 /** Điều kiện lọc camera thuộc nhóm; `column` PHẢI là hằng trong code. */
-const groupClause = (column: string, groupId: FilterSelection<string> | undefined, p: SqlParams): string =>
+const groupClause = (
+  column: string,
+  groupId: FilterSelection<string> | undefined,
+  p: SqlParams,
+): string =>
   groupId
     ? `AND ${column} IN (SELECT device_id FROM camera_group_members WHERE group_id = ANY(${p.add(filterValues(groupId))}::uuid[]))`
     : '';
@@ -220,8 +227,15 @@ export class ZoneTrafficHeatmapService {
     return (await Promise.all(queries)).flat();
   }
 
-  private validateRange(from: Date, to: Date, options: TrafficOptions = {}): void {
-    if (options.bucket === 'minute' && to.getTime() - from.getTime() > MAX_MINUTE_RANGE_MS) {
+  private validateRange(
+    from: Date,
+    to: Date,
+    options: TrafficOptions = {},
+  ): void {
+    if (
+      options.bucket === 'minute' &&
+      to.getTime() - from.getTime() > MAX_MINUTE_RANGE_MS
+    ) {
       throw new BadRequestException({
         code: 'INVALID_TRAFFIC_RANGE',
         message: 'Gom theo phút chỉ hỗ trợ khoảng tối đa 24 giờ',

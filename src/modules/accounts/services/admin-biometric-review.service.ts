@@ -26,6 +26,7 @@ import {
   NotificationDeliveryStatus,
   NotificationPriority,
 } from '../../notifications/entities/notification.entity.js';
+import { FaceEnrollmentHook } from './face-enrollment.hook.js';
 import { StorageService } from '../../storage/storage.service.js';
 import { ListBiometricSubmissionsQueryDto } from '../dto/list-biometric-submissions-query.dto.js';
 
@@ -81,6 +82,7 @@ export class AdminBiometricReviewService {
     private readonly dataSource: DataSource,
     private readonly storageService: StorageService,
     private readonly configService: ConfigService,
+    private readonly faceEnrollmentHook: FaceEnrollmentHook,
   ) {}
 
   // ── US1: List ────────────────────────────────────────────────────────
@@ -96,8 +98,22 @@ export class AdminBiometricReviewService {
       .createQueryBuilder('fp')
       .innerJoin('fp.user', 'u')
       .leftJoin('u.department', 'd')
-      .where('fp.deletedAt IS NULL')
-      .andWhere('fp.status IN (:...status)', { status: filterValues(status) });
+      .where('fp.deletedAt IS NULL');
+    const statuses = filterValues(status);
+    if (!statuses.includes('all')) {
+      qb.andWhere('fp.status IN (:...status)', { status: statuses });
+    }
+    // Ngày theo giờ VN (UTC+7), bao gồm 2 đầu.
+    if (query.fromDate) {
+      qb.andWhere('fp.enrolledAt >= :fromDate', {
+        fromDate: `${query.fromDate}T00:00:00+07:00`,
+      });
+    }
+    if (query.toDate) {
+      qb.andWhere(`fp.enrolledAt < (:toDate::timestamptz + interval '1 day')`, {
+        toDate: `${query.toDate}T00:00:00+07:00`,
+      });
+    }
 
     if (query.q) {
       const searchPattern = `%${query.q}%`;
@@ -132,8 +148,12 @@ export class AdminBiometricReviewService {
     }
 
     if (query.classId) {
-      const classIdentifier = filterValues(query.classId).map(value => value.trim().toLowerCase());
-      const normalizedClassCode = classIdentifier.map(value => value.replace(/[^a-z0-9]/gi, ''));
+      const classIdentifier = filterValues(query.classId).map((value) =>
+        value.trim().toLowerCase(),
+      );
+      const normalizedClassCode = classIdentifier.map((value) =>
+        value.replace(/[^a-z0-9]/gi, ''),
+      );
       qb.andWhere(
         `
         (
@@ -189,6 +209,8 @@ export class AdminBiometricReviewService {
       'fp.consentAt',
       'fp.primaryImageFileId',
       'fp.qualityScore',
+      'fp.sampleCount',
+      'fp.metadataJson',
       'u.id',
       'u.fullName',
       'u.email',
@@ -222,8 +244,27 @@ export class AdminBiometricReviewService {
         classSections: classSectionsByUser.get(fp.userId) ?? [],
         roleCode: roleByUser.get(fp.userId)?.roleCode ?? null,
         roleName: roleByUser.get(fp.userId)?.roleName ?? null,
+        ...this.describeProfile(fp),
       })),
       meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    };
+  }
+
+  /** [2026-11-23] Thông tin hậu kiểm từ metadata_json: số ảnh, nguồn, lý do gắn cờ / gỡ. */
+  private describeProfile(fp: FaceProfileEntity) {
+    const meta = (fp.metadataJson ?? {}) as {
+      source?: string;
+      serverCheck?: string;
+      flag?: { message?: string; matches?: unknown[] };
+      review?: { rejectionReason?: string };
+    };
+    return {
+      sampleCount: fp.sampleCount ?? 1,
+      source: meta.source ?? null,
+      serverCheck: meta.serverCheck ?? null,
+      flagReason: meta.flag?.message ?? null,
+      flagMatches: meta.flag?.matches ?? [],
+      reviewReason: meta.review?.rejectionReason ?? null,
     };
   }
 
@@ -273,6 +314,33 @@ export class AdminBiometricReviewService {
         hasPreview = true;
       }
     }
+    // [2026-11-23] Đủ ảnh các góc của hồ sơ (quét 5 góc) — tải từng ảnh qua download-url?mediaFileId=.
+    const imageRows: Array<{ id: string; file_name: string | null }> =
+      await this.dataSource.manager.query(
+        `SELECT id, file_name FROM media_files
+          WHERE deleted_at IS NULL
+            AND (id = $2 OR (related_entity_type = 'face_profile' AND related_entity_id = $1))
+          ORDER BY uploaded_at ASC, file_name ASC`,
+        [fp.id, fp.primaryImageFileId],
+      );
+    const poses = (fp.metadataJson?.poses as string[] | undefined) ?? [];
+    const images = imageRows
+      .map((r, i) => {
+        const prefix = r.file_name?.split('-')[0] ?? '';
+        const pose = poses.includes(prefix)
+          ? prefix
+          : (poses[i] ?? (i === 0 ? 'front' : `img${i + 1}`));
+        return {
+          mediaFileId: r.id,
+          pose,
+          isPrimary: r.id === fp.primaryImageFileId,
+        };
+      })
+      .sort((a, b) => {
+        const ra = poses.indexOf(a.pose);
+        const rb = poses.indexOf(b.pose);
+        return (ra < 0 ? 99 : ra) - (rb < 0 ? 99 : rb);
+      });
 
     let reviewMetadata: Record<string, unknown> | null = null;
     if (fp.metadataJson?.review) {
@@ -292,9 +360,13 @@ export class AdminBiometricReviewService {
       // bổ sung để khớp phần list() đã trả sẵn các field này.
       employeeCode: user.employeeCode,
       department: user.department
-        ? { id: user.department.id, departmentName: user.department.departmentName }
+        ? {
+            id: user.department.id,
+            departmentName: user.department.departmentName,
+          }
         : null,
-      classSections: (await this.getClassSectionsByUserIds([user.id])).get(user.id) ?? [],
+      classSections:
+        (await this.getClassSectionsByUserIds([user.id])).get(user.id) ?? [],
       status: fp.status,
       primaryImageFileId: fp.primaryImageFileId,
       imageFile,
@@ -302,6 +374,8 @@ export class AdminBiometricReviewService {
       submittedAt: fp.enrolledAt,
       consentAt: fp.consentAt,
       reviewMetadata,
+      images,
+      ...this.describeProfile(fp),
     };
   }
 
@@ -413,8 +487,11 @@ export class AdminBiometricReviewService {
   }
 
   // ── US2: Download URL ────────────────────────────────────────────────
-
-  async getBiometricDownloadUrl(faceProfileId: string, adminUserId: string) {
+  async getBiometricDownloadUrl(
+    faceProfileId: string,
+    adminUserId: string,
+    mediaFileId?: string,
+  ) {
     const fp = await this.faceProfileRepo.findOne({
       where: { id: faceProfileId, deletedAt: IsNull() },
     });
@@ -429,11 +506,18 @@ export class AdminBiometricReviewService {
         code: 'BIOMETRIC_MEDIA_NOT_FOUND',
         message: 'Biometric media file not found.',
       });
-
-    const rows: Array<{ id: string }> = await this.dataSource.manager.query(
-      `SELECT id FROM media_files WHERE id = $1 AND deleted_at IS NULL`,
-      [fp.primaryImageFileId],
-    );
+    // [2026-11-23] mediaFileId (tùy chọn) = 1 góc cụ thể; PHẢI thuộc hồ sơ này.
+    const rows: Array<{ id: string }> = mediaFileId
+      ? await this.dataSource.manager.query(
+          `SELECT id FROM media_files
+            WHERE id = $1 AND deleted_at IS NULL
+              AND (id = $3 OR (related_entity_type = 'face_profile' AND related_entity_id = $2))`,
+          [mediaFileId, fp.id, fp.primaryImageFileId],
+        )
+      : await this.dataSource.manager.query(
+          `SELECT id FROM media_files WHERE id = $1 AND deleted_at IS NULL`,
+          [fp.primaryImageFileId],
+        );
     if (rows.length === 0)
       throw new NotFoundException({
         code: 'BIOMETRIC_MEDIA_NOT_FOUND',
@@ -490,7 +574,7 @@ export class AdminBiometricReviewService {
 
   async approveBiometricSubmission(faceProfileId: string, adminUserId: string) {
     try {
-      return await this.dataSource.transaction(async (manager) => {
+      const result = await this.dataSource.transaction(async (manager) => {
         const fpRows: FaceProfileEntity[] = await manager
           .createQueryBuilder(FaceProfileEntity, 'fp')
           .setLock('pessimistic_write')
@@ -629,6 +713,8 @@ export class AdminBiometricReviewService {
           approvedAt: now.toISOString(),
         };
       });
+      await this.faceEnrollmentHook.notifyChanged(result.userId);
+      return result;
     } catch (err) {
       if (err instanceof NotFoundException || err instanceof ConflictException)
         throw err;
@@ -664,7 +750,7 @@ export class AdminBiometricReviewService {
     }
 
     try {
-      return await this.dataSource.transaction(async (manager) => {
+      const result = await this.dataSource.transaction(async (manager) => {
         const fpRows: FaceProfileEntity[] = await manager
           .createQueryBuilder(FaceProfileEntity, 'fp')
           .setLock('pessimistic_write')
@@ -678,10 +764,14 @@ export class AdminBiometricReviewService {
             code: 'BIOMETRIC_SUBMISSION_NOT_FOUND',
             message: 'Biometric submission not found.',
           });
-        if (fp.status !== FaceProfileStatus.PENDING_REVIEW) {
+        // [2026-11-23] Tự duyệt: admin "Gỡ" được cả hồ sơ đang active (→ revoked, gỡ khỏi
+        // HGVision qua FaceEnrollmentHook), không chỉ hồ sơ "Cần kiểm tra".
+        const isActive = fp.status === FaceProfileStatus.ACTIVE;
+        if (fp.status !== FaceProfileStatus.PENDING_REVIEW && !isActive) {
           throw new ConflictException({
             code: 'BIOMETRIC_SUBMISSION_NOT_PENDING',
-            message: 'Biometric submission is not in pending_review status.',
+            message:
+              'Biometric submission is not in pending_review/active status.',
           });
         }
 
@@ -692,7 +782,7 @@ export class AdminBiometricReviewService {
           .getMany();
 
         const user = userRows[0];
-        if (!user || user.accountStatus !== 'active' || user.deletedAt) {
+        if (!user || user.deletedAt) {
           throw new NotFoundException({
             code: 'USER_NOT_FOUND',
             message: 'User not found, inactive, or deleted.',
@@ -701,27 +791,29 @@ export class AdminBiometricReviewService {
 
         const now = new Date();
         const nowIso = now.toISOString();
-        const reasonEscaped = normalizedReason.replace(/'/g, "''");
-
-        await manager
-          .createQueryBuilder()
-          .update(FaceProfileEntity)
-          .set({
-            status: FaceProfileStatus.REJECTED,
-            metadataJson: () =>
-              `jsonb_set(COALESCE(metadata_json, '{}'::jsonb), '{review}', '{"rejectionReason": "${reasonEscaped}", "reviewedBy": "${adminUserId}", "reviewedAt": "${nowIso}"}')`,
-            lastUpdatedAt: now,
-          })
-          .where('id = :id', { id: faceProfileId })
-          .execute();
+        const newStatus = isActive
+          ? FaceProfileStatus.REVOKED
+          : FaceProfileStatus.REJECTED;
+        await manager.update(FaceProfileEntity, faceProfileId, {
+          status: newStatus,
+          metadataJson: {
+            ...(fp.metadataJson ?? {}),
+            review: {
+              rejectionReason: normalizedReason,
+              reviewedBy: adminUserId,
+              reviewedAt: nowIso,
+            },
+          },
+          lastUpdatedAt: now,
+        });
 
         await manager.insert(AuditLogEntity, {
           userId: adminUserId,
-          actionType: 'biometric.reject',
+          actionType: isActive ? 'biometric.revoke' : 'biometric.reject',
           entityType: 'face_profile',
           entityId: faceProfileId,
-          oldValueJson: { status: FaceProfileStatus.PENDING_REVIEW },
-          newValueJson: { status: FaceProfileStatus.REJECTED },
+          oldValueJson: { status: fp.status },
+          newValueJson: { status: newStatus },
           severity: AuditLogSeverity.INFO,
           metadataJson: { rejectionReason: normalizedReason },
         });
@@ -749,10 +841,12 @@ export class AdminBiometricReviewService {
         return {
           faceProfileId,
           userId: fp.userId,
-          status: FaceProfileStatus.REJECTED,
+          status: newStatus,
           rejectedAt: nowIso,
         };
       });
+      await this.faceEnrollmentHook.notifyChanged(result.userId);
+      return result;
     } catch (err) {
       if (
         err instanceof NotFoundException ||

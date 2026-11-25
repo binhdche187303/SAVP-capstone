@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { FaceEnrollmentHook } from './services/face-enrollment.hook.js';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DepartmentEntity } from './entities/department.entity.js';
 import { UserEntity } from './entities/user.entity.js';
@@ -88,6 +89,7 @@ import { AnprModule } from '../anpr/anpr.module.js';
     AvatarPhotoController,
   ],
   providers: [
+    FaceEnrollmentHook,
     UsersService,
     AccountImportService,
     PartnerAccountImportService,
@@ -111,6 +113,7 @@ import { AnprModule } from '../anpr/anpr.module.js';
     FaceProfileService,
     PasswordGeneratorService,
     DepartmentsService,
+    FaceEnrollmentHook,
   ],
 })
 export class AccountsModule {}

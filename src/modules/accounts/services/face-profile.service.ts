@@ -145,11 +145,23 @@ export class FaceProfileService {
    */
   async setProfileStatus(
     userId: string,
-    status: FaceProfileStatus.ACTIVE | FaceProfileStatus.REVOKED | FaceProfileStatus.DISABLED,
+    status:
+      | FaceProfileStatus.ACTIVE
+      | FaceProfileStatus.REVOKED
+      | FaceProfileStatus.DISABLED,
     actorId: string | null,
   ): Promise<boolean> {
-    if (![FaceProfileStatus.ACTIVE, FaceProfileStatus.REVOKED, FaceProfileStatus.DISABLED].includes(status)) {
-      throw new BadRequestException({ code: 'VALIDATION_ERROR', message: 'Trạng thái hồ sơ khuôn mặt không hợp lệ.' });
+    if (
+      ![
+        FaceProfileStatus.ACTIVE,
+        FaceProfileStatus.REVOKED,
+        FaceProfileStatus.DISABLED,
+      ].includes(status)
+    ) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'Trạng thái hồ sơ khuôn mặt không hợp lệ.',
+      });
     }
     const rows = returnedRows<{ id: string }>(
       await this.dataSource.manager.query(
@@ -158,7 +170,10 @@ export class FaceProfileService {
         [userId, status],
       ),
     );
-    if (rows.length > 0) this.logger.log(`Hồ sơ khuôn mặt user ${userId} → ${status} (actor ${actorId ?? 'system'})`);
+    if (rows.length > 0)
+      this.logger.log(
+        `Hồ sơ khuôn mặt user ${userId} → ${status} (actor ${actorId ?? 'system'})`,
+      );
     return rows.length > 0;
   }
 
@@ -166,23 +181,32 @@ export class FaceProfileService {
    * VIS-BE-001 (BR-V19): xóa ảnh và hồ sơ khuôn mặt — hồ sơ xóa mềm, media vô hiệu hóa, file bị xóa khỏi kho lưu trữ.
    * Chỉ dùng cho dữ liệu sinh trắc của khách hết hạn lưu giữ; lịch sử lượt khách ở nơi khác vẫn giữ.
    */
-  async deletePortrait(userId: string, extraMediaIds: string[] = []): Promise<{ deleted: boolean }> {
+  async deletePortrait(
+    userId: string,
+    extraMediaIds: string[] = [],
+  ): Promise<{ deleted: boolean }> {
     const profile = await this.faceProfileRepo.findOne({ where: { userId } });
     if (!profile && extraMediaIds.length === 0) return { deleted: false };
-    const media: Array<{ id: string; storage_key: string }> = await this.dataSource.manager.query(
-      `SELECT id, storage_key FROM media_files
+    const media: Array<{ id: string; storage_key: string }> =
+      await this.dataSource.manager.query(
+        `SELECT id, storage_key FROM media_files
         WHERE (id = $2 OR id = ANY($3::uuid[]) OR (related_entity_type = 'face_profile' AND related_entity_id = $1)) AND is_active = true`,
-      [userId, profile?.primaryImageFileId ?? null, extraMediaIds],
-    );
+        [userId, profile?.primaryImageFileId ?? null, extraMediaIds],
+      );
     for (const m of media) {
       try {
         await this.storageService.deleteFile(m.storage_key);
       } catch (e) {
-        this.logger.warn(`Không xóa được file ${m.storage_key}: ${e instanceof Error ? e.message : String(e)}`);
+        this.logger.warn(
+          `Không xóa được file ${m.storage_key}: ${e instanceof Error ? e.message : String(e)}`,
+        );
       }
     }
     if (media.length) {
-      await this.dataSource.manager.query(`UPDATE media_files SET is_active = false WHERE id = ANY($1::uuid[])`, [media.map((m) => m.id)]);
+      await this.dataSource.manager.query(
+        `UPDATE media_files SET is_active = false WHERE id = ANY($1::uuid[])`,
+        [media.map((m) => m.id)],
+      );
     }
     if (profile) await this.faceProfileRepo.softDelete(profile.id);
     return { deleted: true };
@@ -193,11 +217,15 @@ export class FaceProfileService {
    * hiện ảnh đăng ký. Local đọc đĩa, cloud tải từ file_url. null nếu không đọc được (không ném).
    */
   async getMediaDataUrl(mediaFileId: string): Promise<string | null> {
-    const rows: Array<{ storage_key: string; storage_provider: string; file_url: string | null; mime_type: string }> =
-      await this.dataSource.manager.query(
-        `SELECT storage_key, storage_provider, file_url, mime_type FROM media_files WHERE id = $1 LIMIT 1`,
-        [mediaFileId],
-      );
+    const rows: Array<{
+      storage_key: string;
+      storage_provider: string;
+      file_url: string | null;
+      mime_type: string;
+    }> = await this.dataSource.manager.query(
+      `SELECT storage_key, storage_provider, file_url, mime_type FROM media_files WHERE id = $1 LIMIT 1`,
+      [mediaFileId],
+    );
     const media = rows[0];
     if (!media) return null;
     try {
@@ -208,9 +236,13 @@ export class FaceProfileService {
         const res = await fetch(media.file_url);
         if (res.ok) buffer = Buffer.from(await res.arrayBuffer());
       }
-      return buffer ? `data:${media.mime_type || 'image/jpeg'};base64,${buffer.toString('base64')}` : null;
+      return buffer
+        ? `data:${media.mime_type || 'image/jpeg'};base64,${buffer.toString('base64')}`
+        : null;
     } catch (e) {
-      this.logger.warn(`getMediaDataUrl ${mediaFileId} lỗi: ${e instanceof Error ? e.message : String(e)}`);
+      this.logger.warn(
+        `getMediaDataUrl ${mediaFileId} lỗi: ${e instanceof Error ? e.message : String(e)}`,
+      );
       return null;
     }
   }
@@ -269,5 +301,62 @@ export class FaceProfileService {
 
     // provider lạ → null an toàn.
     return null;
+  }
+
+  /**
+   * Toàn bộ ảnh của hồ sơ ACTIVE (bộ quét 5 góc; hồ sơ cũ chỉ có 1 ảnh) để đẩy sang kho
+   * định danh. Ảnh tải lỗi bị bỏ qua. `profileId` null = user không có hồ sơ active.
+   */
+  async getActiveEnrollmentImages(userId: string): Promise<{
+    profileId: string | null;
+    images: Array<{ data: Buffer; mimeType: string; mediaFileId: string }>;
+  }> {
+    const face = await this.faceProfileRepo.findOne({
+      where: { userId, status: FaceProfileStatus.ACTIVE },
+      order: { lastUpdatedAt: 'DESC' },
+    });
+    if (!face) return { profileId: null, images: [] };
+    const rows: Array<{
+      id: string;
+      storage_key: string;
+      storage_provider: string;
+      file_url: string | null;
+      mime_type: string | null;
+    }> = await this.dataSource.manager.query(
+      `SELECT id, storage_key, storage_provider, file_url, mime_type
+         FROM media_files
+        WHERE deleted_at IS NULL AND is_active = true
+          AND ((related_entity_type = 'face_profile' AND related_entity_id = $1) OR id = $2)
+        ORDER BY created_at ASC`,
+      [face.id, face.primaryImageFileId],
+    );
+    const images: Array<{
+      data: Buffer;
+      mimeType: string;
+      mediaFileId: string;
+    }> = [];
+    for (const m of rows) {
+      try {
+        let data: Buffer | null = null;
+        if (m.storage_provider === 'local') {
+          data = this.storageService.getFile(m.storage_key);
+        } else if (m.file_url) {
+          const res = await fetch(m.file_url);
+          if (res.ok) data = Buffer.from(await res.arrayBuffer());
+        }
+        if (data) {
+          images.push({
+            data,
+            mimeType: m.mime_type || 'image/jpeg',
+            mediaFileId: m.id,
+          });
+        }
+      } catch (e) {
+        this.logger.warn(
+          `getActiveEnrollmentImages ${m.id} lỗi: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+    return { profileId: face.id, images };
   }
 }

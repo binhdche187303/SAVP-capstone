@@ -13,4 +13,25 @@ export class BiometricStatusResponseDto {
   biometricRequired: boolean;
   shouldShowBiometricPopup: boolean;
   message: string;
+  /**
+   * [2026-11-23] Hồ sơ đang hiển thị cho user (ưu tiên: Cần kiểm tra > Đã đăng ký > gần nhất).
+   * null khi chưa đăng ký.
+   */
+  profile?: BiometricProfileViewDto | null;
+}
+
+export class BiometricProfileImageDto {
+  mediaFileId: string;
+  pose: string;
+  url: string | null;
+}
+
+export class BiometricProfileViewDto {
+  faceProfileId: string;
+  status: string;
+  sampleCount: number;
+  submittedAt: string | null;
+  /** Lý do "Cần kiểm tra" hoặc "Bị gỡ" (nếu có). */
+  reason: string | null;
+  images: BiometricProfileImageDto[];
 }

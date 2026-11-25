@@ -89,7 +89,7 @@ export enum ImportAccountBiometricStatus {
   NOT_PROVIDED = 'not_provided',
   /** Preview mode: đã khớp được ảnh, sẽ upload thật khi commit=true. */
   PENDING_COMMIT = 'pending_commit',
-  /** Đã upload + tạo face_profiles (status=pending_review), chờ duyệt như luồng tự nộp. */
+  /** Đã upload + qua kiểm tra tự động → face_profiles active (tự duyệt, 2026-11-23). */
   ATTACHED = 'attached',
   /** Role của tài khoản không cần sinh trắc học (BUSINESS_ADMIN/SYSTEM_ADMIN) — bỏ qua. */
   ROLE_EXEMPT = 'role_exempt',
@@ -99,6 +99,10 @@ export enum ImportAccountBiometricStatus {
   FILE_TOO_LARGE = 'file_too_large',
   /** Lỗi upload Cloudinary hoặc ghi DB — tài khoản vẫn được tạo thành công. */
   UPLOAD_FAILED = 'upload_failed',
+  /** [2026-11-23] Ảnh không qua kiểm tra tự động (không thấy mặt / nhiều mặt). */
+  FACE_CHECK_FAILED = 'face_check_failed',
+  /** [2026-11-23] Đã lưu nhưng trùng định danh người khác → "Cần kiểm tra". */
+  FLAGGED = 'flagged',
 }
 
 /**

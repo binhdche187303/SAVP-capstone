@@ -6,11 +6,12 @@ import {
   HttpStatus,
   Post,
   UploadedFile,
+  UploadedFiles,
   UseFilters,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
   ApiBody,
@@ -131,6 +132,62 @@ export class BiometricSubmissionController {
       currentUser!.userId,
       file,
       body?.consentAccepted,
+    );
+    return { success: true, data };
+  }
+
+  // [2026-11-23] Quét FaceID qua webcam 5 góc — TỰ DUYỆT (không chờ duyệt tay).
+  // Ảnh qua 3 lớp kiểm tra (client chất lượng → server 1 mặt/ảnh → trùng định danh).
+  @Post('biometric-scan')
+  @HttpCode(HttpStatus.CREATED)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('profile.biometric.submit')
+  @UseFilters(BiometricHttpExceptionFilter)
+  @UseInterceptors(FilesInterceptor('files', 5))
+  @ApiBearerAuth()
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Đăng ký FaceID bằng quét webcam 5 góc (tự duyệt)',
+    description:
+      'files[] theo thứ tự poses (front,left,right,up,down). Qua kiểm tra → active + đẩy HGVision; trùng định danh người khác → pending_review ("Cần kiểm tra").',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        files: { type: 'array', items: { type: 'string', format: 'binary' } },
+        poses: { type: 'string', example: 'front,left,right,up,down' },
+        consentAccepted: { type: 'boolean' },
+        clientMeta: {
+          type: 'string',
+          description: 'JSON số đo chất lượng phía client',
+        },
+      },
+      required: ['files', 'poses', 'consentAccepted'],
+    },
+  })
+  async submitBiometricScan(
+    @CurrentUser() currentUser: { userId: string } | undefined,
+    @UploadedFiles() files: UploadedBiometricFile[] | undefined,
+    @Body()
+    body: { poses?: string; consentAccepted?: unknown; clientMeta?: string },
+  ): Promise<{ success: boolean; data: BiometricSubmissionResponseDto }> {
+    let clientMeta: unknown;
+    try {
+      clientMeta = body?.clientMeta ? JSON.parse(body.clientMeta) : undefined;
+    } catch {
+      clientMeta = undefined;
+    }
+    const poses = String(body?.poses ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const data = await this.biometricSubmissionService.submitScan(
+      currentUser!.userId,
+      files ?? [],
+      poses,
+      body?.consentAccepted,
+      { clientMeta },
     );
     return { success: true, data };
   }

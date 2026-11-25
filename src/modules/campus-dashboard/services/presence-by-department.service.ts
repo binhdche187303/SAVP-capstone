@@ -3,6 +3,7 @@ import { DataSource } from 'typeorm';
 import type {
   DepartmentPresenceDto,
   PresenceByDepartmentResponseDto,
+  PresentPersonDto,
 } from '../dto/presence-by-department-response.dto.js';
 
 /** startOfDay theo server local timezone (mirror pattern UC-126 §2.4). */
@@ -44,6 +45,30 @@ const PRESENCE_BY_DEPARTMENT_SQL = `
   FROM staff s
   WHERE s.department_id IS NULL
   HAVING COUNT(s.id) > 0
+`;
+
+/**
+ * Danh sách người ĐANG có mặt của 1 phòng ban ($2; NULL = chưa gán phòng ban):
+ * log cuối hôm nay là `enter`, kèm giờ vào + khu cổng.
+ */
+const PRESENT_PEOPLE_SQL = `
+  WITH last_log AS (
+    SELECT DISTINCT ON (user_id) user_id, direction, access_time, zone_id
+    FROM gate_access_logs
+    WHERE user_id IS NOT NULL
+      AND direction IN ('enter', 'leave')
+      AND access_time >= $1
+    ORDER BY user_id, access_time DESC, id DESC
+  )
+  SELECT u.id AS user_id, u.full_name, u.employee_code, u.avatar_url,
+         l.access_time AS entered_at, z.zone_name
+  FROM last_log l
+  JOIN users u ON u.id = l.user_id
+  LEFT JOIN zones z ON z.id = l.zone_id
+  WHERE l.direction = 'enter'
+    AND u.deleted_at IS NULL AND u.employment_status = 'active'
+    AND u.department_id IS NOT DISTINCT FROM $2::uuid
+  ORDER BY l.access_time DESC
 `;
 
 interface PresenceRow {
@@ -92,5 +117,29 @@ export class PresenceByDepartmentService {
       totalPresent: departments.reduce((s, d) => s + d.presentCount, 0),
       departments,
     };
+  }
+
+  async getPresentPeople(
+    departmentId: string | null,
+  ): Promise<PresentPersonDto[]> {
+    const rows: Array<{
+      user_id: string;
+      full_name: string;
+      employee_code: string | null;
+      avatar_url: string | null;
+      entered_at: Date | string;
+      zone_name: string | null;
+    }> = await this.dataSource.query(PRESENT_PEOPLE_SQL, [
+      startOfDay(new Date()),
+      departmentId,
+    ]);
+    return rows.map((r) => ({
+      userId: r.user_id,
+      fullName: r.full_name,
+      employeeCode: r.employee_code,
+      avatarUrl: r.avatar_url,
+      enteredAt: new Date(r.entered_at).toISOString(),
+      zoneName: r.zone_name,
+    }));
   }
 }

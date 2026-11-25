@@ -46,6 +46,7 @@ describe('AccountImportService', () => {
     resolveMediaStorageProvider: jest.Mock;
   };
   let vehicleRegistrationService: { register: jest.Mock };
+  let biometricSubmissionService: { submitScan: jest.Mock };
   let dataSource: any;
 
   // Mutable DB fixtures
@@ -75,6 +76,11 @@ describe('AccountImportService', () => {
         .mockResolvedValue({ publicId: 'p1', secureUrl: 'https://x/p1.jpg' }),
       deleteImage: jest.fn().mockResolvedValue(undefined),
       resolveMediaStorageProvider: jest.fn().mockReturnValue('cloud_provider'),
+    };
+    biometricSubmissionService = {
+      submitScan: jest
+        .fn()
+        .mockResolvedValue({ biometricReviewStatus: 'approved' }),
     };
     vehicleRegistrationService = {
       register: jest.fn().mockResolvedValue({ id: 'vr-1' }),
@@ -145,6 +151,7 @@ describe('AccountImportService', () => {
       notificationsService as any,
       cloudinaryService as any,
       vehicleRegistrationService as any,
+      biometricSubmissionService as any,
     );
   });
 
@@ -408,7 +415,16 @@ describe('AccountImportService', () => {
     const row = report.results.find((r) => r.email === 'a@company.com');
     expect(row?.status).toBe(ImportAccountRowStatus.SUCCESS);
     expect(row?.biometricStatus).toBe('attached');
-    expect(cloudinaryService.uploadImage).toHaveBeenCalledTimes(1);
+    // [2026-11-23] Ảnh kèm import đi qua luồng tự duyệt chung (submitScan).
+    expect(biometricSubmissionService.submitScan).toHaveBeenCalledTimes(1);
+    expect(
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      biometricSubmissionService.submitScan.mock.calls[0][4],
+    ).toMatchObject({
+      skipConsent: true,
+      source: 'excel_import',
+      actorId: 'admin-1',
+    });
   });
 
   it('commit: role BUSINESS_ADMIN không cần sinh trắc học → role_exempt, không upload', async () => {
@@ -650,7 +666,7 @@ describe('AccountImportService', () => {
     const row = report.results.find((r) => r.email === 'a@company.com');
     expect(row?.status).toBe(ImportAccountRowStatus.SUCCESS);
     expect(row?.biometricStatus).toBe('attached');
-    expect(cloudinaryService.uploadImage).toHaveBeenCalledTimes(1);
+    expect(biometricSubmissionService.submitScan).toHaveBeenCalledTimes(1);
   });
 
   it('commit: photosZip nhưng chưa xác nhận consent → BadRequestException', async () => {

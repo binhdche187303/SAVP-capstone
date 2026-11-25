@@ -14,3 +14,13 @@ export interface PresenceByDepartmentResponseDto {
   totalPresent: number;
   departments: DepartmentPresenceDto[];
 }
+
+export interface PresentPersonDto {
+  userId: string;
+  fullName: string;
+  employeeCode: string | null;
+  avatarUrl: string | null;
+  /** Giờ quét vào cổng gần nhất hôm nay. */
+  enteredAt: string;
+  zoneName: string | null;
+}
