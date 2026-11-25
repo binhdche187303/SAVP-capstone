@@ -126,6 +126,54 @@ describe('HgvisionClient', () => {
     );
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it('media xem lại (:8113) kèm Bearer — HGVision bật phân quyền thì cần playback:read', async () => {
+    fetchMock
+      .mockResolvedValueOnce(tokenRes())
+      .mockResolvedValueOnce(json(200, []));
+
+    await client.fetchPublicMedia('/api/playback/recordings?camera_id=c1');
+
+    const [url, init] = fetchMock.mock.calls[1] as FetchCall;
+    expect(String(url)).toBe(
+      'http://hg.local:8113/api/playback/recordings?camera_id=c1',
+    );
+    expect((init.headers as Record<string, string>).Authorization).toBe(
+      'Bearer tok-1',
+    );
+  });
+
+  it('media xem lại gặp 401 → lấy token mới, thử lại 1 lần', async () => {
+    fetchMock
+      .mockResolvedValueOnce(tokenRes())
+      .mockResolvedValueOnce(json(401, { detail: 'unauthorized' }))
+      .mockResolvedValueOnce(tokenRes())
+      .mockResolvedValueOnce(json(200, []));
+
+    const res = await client.fetchPublicMedia('/api/playback/recordings');
+
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it('HLS live (MediaMTX) không kèm token', async () => {
+    const c = new HgvisionClient({
+      baseUrl: 'http://hg.local:8113',
+      hlsBaseUrl: 'http://hg.local:8888',
+      clientId: 'cli_x',
+      clientSecret: 'sk_x',
+      timeoutMs: 1000,
+    });
+    fetchMock.mockResolvedValueOnce(new Response('#EXTM3U', { status: 200 }));
+
+    await c.fetchPublicMedia('/cam1/index.m3u8', undefined, 'hls');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0] as FetchCall;
+    expect(
+      (init.headers as Record<string, string>).Authorization,
+    ).toBeUndefined();
+  });
 });
 
 describe('HgvisionClient — camera / định danh', () => {

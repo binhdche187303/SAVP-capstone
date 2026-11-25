@@ -305,11 +305,20 @@ export class HgvisionClient {
         0,
       );
     }
-    const res = await this.fetchWithTimeout(
-      path,
-      { method: 'GET', headers: range ? { Range: range } : {} },
-      base,
-    );
+    // HLS live (MediaMTX) không dùng token; API :8113 kèm token (xem mediaAuthHeaders).
+    const withAuth = source === 'api';
+    const build = async (): Promise<RequestInit> => ({
+      method: 'GET',
+      headers: {
+        ...(range ? { Range: range } : {}),
+        ...(withAuth ? await this.mediaAuthHeaders() : {}),
+      },
+    });
+    let res = await this.fetchWithTimeout(path, await build(), base);
+    if (res.status === 401 && withAuth && this.hasCredentials()) {
+      this.token = null;
+      res = await this.fetchWithTimeout(path, await build(), base);
+    }
     if (!res.ok) throw await this.toError(res);
     return {
       status: res.status,
@@ -332,17 +341,25 @@ export class HgvisionClient {
     if (!this.deps.baseUrl) {
       throw new HgvisionError('HGVISION_BASE_URL chưa cấu hình.', 0);
     }
-    let res: Response;
-    try {
-      res = await fetch(new URL(path, this.deps.baseUrl), {
-        method: 'GET',
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-    } catch (e) {
-      throw new HgvisionError(
-        `Không kết nối được HGVision: ${e instanceof Error ? e.message : 'unknown'}`,
-        0,
-      );
+    const send = async (): Promise<Response> => {
+      try {
+        return await fetch(new URL(path, this.deps.baseUrl), {
+          method: 'GET',
+          headers: await this.mediaAuthHeaders(),
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+      } catch (e) {
+        if (e instanceof HgvisionError) throw e;
+        throw new HgvisionError(
+          `Không kết nối được HGVision: ${e instanceof Error ? e.message : 'unknown'}`,
+          0,
+        );
+      }
+    };
+    let res = await send();
+    if (res.status === 401 && this.hasCredentials()) {
+      this.token = null;
+      res = await send();
     }
     if (!res.ok || !res.body) throw await this.toError(res);
     return { status: res.status, headers: res.headers, body: res.body };
@@ -685,6 +702,20 @@ export class HgvisionClient {
       res = await this.fetchWithTimeout(path, await build());
     }
     return res;
+  }
+
+  private hasCredentials(): boolean {
+    return !!this.deps.clientId && !!this.deps.clientSecret;
+  }
+
+  /**
+   * Playback/recording/media trên :8113 "công khai khi chưa bật phân quyền; bật rồi thì
+   * cần playback:read" (OpenAPI HGVision). HGVision trường đã bật ⇒ không kèm token là 401
+   * ("Máy chủ camera từ chối tài khoản kết nối"). Có client id/secret thì luôn kèm token.
+   */
+  private async mediaAuthHeaders(): Promise<Record<string, string>> {
+    if (!this.hasCredentials()) return {};
+    return { Authorization: `Bearer ${await this.accessToken()}` };
   }
 
   private async accessToken(): Promise<string> {
