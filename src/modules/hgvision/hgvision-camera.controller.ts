@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   DefaultValuePipe,
   Get,
@@ -22,9 +23,11 @@ import { RequirePermissions } from '../auth/decorators/require-permissions.decor
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import { HgvisionCameraService } from './hgvision-camera.service.js';
 import { HgvisionSnapshotService } from './hgvision-snapshot.service.js';
+import { CreateHgCameraDto } from './dto/create-hg-camera.dto.js';
 
 export const HGVISION_CAMERA_READ = 'hgvision.camera.read';
 export const HGVISION_SYSTEM_READ = 'hgvision.system.read';
+export const HGVISION_CAMERA_WRITE = 'hgvision.camera.write';
 
 const requireCamera = (camera: string | undefined): string => {
   const v = (camera ?? '').trim();
@@ -45,6 +48,19 @@ export class HgvisionCameraController {
     private readonly cameras: HgvisionCameraService,
     private readonly snapshots: HgvisionSnapshotService,
   ) {}
+
+  @Post('cameras')
+  @RequirePermissions(HGVISION_CAMERA_WRITE)
+  @ApiOperation({
+    summary: 'Thêm camera RTSP sang HGVision (cần scope cameras:write)',
+  })
+  async createCamera(@Body() dto: CreateHgCameraDto) {
+    return {
+      success: true,
+      message: 'Đã thêm camera sang HGVision',
+      data: await this.cameras.createCamera(dto),
+    };
+  }
 
   @Post('cameras/:name/snapshot')
   @RequirePermissions(HGVISION_CAMERA_READ)
