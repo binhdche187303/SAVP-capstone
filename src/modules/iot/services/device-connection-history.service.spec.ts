@@ -1,4 +1,5 @@
 import {
+  DeviceConnectionHistoryService,
   buildSegments,
   uptimePercent,
 } from './device-connection-history.service.js';
@@ -34,5 +35,28 @@ describe('device connection history', () => {
     // online 3h, offline 1h, disabled 6h → 75%
     expect(uptimePercent(segs, t(0))).toBe(75);
     expect(uptimePercent(segs, t(5))).toBeNull();
+  });
+
+  it('thiết bị mới đăng ký: không tính 30 ngày trước khi tạo, không tính chờ dò đầu tiên là sự cố', async () => {
+    const created = new Date(Date.now() - 60_000);
+    const online = new Date(Date.now() - 30_000);
+    const ds = {
+      manager: {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'd1',
+          status: 'online',
+          zoneId: null,
+          createdAt: created,
+        }),
+      },
+      query: jest
+        .fn()
+        .mockResolvedValue([{ at: online, old: 'offline', new: 'online' }]),
+    };
+    const svc = new DeviceConnectionHistoryService(ds as never);
+    const h = await svc.getHistory('d1', 30);
+    expect(h.from.getTime()).toBe(online.getTime());
+    expect(h.offline_count).toBe(0);
+    expect(h.uptime_percent).toBe(100);
   });
 });

@@ -106,7 +106,10 @@ export class DeviceConnectionHistoryService {
     }
 
     const to = new Date();
-    const from = new Date(to.getTime() - days * DAY_MS);
+    // Thiết bị tạo sau đầu cửa sổ → chỉ tính từ lúc tạo (trước đó không tồn tại, không phải offline).
+    let from = new Date(
+      Math.max(to.getTime() - days * DAY_MS, device.createdAt?.getTime() ?? 0),
+    );
 
     // Thay đổi trong cửa sổ + lần cuối TRƯỚC cửa sổ (để biết trạng thái lúc bắt đầu).
     const rows: Array<{ at: Date; old: string; new: string }> =
@@ -133,6 +136,15 @@ export class DeviceConnectionHistoryService {
 
     const before = changes.filter((c) => c.at <= from).pop();
     const firstInside = changes.find((c) => c.at > from);
+    // Mới đăng ký, chưa từng kết nối → khoảng chờ lần dò đầu tiên không tính là mất kết nối.
+    if (
+      !before &&
+      firstInside &&
+      firstInside.old !== 'online' &&
+      firstInside.new === 'online'
+    ) {
+      from = firstInside.at;
+    }
     const initialStatus =
       before?.new ?? firstInside?.old ?? (device.status as string);
     const segments = buildSegments(from, to, initialStatus, changes);
