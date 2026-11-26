@@ -190,6 +190,15 @@ describe('DeviceEventSnapshotService (F-F)', () => {
       expect(result.buffer).toEqual(Buffer.from('IMG'));
     });
 
+    it('Bảo vệ (GUARD) xem ảnh sự kiện ANPR không có userId → thành công (trang Xe vào ra)', async () => {
+      roleOf('GUARD');
+      wire({
+        event: [{ snapshot_file_id: MEDIA_ID, owner_user_id: null }],
+      });
+      const result = await service.getSnapshot(EVENT_ID, 'guard-1');
+      expect(result.buffer).toEqual(Buffer.from('IMG'));
+    });
+
     it('System Admin xem snapshot của người khác → vẫn thành công (regression)', async () => {
       roleOf('SYSTEM_ADMIN');
       wire({

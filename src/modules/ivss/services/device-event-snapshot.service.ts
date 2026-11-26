@@ -35,7 +35,9 @@ export interface DeviceEventSnapshot {
 }
 
 /** Role được xem snapshot của BẤT KỲ event nào — không giới hạn chủ nhân. */
-const ELEVATED_ROLES = ['SYSTEM_ADMIN', 'BUSINESS_ADMIN', 'MANAGER'];
+// GUARD: bảo vệ xem ảnh xe/khuôn mặt mọi sự kiện cổng (trang Xe vào ra, Trực cổng) — sự kiện
+// ANPR không có userId nên trước đây GUARD luôn bị SELF_ONLY → "Không có ảnh" (2026-11-26).
+const ELEVATED_ROLES = ['SYSTEM_ADMIN', 'BUSINESS_ADMIN', 'MANAGER', 'GUARD'];
 
 /**
  * DeviceEventSnapshotService (F-F) — đọc ảnh snapshot đã lưu bởi F-B/F-C/F-D
