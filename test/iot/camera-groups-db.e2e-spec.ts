@@ -7,7 +7,7 @@ const describeDb = process.env.RUN_DB_TESTS === '1' ? describe : describe.skip;
 
 describeDb('CAMG-001 nhóm camera + cảnh báo bảo trì (DB thật)', () => {
   const tag = `CAMGTEST-${Date.now()}`;
-  const groups = () => new CameraGroupsService(AppDataSource);
+  const groups = () => new CameraGroupsService(AppDataSource, { syncDevices: async () => {}, groupDeviceIds: async () => [] } as never);
   const recorded: Array<Record<string, any>> = [];
   const notified: string[] = [];
   const maint = () =>

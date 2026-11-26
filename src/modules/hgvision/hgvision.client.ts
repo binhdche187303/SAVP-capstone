@@ -634,6 +634,15 @@ export class HgvisionClient {
     return this.request('POST', '/api/cameras', { json: input });
   }
 
+  /** PUT /api/cameras/{name} (cameras:write) — cập nhật một phần, vd `{ camera_group }`. */
+  async updateCamera(
+    name: string,
+    patch: { camera_group?: string },
+  ): Promise<unknown> {
+    this.requireWrite();
+    return this.request('PUT', `/api/cameras/${seg(name)}`, { json: patch });
+  }
+
   /** POST /api/onvif/get-urls (cameras:read) — URL RTSP chính/phụ từ thiết bị ONVIF. */
   async onvifGetUrls(c: HgvisionOnvifCredentials): Promise<HgvisionOnvifUrls> {
     return this.request('POST', '/api/onvif/get-urls', { json: c });

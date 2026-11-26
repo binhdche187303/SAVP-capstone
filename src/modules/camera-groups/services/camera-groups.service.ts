@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { CameraGroupHgSyncService } from './camera-group-hg-sync.service.js';
 import { CameraGroupDevicesDto, CreateCameraGroupDto, UpdateCameraGroupDto } from '../dto/camera-group.dto.js';
 
 /** Loại thiết bị được xếp vào nhóm camera. */
@@ -32,7 +33,7 @@ const GROUP_SELECT = `
 /** CAMG-001 — CRUD nhóm camera và gán camera vào nhóm (n-n). */
 @Injectable()
 export class CameraGroupsService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(private readonly dataSource: DataSource, private readonly hgSync: CameraGroupHgSyncService) {}
 
   list(search?: string): Promise<CameraGroupRow[]> {
     return this.dataSource.query(
@@ -89,12 +90,15 @@ export class CameraGroupsService {
       ],
     );
     if (!this.returnedAny(res)) throw this.notFound();
+    if (dto.groupName !== undefined) await this.hgSync.syncDevices(await this.hgSync.groupDeviceIds(id));
     return this.get(id);
   }
 
   async remove(id: string): Promise<void> {
+    const members = await this.hgSync.groupDeviceIds(id);
     const res: unknown = await this.dataSource.query(`DELETE FROM camera_groups WHERE id = $1 RETURNING id`, [id]);
     if (!this.returnedAny(res)) throw this.notFound();
+    await this.hgSync.syncDevices(members);
   }
 
   /** Thêm camera vào nhóm; đã có thì bỏ qua. Mọi id phải là camera tồn tại, không thì không thêm gì. */
@@ -119,6 +123,7 @@ export class CameraGroupsService {
          SELECT $1, UNNEST($2::uuid[]) ON CONFLICT DO NOTHING`,
         [id, dto.deviceIds],
       );
+      await this.hgSync.syncDevices(dto.deviceIds);
     }
     return this.get(id);
   }
@@ -126,6 +131,7 @@ export class CameraGroupsService {
   async removeDevice(id: string, deviceId: string) {
     await this.assertGroup(id);
     await this.dataSource.query(`DELETE FROM camera_group_members WHERE group_id = $1 AND device_id = $2`, [id, deviceId]);
+    await this.hgSync.syncDevices([deviceId]);
     return this.get(id);
   }
 
