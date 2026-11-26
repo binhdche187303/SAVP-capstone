@@ -63,6 +63,7 @@ export class CameraGroupsService {
          VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
         [dto.groupCode, dto.groupName, dto.description ?? null, userId, dto.zoneId ?? null, dto.purpose?.trim() || null],
       );
+      await this.hgSync.groupCreated(dto.groupName, dto.description);
       return this.get(rows[0].id);
     } catch (e) {
       throw this.mapDuplicate(e);
@@ -70,6 +71,7 @@ export class CameraGroupsService {
   }
 
   async update(id: string, dto: UpdateCameraGroupDto) {
+    const before = await this.nameOf(id);
     const res: unknown = await this.dataSource.query(
       `UPDATE camera_groups
           SET group_name = COALESCE($2, group_name),
@@ -90,15 +92,27 @@ export class CameraGroupsService {
       ],
     );
     if (!this.returnedAny(res)) throw this.notFound();
-    if (dto.groupName !== undefined) await this.hgSync.syncDevices(await this.hgSync.groupDeviceIds(id));
-    return this.get(id);
+    const after = await this.get(id);
+    if (before && (dto.groupName !== undefined || dto.description !== undefined)) {
+      await this.hgSync.groupUpdated(id, before, after.group_name, after.description);
+    }
+    return after;
   }
 
   async remove(id: string): Promise<void> {
+    const name = await this.nameOf(id);
     const members = await this.hgSync.groupDeviceIds(id);
     const res: unknown = await this.dataSource.query(`DELETE FROM camera_groups WHERE id = $1 RETURNING id`, [id]);
     if (!this.returnedAny(res)) throw this.notFound();
-    await this.hgSync.syncDevices(members);
+    if (name) await this.hgSync.groupDeleted(name, members);
+  }
+
+  private async nameOf(id: string): Promise<string | null> {
+    const rows: Array<{ group_name: string }> = await this.dataSource.query(
+      `SELECT group_name FROM camera_groups WHERE id = $1`,
+      [id],
+    );
+    return rows[0]?.group_name ?? null;
   }
 
   /** Thêm camera vào nhóm; đã có thì bỏ qua. Mọi id phải là camera tồn tại, không thì không thêm gì. */

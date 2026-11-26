@@ -634,6 +634,28 @@ export class HgvisionClient {
     return this.request('POST', '/api/cameras', { json: input });
   }
 
+  /** POST /api/groups (cameras:write). 409 = nhóm đã có. */
+  async createGroup(name: string, description?: string | null): Promise<unknown> {
+    this.requireWrite();
+    return this.request('POST', '/api/groups', {
+      json: { GROUP_NAME: name, DESCRIPTION: description ?? '' },
+    });
+  }
+
+  /** PUT /api/groups/{name} (cameras:write) — chỉ sửa mô tả (API không cho đổi tên). */
+  async updateGroup(name: string, description?: string | null): Promise<unknown> {
+    this.requireWrite();
+    return this.request('PUT', `/api/groups/${seg(name)}`, {
+      json: { DESCRIPTION: description ?? '' },
+    });
+  }
+
+  /** DELETE /api/groups/{name} (cameras:write). */
+  async deleteGroup(name: string): Promise<void> {
+    this.requireWrite();
+    await this.request('DELETE', `/api/groups/${seg(name)}`);
+  }
+
   /** PUT /api/cameras/{name} (cameras:write) — cập nhật một phần, vd `{ camera_group }`. */
   async updateCamera(
     name: string,
