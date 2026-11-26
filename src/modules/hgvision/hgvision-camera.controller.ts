@@ -24,6 +24,8 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import { HgvisionCameraService } from './hgvision-camera.service.js';
 import { HgvisionSnapshotService } from './hgvision-snapshot.service.js';
 import { CreateHgCameraDto } from './dto/create-hg-camera.dto.js';
+import { ImportHgCamerasDto } from './dto/import-hg-cameras.dto.js';
+import { HgvisionCameraImportService } from './hgvision-camera-import.service.js';
 
 export const HGVISION_CAMERA_READ = 'hgvision.camera.read';
 export const HGVISION_SYSTEM_READ = 'hgvision.system.read';
@@ -47,6 +49,7 @@ export class HgvisionCameraController {
   constructor(
     private readonly cameras: HgvisionCameraService,
     private readonly snapshots: HgvisionSnapshotService,
+    private readonly importer: HgvisionCameraImportService,
   ) {}
 
   @Post('cameras')
@@ -59,6 +62,20 @@ export class HgvisionCameraController {
       success: true,
       message: 'Đã thêm camera sang HGVision',
       data: await this.cameras.createCamera(dto),
+    };
+  }
+
+  @Post('cameras/import')
+  @RequirePermissions(HGVISION_CAMERA_WRITE)
+  @ApiOperation({
+    summary:
+      'Import camera từ Excel (dryRun = xem trước): tạo/cập nhật thiết bị SAVP theo khu vực, tuỳ chọn thêm sang HGVision',
+  })
+  async importCameras(@Body() dto: ImportHgCamerasDto) {
+    return {
+      success: true,
+      message: dto.dryRun === false ? 'Đã import camera' : 'Xem trước import',
+      data: await this.importer.import(dto),
     };
   }
 

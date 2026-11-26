@@ -7,6 +7,7 @@ import { HgvisionClient } from './hgvision.client.js';
 import { HGVISION_CLIENT } from './hgvision.constants.js';
 import { HgvisionPollerService } from './hgvision-poller.service.js';
 import { HgvisionCameraService } from './hgvision-camera.service.js';
+import { HgvisionCameraImportService } from './hgvision-camera-import.service.js';
 import { HgvisionCameraController } from './hgvision-camera.controller.js';
 import { HgvisionSnapshotService } from './hgvision-snapshot.service.js';
 import { HgvisionPlateSyncService } from './hgvision-plate-sync.service.js';
@@ -47,6 +48,7 @@ import { NotificationsModule } from '../notifications/notifications.module.js';
     },
     HgvisionPollerService,
     HgvisionCameraService,
+    HgvisionCameraImportService,
     HgvisionSnapshotService,
     HgvisionPlateSyncService,
     HgvisionPlateReconcileService,
