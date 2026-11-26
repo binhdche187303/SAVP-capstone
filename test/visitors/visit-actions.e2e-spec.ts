@@ -1,6 +1,7 @@
 // VIS-BE-001 Task 6 — các thao tác ghi trên lượt khách (service thật, DB thật).
 // Chạy: RUN_DB_TESTS=1 npx jest --config test/jest-e2e.json test/visitors/visit-actions --runInBand
 import { AppDataSource } from '../../src/database/data-source';
+import { cleanupVisitorTestMedia } from './fixtures';
 import { VisitActionsService } from '../../src/modules/visitors/services/visit-actions.service';
 import { VisitorConfigService } from '../../src/modules/visitors/config/visitor-config.service';
 import { AuditLogsService } from '../../src/modules/administration/services/audit-logs.service';
@@ -34,6 +35,7 @@ describeDb('VIS-BE-001 visit actions', () => {
     await AppDataSource.query(`DELETE FROM visitor_visits WHERE purpose LIKE '${TAG}%'`);
     await AppDataSource.query(`DELETE FROM visitors WHERE full_name LIKE '${TAG}%'`);
     await AppDataSource.query(`DELETE FROM users WHERE employee_code LIKE '${TAG}-%' OR (email LIKE '%@visitor.invalid' AND full_name LIKE '${TAG}%')`);
+    await cleanupVisitorTestMedia(AppDataSource);
   }
   const base = (over: Record<string, unknown> = {}) => ({
     visitor: { fullName: `${TAG} Khách ${phoneSeq}`, idNumber: '', phone: `0966${String(++phoneSeq).padStart(6, '0')}`, email: 'k@example.com', organization: 'Công ty A', photo: PNG },
@@ -81,7 +83,11 @@ describeDb('VIS-BE-001 visit actions', () => {
     await expect(actions.approve(v.id, { access: { validFrom: from, validTo: from, zoneIds: [zone] } }, asAdmin()))
       .rejects.toMatchObject({ response: { message: 'Hiệu lực đến phải sau hiệu lực từ' } });
     const ok = await actions.approve(v.id, { access: { validFrom: from, validTo: new Date(Date.now() + 5 * HOUR).toISOString(), zoneIds: [zone] } }, asAdmin());
-    expect(ok.access.zoneIds).toEqual([zone]);
+    // VisitorZonePolicyService luôn cộng thêm mọi khu visitor_policy = 'open' vào khu được chọn.
+    const open: string[] = (await AppDataSource.query(
+      `SELECT id FROM zones WHERE deleted_at IS NULL AND status = 'active' AND visitor_policy = 'open'`,
+    )).map((z: { id: string }) => z.id);
+    expect([...ok.access.zoneIds].sort()).toEqual([...new Set([zone, ...open])].sort());
     expect(ok.access.validFrom).toBe(from);
   });
 

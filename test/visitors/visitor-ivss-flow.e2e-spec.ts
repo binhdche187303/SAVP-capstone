@@ -33,7 +33,7 @@ describeDb('VIS-BE-001 IVSS flow', () => {
               last_seen_at = NULL, last_seen_zone_id = NULL, face_score = NULL WHERE id = $1`, [fx.ids[key], st]);
     await AppDataSource.query(`DELETE FROM visitor_visit_events WHERE visit_id = $1`, [fx.ids[key]]);
     await AppDataSource.query(`DELETE FROM visitor_visit_zones WHERE visit_id = $1`, [fx.ids[key]]);
-    await AppDataSource.query(`INSERT INTO visitor_visit_zones (visit_id, zone_id) VALUES ($1,$2),($1,$3)`, [fx.ids[key], fx.zoneGate, fx.zoneB1]);
+    await AppDataSource.query(`INSERT INTO visitor_visit_zones (visit_id, zone_id, route_order) VALUES ($1,$2,1),($1,$3,2)`, [fx.ids[key], fx.zoneGate, fx.zoneB1]);
   };
 
   beforeAll(async () => {
@@ -160,7 +160,7 @@ describeDb('VIS-BE-001 IVSS flow', () => {
       `INSERT INTO visitor_visits (visit_code, visitor_id, channel, status, host_user_id, department_id, purpose, scheduled_from, scheduled_to, valid_from, valid_to)
        VALUES ('VS-fa11ed00-99', $1, 'online', 'approved', $2, $3, 'fa11ed00 lượt sau', now() + interval '30 hours', now() + interval '32 hours', now() + interval '29 hours', now() + interval '33 hours') RETURNING id`,
       [sameVisitor, fx.hostA, fx.deptA]))[0].id;
-    await AppDataSource.query(`INSERT INTO visitor_visit_zones (visit_id, zone_id) VALUES ($1, $2)`, [other, fx.zoneGate]);
+    await AppDataSource.query(`INSERT INTO visitor_visit_zones (visit_id, zone_id, route_order) VALUES ($1, $2, 1)`, [other, fx.zoneGate]);
     await gate.onIvssFaceEvent(await ev('approved'));
     expect(await status('approved')).toBe('checked_in');
     expect((await visits.getView(other)).status).toBe('approved');

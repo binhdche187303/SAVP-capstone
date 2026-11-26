@@ -46,7 +46,8 @@ describeDb('RPT-CENTER student-attendance', () => {
     subject = await q(`INSERT INTO subjects (subject_code, subject_name) VALUES ('${TAG}-X','${TAG} Môn X') RETURNING id`);
     subjectY = await q(`INSERT INTO subjects (subject_code, subject_name) VALUES ('${TAG}-Y','${TAG} Môn Y') RETURNING id`);
     const mkSection = (code: string, subj: string) => q(
-      `INSERT INTO class_sections (class_code, semester_id, subject_id, status) VALUES ($1,$2,$3,'open') RETURNING id`, [`${TAG}-${code}`, semester, subj]);
+      // Báo cáo chỉ tính lớp đồng bộ từ UEL (cs.source = 'uel_api').
+      `INSERT INTO class_sections (class_code, semester_id, subject_id, status, source) VALUES ($1,$2,$3,'open','uel_api') RETURNING id`, [`${TAG}-${code}`, semester, subj]);
     secX = await mkSection('X', subject);
     secY = await mkSection('Y', subjectY);
     const mkStudent = async (key: keyof typeof st, name: string, dept: string) => {

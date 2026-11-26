@@ -111,7 +111,8 @@ describeDb('VIS-BE-001 visitor schema', () => {
     expect(has('MANAGER', 'visitor.stats.read')).toBe(false);
     const perms = await qr.query(`SELECT permission_code FROM permissions WHERE permission_code LIKE 'visitor.%' ORDER BY 1`);
     expect(perms.map((p: { permission_code: string }) => p.permission_code)).toEqual([
-      'visitor.desk.use', 'visitor.host.self', 'visitor.stats.read', 'visitor.visit.manage', 'visitor.visit.read',
+      'visitor.desk.use', 'visitor.host.self', 'visitor.stats.read', 'visitor.visit.extend', 'visitor.visit.manage',
+      'visitor.visit.read', 'visitor.visit.revoke',
     ]);
   });
 });

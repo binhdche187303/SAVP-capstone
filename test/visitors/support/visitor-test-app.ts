@@ -25,6 +25,10 @@ import { VisitCodeService } from '../../../src/modules/visitors/services/visit-c
 import { VisitorIdentityService } from '../../../src/modules/visitors/services/visitor-identity.service';
 import { VisitorNotifier } from '../../../src/modules/visitors/services/visitor-notifier.service';
 import { VisitService } from '../../../src/modules/visitors/services/visit.service';
+import { VisitorZonePolicyService } from '../../../src/modules/visitors/services/visitor-zone-policy.service';
+import { HgVisionService } from '../../../src/modules/academic/services/hgvision.service';
+import { WebsocketService } from '../../../src/modules/websocket/websocket.service';
+import { VisitorVerificationService } from '../../../src/modules/visitors/services/visitor-verification.service';
 import { VisitActionsService } from '../../../src/modules/visitors/services/visit-actions.service';
 import { VisitorDeviceSync } from '../../../src/modules/visitors/services/visitor-device-sync';
 import { AlertsService } from '../../../src/modules/alerts/services/alerts.service';
@@ -92,7 +96,17 @@ export async function buildVisitorTestApp(opts: { enabled?: boolean } = {}): Pro
       { provide: UsersService, useValue: usersService },
       { provide: AlertsService, useValue: { recordAlert: async (a: Record<string, unknown>) => { alerts.push(a); return { isNew: true }; } } },
       { provide: VisitorDeviceSync, useValue: deviceSync },
-      { provide: GateAccessLogService, useValue: new GateAccessLogService(AppDataSource.getRepository(GateAccessLogEntity), AppDataSource) },
+      VisitorZonePolicyService,
+      VisitorVerificationService,
+      { provide: WebsocketService, useValue: { emitVisitorVisitChanged: () => undefined } },
+      {
+        provide: GateAccessLogService,
+        // Test không có HGVision: chưa cấu hình, không bật mock fallback.
+        useValue: new GateAccessLogService(AppDataSource.getRepository(GateAccessLogEntity), AppDataSource, {
+          isConfigured: () => false,
+          isMockFallbackEnabled: () => false,
+        } as unknown as HgVisionService),
+      },
       { provide: AuthzReadRepository, useValue: { getEffectiveRolesAndPermissions: async (id: string) => ({ roles: [], permissions: permissionsByUser.get(id) ?? [] }) } },
     ],
   })

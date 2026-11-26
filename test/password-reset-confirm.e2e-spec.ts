@@ -1,39 +1,8 @@
-jest.mock('@nestjs/typeorm', () => ({
-  TypeOrmModule: {
-    forRoot: () => ({
-      module: class {},
-      providers: [],
-      exports: [],
-    }),
-    forFeature: () => ({
-      module: class {},
-      providers: [],
-      exports: [],
-    }),
-  },
-}));
-
-jest.mock('typeorm', () => {
-  const actual = jest.requireActual('typeorm');
-  return {
-    ...actual,
-    DataSource: class {
-      initialize = jest.fn().mockResolvedValue(this);
-      destroy = jest.fn().mockResolvedValue(undefined);
-      query = jest.fn().mockResolvedValue([]);
-      transaction = jest
-        .fn()
-        .mockImplementation((cb) => cb({ query: jest.fn() }));
-    },
-  };
-});
-
-import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
+import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import * as crypto from 'crypto';
-import { AppModule } from '../src/app.module';
+import { createPasswordResetApp } from './support/auth-controller-app';
 import { UsersResetRepository } from '../src/modules/auth/repositories/users-reset.repository';
 import { PasswordResetCacheService } from '../src/modules/auth/services/password-reset-cache.service';
 
@@ -57,23 +26,7 @@ describe('Password Reset Confirm (e2e)', () => {
       invalidateUserTokens: jest.fn().mockResolvedValue(undefined),
     };
 
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    })
-      .overrideProvider(UsersResetRepository)
-      .useValue(mockUsersRepository)
-      .overrideProvider(PasswordResetCacheService)
-      .useValue(mockCacheService)
-      .compile();
-
-    app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        transform: true,
-      }),
-    );
-    await app.init();
+    app = (await createPasswordResetApp({ usersRepository: mockUsersRepository, cacheService: mockCacheService })) as INestApplication<App>;
   });
 
   afterEach(async () => {

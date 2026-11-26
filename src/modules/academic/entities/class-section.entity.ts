@@ -67,6 +67,10 @@ export class ClassSectionEntity {
   @Column({ name: 'last_synced_at', type: 'timestamptz', nullable: true })
   lastSyncedAt: Date | null;
 
+  /** Tên GV theo UEL (tkb_ds_lophp.giang_vien, kèm học vị) — xem migration UelSyncGapsReport. */
+  @Column({ name: 'uel_lecturer_name', type: 'varchar', length: 500, nullable: true })
+  uelLecturerName: string | null;
+
   @DeleteDateColumn({ name: 'deleted_at', type: 'timestamptz', nullable: true })
   deletedAt: Date | null;
 

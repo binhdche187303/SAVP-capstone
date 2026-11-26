@@ -36,6 +36,13 @@ describeDb('VIS-BE-001 quét định kỳ', () => {
     await AppDataSource.initialize();
     await AppDataSource.runMigrations({ transaction: 'each' });
     fx = await seedVisitFixture(AppDataSource);
+    // Lượt chờ duyệt mẫu hẹn 15–17h hôm nay; chạy sau 17h thì sweep (đúng) tự hết hạn nó.
+    // Dời khung hẹn ra sau thời điểm chạy để test không phụ thuộc giờ trong ngày.
+    await AppDataSource.query(
+      `UPDATE visitor_visits SET scheduled_from = now() + interval '1 hour', scheduled_to = now() + interval '3 hours',
+              valid_from = now() + interval '30 minutes', valid_to = now() + interval '3 hours 30 minutes' WHERE id = $1`,
+      [fx.ids.pending],
+    );
     svc = new VisitorSweepService(
       AppDataSource,
       redis as never,
@@ -61,11 +68,12 @@ describeDb('VIS-BE-001 quét định kỳ', () => {
     expect(await events('approved', 'expired')).toBe(1);
   });
 
-  it('quá giờ 1 phút → mức 1 đúng một lần dù chạy 3 lần; chưa có cảnh báo an ninh', async () => {
+  it('quá giờ 1 phút → mức 1 đúng một lần dù chạy 3 lần; báo bảo vệ ngay, cũng đúng một lần', async () => {
     await set('insideOk', `valid_from = now() - interval '5 hours', valid_to = now() - interval '1 minutes', overstay_notified_at = NULL, overstay_escalated_at = NULL`);
     for (let i = 0; i < 3; i++) await svc.runSweep(new Date());
     expect(notified.filter((n) => n.id === fx.ids.insideOk && n.type === 'visitor_overstay')).toHaveLength(1);
-    expect(alerted.filter((a) => a.id === fx.ids.insideOk)).toHaveLength(0);
+    // Từ 75570f1: bảo vệ được báo ngay khi phát hiện quá giờ, không chờ escalateMinutes.
+    expect(alerted.filter((a) => a.id === fx.ids.insideOk && a.type === 'visitor_overstay')).toHaveLength(1);
     expect((await row('insideOk')).overstay_notified_at).not.toBeNull();
   });
 
@@ -140,6 +148,8 @@ describeDb('VIS-BE-001 quét định kỳ', () => {
   });
 
   it('dọn ảnh: khách còn lượt đang hiệu lực thì giữ ảnh', async () => {
+    // Các test quét "cuối ngày"/"ngày mai" ở trên đã (đúng) cho lượt chờ duyệt hết hạn → đặt lại trạng thái còn hiệu lực.
+    await set('pending', `status = 'pending_approval', scheduled_from = now() + interval '1 hour', scheduled_to = now() + interval '3 hours'`);
     const photo = (await AppDataSource.query(`SELECT vis.user_id FROM visitor_visits v JOIN visitors vis ON vis.id = v.visitor_id WHERE v.id = $1`, [fx.ids.pending]))[0];
     await svc.runPhotoRetention(new Date(Date.now() + 90 * DAY));
     expect(deletedPortraits.find((d) => d.userId === photo.user_id)).toBeUndefined();

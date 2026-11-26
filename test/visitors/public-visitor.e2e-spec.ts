@@ -2,6 +2,7 @@
 // Chạy: RUN_DB_TESTS=1 npx jest --config test/jest-e2e.json test/visitors/public-visitor --runInBand
 import request from 'supertest';
 import { AppDataSource } from '../../src/database/data-source';
+import { cleanupVisitorTestMedia } from './fixtures';
 import { buildVisitorTestApp, TestRig } from './support/visitor-test-app';
 
 const describeDb = process.env.RUN_DB_TESTS === '1' ? describe : describe.skip;
@@ -38,12 +39,22 @@ describeDb('VIS-BE-001 public visitor API', () => {
   });
   beforeEach(async () => { rig = await buildVisitorTestApp(); });
   afterEach(async () => rig.close());
-  afterAll(async () => { await cleanup(); await AppDataSource.destroy(); });
+  afterAll(async () => {
+    await cleanup();
+    // Khoa & cổng do riêng suite này tạo (beforeAll) — trước đây để lại sau mỗi lần chạy.
+    await AppDataSource.query(`DELETE FROM zones WHERE zone_code = '${TAG}-GATE'`);
+    await AppDataSource.query(
+      `DELETE FROM departments d WHERE d.department_code = 'T05D'
+          AND NOT EXISTS (SELECT 1 FROM users u WHERE u.department_id = d.id)`,
+    );
+    await AppDataSource.destroy();
+  });
 
   async function cleanup() {
     await AppDataSource.query(`DELETE FROM visitor_visits WHERE visit_code LIKE 'VS-%' AND purpose LIKE '${TAG}%'`);
     await AppDataSource.query(`DELETE FROM visitors WHERE full_name LIKE '${TAG}%'`);
     await AppDataSource.query(`DELETE FROM users WHERE employee_code LIKE '${TAG}-%' OR (email LIKE '%@visitor.invalid' AND full_name LIKE '${TAG}%')`);
+    await cleanupVisitorTestMedia(AppDataSource);
   }
 
   const payload = (over: Record<string, unknown> = {}) => ({

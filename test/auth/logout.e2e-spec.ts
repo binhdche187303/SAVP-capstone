@@ -1,64 +1,87 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
-import * as request from 'supertest';
-import { JwtService } from '@nestjs/jwt';
-import { CACHE_MANAGER } from '@nestjs/cache-manager';
-// import { Cache } from 'cache-manager';
-import type { Cache } from 'cache-manager';
-import { AuthModule } from '../../src/modules/auth/auth.module';
+import { JwtModule, JwtService } from '@nestjs/jwt';
+import request from 'supertest';
+import { AuthController } from '../../src/modules/auth/controllers/auth.controller';
+import { LogoutService } from '../../src/modules/auth/services/logout.service';
 import { AuthConfigService } from '../../src/modules/auth/services/auth-config.service';
+import { AuthAuditRepository } from '../../src/modules/auth/repositories/auth-audit.repository';
+import { LoginService } from '../../src/modules/auth/services/login.service';
+import { LoginResponsePresenter } from '../../src/modules/auth/presenters/login-response.presenter';
+import { PasswordResetService } from '../../src/modules/auth/services/password-reset.service';
+import { ChangePasswordService } from '../../src/modules/auth/services/change-password.service';
+import { GetMeService } from '../../src/modules/auth/services/get-me.service';
+import { RefreshTokenService } from '../../src/modules/auth/services/refresh-token.service';
+import { RedisService } from '../../src/modules/redis/redis.service';
 
+/**
+ * Logout: controller + LogoutService + JwtAuthGuard thật; Redis là bộ nhớ trong để kiểm tra blacklist.
+ * Route logout có `ignoreBlacklist` nên gọi lại bằng chính token đó vẫn 200 (idempotent),
+ * còn route khác (GET /auth/me) phải từ chối token đã thu hồi.
+ */
 describe('Logout (e2e)', () => {
+  const SECRET = 'logout-e2e-secret';
   let app: INestApplication;
   let jwtService: JwtService;
-  let cacheManager: Cache;
-  let authConfigService: AuthConfigService;
+  const store = new Map<string, { value: string; ttl?: number }>();
+  const audit = { logLogoutSuccess: jest.fn().mockResolvedValue(undefined) };
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AuthModule],
+      imports: [JwtModule.register({})],
+      controllers: [AuthController],
+      providers: [
+        LogoutService,
+        { provide: AuthConfigService, useValue: { getAccessTokenSecret: () => SECRET } },
+        {
+          provide: RedisService,
+          useValue: {
+            setWithTtl: async (key: string, value: string, ttl: number) => { store.set(key, { value, ttl }); },
+            exists: async (key: string) => store.has(key),
+            get: async (key: string) => store.get(key)?.value ?? null,
+          },
+        },
+        { provide: AuthAuditRepository, useValue: audit },
+        { provide: GetMeService, useValue: { getMe: async (userId: string) => ({ userId }) } },
+        { provide: LoginService, useValue: {} },
+        { provide: LoginResponsePresenter, useValue: {} },
+        { provide: PasswordResetService, useValue: {} },
+        { provide: ChangePasswordService, useValue: {} },
+        { provide: RefreshTokenService, useValue: {} },
+      ],
     }).compile();
 
     app = moduleFixture.createNestApplication();
     app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
     await app.init();
-
-    jwtService = moduleFixture.get<JwtService>(JwtService);
-    cacheManager = moduleFixture.get<Cache>(CACHE_MANAGER);
-    authConfigService = moduleFixture.get<AuthConfigService>(AuthConfigService);
+    jwtService = moduleFixture.get(JwtService);
   });
 
   afterAll(async () => {
     await app.close();
   });
 
-  it('/api/v1/auth/logout (POST) - Success & Idempotent', async () => {
-    // 1. Generate a valid token
-    const payload = { sub: 'user-1', jti: 'jti-123' };
-    const token = await jwtService.signAsync(payload, {
-      secret: authConfigService.getAccessTokenSecret(),
-      expiresIn: '1h',
-    });
+  it('POST /auth/logout: thu hồi token, gọi lại vẫn 200 (idempotent), token không dùng được ở route khác', async () => {
+    const token = await jwtService.signAsync({ sub: 'user-1', jti: 'jti-123' }, { secret: SECRET, expiresIn: '1h' });
 
-    // 2. Perform logout
-    const response = await request(app.getHttpServer())
-      .post('/auth/logout')
-      .set('Authorization', `Bearer ${token}`)
-      .expect(200);
+    const me = await request(app.getHttpServer()).get('/auth/me').set('Authorization', `Bearer ${token}`);
+    expect(me.status).toBe(200);
 
-    expect(response.body.success).toBe(true);
-    expect(response.body.data.revoked).toBe(true);
+    const res = await request(app.getHttpServer()).post('/auth/logout').set('Authorization', `Bearer ${token}`).expect(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.revoked).toBe(true);
+    const entry = store.get('blacklist:jti-123');
+    expect(entry?.value).toBe('1');
+    expect(entry?.ttl).toBeGreaterThan(3500); // TTL theo exp còn lại của token (~1h)
+    expect(audit.logLogoutSuccess).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user-1', jti: 'jti-123' }));
 
-    // 3. Verify token is in cache (blacklisted)
-    const isBlacklisted = await cacheManager.get('blacklist:jti-123');
-    expect(isBlacklisted).toBe(true);
+    await request(app.getHttpServer()).post('/auth/logout').set('Authorization', `Bearer ${token}`).expect(200);
 
-    // 4. Perform logout again (Idempotent check)
-    // Actually, since JwtAuthGuard runs first, if it's blacklisted, Guard will throw 401!
-    // Wait, the specification says: "Gọi lại /logout với chính token đó vẫn trả về 200 OK (idempotent)."
-    // Ah! If JwtAuthGuard blocks it, the second call returns 401!
-    // But the requirement in spec.md says:
-    // "Nếu request logout được gửi lặp lại cho token đã bị blacklist, hệ thống vẫn trả success theo tính chất idempotent."
-    // Oh no, if JwtAuthGuard checks the blacklist, it blocks the second call before it reaches the controller!
+    const after = await request(app.getHttpServer()).get('/auth/me').set('Authorization', `Bearer ${token}`).expect(401);
+    expect(JSON.stringify(after.body)).toContain('Token has been revoked');
+  });
+
+  it('POST /auth/logout không có token → 401', async () => {
+    await request(app.getHttpServer()).post('/auth/logout').expect(401);
   });
 });

@@ -1,4 +1,4 @@
-import { Module, Global } from '@nestjs/common';
+import { Module, Global, Inject, OnApplicationShutdown } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { RedisService } from './redis.service.js';
@@ -48,4 +48,16 @@ import { REDIS_CLIENT } from './redis.constants.js';
   ],
   exports: [REDIS_CLIENT, RedisService],
 })
-export class RedisModule {}
+export class RedisModule implements OnApplicationShutdown {
+  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
+
+  /** Đóng connection dùng chung — không thì app.close() xong tiến trình vẫn treo vì socket còn mở. */
+  async onApplicationShutdown(): Promise<void> {
+    if (this.redis.status === 'end') return;
+    try {
+      await this.redis.quit();
+    } catch {
+      this.redis.disconnect();
+    }
+  }
+}

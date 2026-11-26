@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, OnModuleDestroy } from '@nestjs/common';
 import {
   HealthCheck,
   HealthCheckService,
@@ -24,7 +24,7 @@ import Redis from 'ioredis';
  */
 @ApiTags('Health')
 @Controller('health')
-export class HealthController {
+export class HealthController implements OnModuleDestroy {
   private bullRedisClient: Redis | null = null;
 
   constructor(
@@ -41,6 +41,22 @@ export class HealthController {
     );
     if (bullEnabled) {
       this.initBullRedisClient();
+    }
+  }
+
+  /** Đóng client BullMQ-Redis riêng (lazyConnect) — không thì app.close() xong tiến trình vẫn treo. */
+  async onModuleDestroy(): Promise<void> {
+    const client = this.bullRedisClient;
+    if (!client || client.status === 'end') return;
+    // Chưa từng kết nối (lazy) thì quit() lại đi mở kết nối → chỉ cần disconnect().
+    if (client.status === 'wait') {
+      client.disconnect();
+      return;
+    }
+    try {
+      await client.quit();
+    } catch {
+      client.disconnect();
     }
   }
 

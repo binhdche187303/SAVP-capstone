@@ -1,5 +1,6 @@
 // RPT-CENTER-BE-001 Task 1 — bảng lịch gửi, quyền, chỉ mục.
 import { AppDataSource } from '../../../src/database/data-source';
+import { CreateReportScheduleTables20261013000001 } from '../../../src/database/migrations/20261013000001-CreateReportScheduleTables';
 
 const describeDb = process.env.RUN_DB_TESTS === '1' ? describe : describe.skip;
 
@@ -72,11 +73,19 @@ describeDb('RPT-CENTER schema', () => {
   });
 
   it('down rồi up lại không lỗi', async () => {
-    await AppDataSource.undoLastMigration({ transaction: 'each' });
-    await AppDataSource.undoLastMigration({ transaction: 'each' });
-    await AppDataSource.undoLastMigration({ transaction: 'each' });
-    expect(await AppDataSource.query(`SELECT to_regclass('report_schedules') AS t`)).toEqual([{ t: null }]);
-    await AppDataSource.runMigrations({ transaction: 'each' });
-    expect((await AppDataSource.query(`SELECT to_regclass('report_schedules') AS t`))[0].t).toBe('report_schedules');
+    // Gọi thẳng down()/up() của migration tạo bảng, trong transaction rồi ROLLBACK. Trước đây test dùng
+    // undoLastMigration() ×3 — gỡ 3 migration MỚI NHẤT của DB thật, tức là migration nào thêm sau cũng bị đụng.
+    const qr = AppDataSource.createQueryRunner();
+    await qr.startTransaction();
+    try {
+      const migration = new CreateReportScheduleTables20261013000001();
+      await migration.down(qr);
+      expect(await qr.query(`SELECT to_regclass('report_schedules') AS t`)).toEqual([{ t: null }]);
+      await migration.up(qr);
+      expect((await qr.query(`SELECT to_regclass('report_schedules') AS t`))[0].t).toBe('report_schedules');
+    } finally {
+      await qr.rollbackTransaction();
+      await qr.release();
+    }
   });
 });

@@ -17,6 +17,19 @@ export async function cleanupVisitFixture(ds: DataSource): Promise<void> {
   await ds.query(`DELETE FROM gate_access_logs WHERE zone_id IN (SELECT id FROM zones WHERE zone_code LIKE '${TAG}-%')`);
   await ds.query(`DELETE FROM zones WHERE zone_code LIKE '${TAG}-%'`);
   await ds.query(`DELETE FROM departments WHERE department_code LIKE '${TAG}%'`);
+  await cleanupVisitorTestMedia(ds);
+}
+
+/**
+ * Ảnh giả do test tạo: ảnh lượt mẫu (`p.jpg`, key `${TAG}/…`) và ảnh chân dung của test app
+ * (`visitor-test.jpg`, key `test/…`). Trước đây không ai xóa → mỗi lần chạy để lại vài trăm dòng media_files.
+ */
+export async function cleanupVisitorTestMedia(ds: DataSource): Promise<void> {
+  await ds.query(
+    `DELETE FROM media_files
+      WHERE (file_name = 'p.jpg' AND storage_key LIKE '${TAG}/%')
+         OR (file_name = 'visitor-test.jpg' AND storage_key LIKE 'test/%')`,
+  );
 }
 
 /**
@@ -91,7 +104,8 @@ export async function seedVisitFixture(ds: DataSource): Promise<VisitFixture> {
         : [`VS-${TAG}-${String(code).padStart(2, '0')}`, v.vis, s.status, s.host, s.dept, `${TAG} ${s.key}`, v.photo],
     );
     ids[s.key] = rows[0].id;
-    await ds.query(`INSERT INTO visitor_visit_zones (visit_id, zone_id) VALUES ($1,$2),($1,$3)`, [rows[0].id, zoneGate, zoneB1]);
+    // route_order NOT NULL từ AddVisitorRouteOrder: cổng → khu B1, đánh số từ 1 như VisitService.
+    await ds.query(`INSERT INTO visitor_visit_zones (visit_id, zone_id, route_order) VALUES ($1,$2,1),($1,$3,2)`, [rows[0].id, zoneGate, zoneB1]);
   }
   // Một lần quét bị từ chối hôm nay, để quầy lễ tân có cảnh báo.
   await ds.query(`INSERT INTO visitor_visit_events (visit_id, event_type, zone_id, note) VALUES ($1,'access_denied',$2,'Ngoài khung giờ được cấp')`, [ids.approved, zoneGate]);

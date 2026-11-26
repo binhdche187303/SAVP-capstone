@@ -27,7 +27,7 @@ describeDb('VIS-BE-001 FaceGate', () => {
       `UPDATE visitor_visits SET status = $2, valid_from = now() + ($3 || ' minutes')::interval, valid_to = now() + ($4 || ' minutes')::interval WHERE id = $1`,
       [fx.ids[key], st, String(fromMin), String(toMin)]);
     await AppDataSource.query(`DELETE FROM visitor_visit_zones WHERE visit_id = $1`, [fx.ids[key]]);
-    await AppDataSource.query(`INSERT INTO visitor_visit_zones (visit_id, zone_id) VALUES ($1,$2)`, [fx.ids[key], fx.zoneGate]);
+    await AppDataSource.query(`INSERT INTO visitor_visit_zones (visit_id, zone_id, route_order) VALUES ($1,$2,1)`, [fx.ids[key], fx.zoneGate]);
   };
   const mappings = (visitId: string) => AppDataSource.query(
     `SELECT sync_status, device_person_id, device_person_code, last_sync_error, deleted_at FROM device_user_mappings WHERE metadata_json->>'visitId' = $1 ORDER BY created_at`, [visitId]);
@@ -90,7 +90,7 @@ describeDb('VIS-BE-001 FaceGate', () => {
   it('khu vực không có thiết bị FaceGate → bỏ qua, không lỗi', async () => {
     await arm('approved', 'approved', -30, 120);
     await AppDataSource.query(`DELETE FROM visitor_visit_zones WHERE visit_id = $1`, [fx.ids.approved]);
-    await AppDataSource.query(`INSERT INTO visitor_visit_zones (visit_id, zone_id) VALUES ($1,$2)`, [fx.ids.approved, fx.zoneB1]);
+    await AppDataSource.query(`INSERT INTO visitor_visit_zones (visit_id, zone_id, route_order) VALUES ($1,$2,1)`, [fx.ids.approved, fx.zoneB1]);
     expect(await svc.provision(fx.ids.approved)).toBe('no_device');
     expect(calls.add).toHaveLength(0);
   });
