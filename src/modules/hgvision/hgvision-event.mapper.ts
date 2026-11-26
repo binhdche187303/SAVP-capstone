@@ -93,6 +93,14 @@ export function toVehicleEvent(
     channelId,
     utc: new Date(ts * 1000).toISOString(),
     vehicleType: obj.object_type,
+    ...(obj.lp_type ? { plateColor: obj.lp_type } : {}),
+    ...(typeof obj.confidence === 'number' ? { confidence: obj.confidence } : {}),
+    ...(obj.first_timestamp !== undefined && {
+      firstSeenAt: new Date(obj.first_timestamp * 1000).toISOString(),
+    }),
+    ...(obj.last_timestamp !== undefined && {
+      lastSeenAt: new Date(obj.last_timestamp * 1000).toISOString(),
+    }),
   };
 }
 

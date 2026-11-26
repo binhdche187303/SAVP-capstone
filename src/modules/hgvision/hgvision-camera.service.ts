@@ -59,6 +59,9 @@ export interface CameraOverviewItem {
   usingPlate: boolean;
   usingRecord: boolean;
   fps: number | null;
+  /** Toạ độ camera trên HGVision (nút Bản đồ); null nếu chưa khai. */
+  latitude: number | null;
+  longitude: number | null;
   health: {
     level: string | null;
     reasons: string[];
@@ -484,6 +487,8 @@ function toOverview(
     usingPlate: !!c.using_lp_recognition,
     usingRecord: !!c.using_record,
     fps: c.fps ?? null,
+    latitude: toCoord(c.latitude),
+    longitude: toCoord(c.longitude),
     health: h
       ? {
           level: h.level ?? null,
@@ -715,4 +720,10 @@ function toHttp(e: unknown): HttpException {
     },
     HttpStatus.BAD_GATEWAY,
   );
+}
+
+/** HGVision trả toạ độ dạng số (có thể chuỗi); 0/không hợp lệ → null. */
+function toCoord(v: unknown): number | null {
+  const n = typeof v === 'string' ? Number(v) : v;
+  return typeof n === 'number' && Number.isFinite(n) && n !== 0 ? n : null;
 }

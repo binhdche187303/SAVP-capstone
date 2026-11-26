@@ -32,6 +32,11 @@ export interface VehicleEvent {
    */
   remoteImagePath?: string;
   remotePlateImagePath?: string;
+  /** HGVision: độ tin cậy nhận diện 0..1. */
+  confidence?: number;
+  /** HGVision: lần đầu / lần cuối thấy đối tượng (ISO-8601). */
+  firstSeenAt?: string;
+  lastSeenAt?: string;
 }
 
 export interface VehicleEventHandlerPort {

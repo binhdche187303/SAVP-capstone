@@ -10,6 +10,10 @@ import {
 
 interface HistoryRow {
   id: string;
+  plate_color?: string | null;
+  confidence?: number | null;
+  first_seen_at?: string | null;
+  last_seen_at?: string | null;
   plate_number: string | null;
   channel_id: number | null;
   direction: string | null;
@@ -62,6 +66,12 @@ export interface VehicleHistoryItem {
   listType: string | null;
   zoneName: string | null;
   cameraName: string | null;
+  /** HGVision: loại biển (lp_type, VD "Biển xanh") / màu biển camera IVSS. */
+  plateColor: string | null;
+  /** HGVision: độ tin cậy 0..1; null với sự kiện cũ / nguồn khác. */
+  confidence: number | null;
+  firstSeenAt: string | null;
+  lastSeenAt: string | null;
   userId?: string | null; // CHỈ admin (listAll)
   /**
    * Thông tin đầy đủ chủ xe (yêu cầu FE 2026-08-08) — CHỈ admin (listAll), LEFT JOIN
@@ -279,6 +289,10 @@ export class VehicleHistoryService {
               iot_device_events.payload_json->>'matchState'         AS match_state,
               iot_device_events.event_time,
               iot_device_events.payload_json->>'utc'                AS utc,
+              iot_device_events.payload_json->>'plateColor'         AS plate_color,
+              (iot_device_events.payload_json->>'confidence')::float AS confidence,
+              iot_device_events.payload_json->>'firstSeenAt'        AS first_seen_at,
+              iot_device_events.payload_json->>'lastSeenAt'         AS last_seen_at,
               ${CONTROL_LIST_FLAG_COLUMNS}${userIdCol}${ownerCols}
               ,COALESCE(event_zone.zone_name, (SELECT z.zone_name
                   FROM system_configs sc
@@ -323,6 +337,10 @@ export class VehicleHistoryService {
           listType: r.list_type,
           zoneName: r.zone_name,
           cameraName: r.camera_name,
+          plateColor: r.plate_color ?? null,
+          confidence: r.confidence ?? null,
+          firstSeenAt: r.first_seen_at ?? null,
+          lastSeenAt: r.last_seen_at ?? null,
         };
         if (includeUserId) {
           item.userId = r.user_id ?? null;

@@ -26,6 +26,8 @@ export interface HgvisionHistoryObject {
   face_ident_text?: string;
   face_image_path?: string;
   lp_text?: string;
+  /** Loại biển HGVision trả (VD "Biển xanh", "Biển trắng"). */
+  lp_type?: string;
   lp_image_path?: string;
   object_image_path?: string;
   first_timestamp?: number;

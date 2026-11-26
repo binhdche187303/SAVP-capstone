@@ -174,6 +174,9 @@ export class VehicleResolveService implements VehicleEventHandlerPort {
         ...(evt.remotePlateImagePath && {
           remotePlateImagePath: evt.remotePlateImagePath,
         }),
+        ...(evt.confidence !== undefined && { confidence: evt.confidence }),
+        ...(evt.firstSeenAt && { firstSeenAt: evt.firstSeenAt }),
+        ...(evt.lastSeenAt && { lastSeenAt: evt.lastSeenAt }),
       };
 
       // RACE FIX (bằng chứng thật production 2026-08-08): 2 event cùng biển/channel,
