@@ -1,5 +1,6 @@
 import type { CreateHgCameraDto } from './dto/create-hg-camera.dto.js';
 import {
+  BadGatewayException,
   BadRequestException,
   HttpException,
   HttpStatus,
@@ -16,6 +17,8 @@ import {
   HgvisionCameraHealth,
   HgvisionClient,
   HgvisionError,
+  HgvisionOnvifCredentials,
+  HgvisionOnvifUrls,
   MediaSource,
 } from './hgvision.client.js';
 import { HGVISION_CLIENT } from './hgvision.constants.js';
@@ -233,33 +236,150 @@ export class HgvisionCameraService {
       .sort((a, b) => (a.index ?? 1e9) - (b.index ?? 1e9));
   }
 
-  /** Thêm camera RTSP sang HGVision (thay vì thêm tay trên web HGVision). */
-  async createCamera(dto: CreateHgCameraDto): Promise<{ name: string }> {
+  /**
+   * Thêm camera sang HGVision (thay vì thêm tay trên web HGVision).
+   *  - ONVIF: lấy URL RTSP qua /api/onvif/get-urls (đồng thời kiểm tra tài khoản),
+   *    tuỳ chọn ép H.264 cho các profile (luồng chính + phụ), rồi tạo camera ONVIF.
+   *  - RTSP: dùng URL nhập tay.
+   * Lỗi ép H.264 KHÔNG chặn việc thêm camera — trả về `h264` để FE báo người dùng.
+   */
+  async createCamera(dto: CreateHgCameraDto): Promise<{
+    name: string;
+    h264: 'ok' | 'already' | 'failed' | 'skipped';
+    h264Message?: string;
+  }> {
     const name = dto.name.trim();
-    await this.call(() =>
-      this.client.createCamera({
-        camera_name: name,
-        camera_url: dto.mainUrl.trim(),
-        protocol_type: 'RTSP',
-        ...(dto.subUrl?.trim() ? { sub_url: dto.subUrl.trim() } : {}),
-        ...(dto.group?.trim() ? { camera_group: dto.group.trim() } : {}),
-        ...(dto.latitude != null && dto.longitude != null
-          ? { latitude: dto.latitude, longitude: dto.longitude }
-          : {}),
-        using_ai: dto.usingAi ?? true,
-        using_face_recognition:
-          (dto.usingAi ?? true) && (dto.usingFace ?? true),
-        using_lp_recognition:
-          (dto.usingAi ?? true) && (dto.usingPlate ?? false),
-        using_record: dto.usingRecord ?? true,
-        is_showing: dto.isShowing ?? true,
-        auto_scan_sub_url: true,
-      }),
-    );
+    const common = {
+      camera_name: name,
+      ...(dto.group?.trim() ? { camera_group: dto.group.trim() } : {}),
+      ...(dto.latitude != null && dto.longitude != null
+        ? { latitude: dto.latitude, longitude: dto.longitude }
+        : {}),
+      using_ai: dto.usingAi ?? true,
+      using_face_recognition: (dto.usingAi ?? true) && (dto.usingFace ?? true),
+      using_lp_recognition: (dto.usingAi ?? true) && (dto.usingPlate ?? false),
+      using_record: dto.usingRecord ?? true,
+      is_showing: dto.isShowing ?? true,
+    };
+
+    let h264: 'ok' | 'already' | 'failed' | 'skipped' = 'skipped';
+    let h264Message: string | undefined;
+
+    if (dto.protocol === 'RTSP') {
+      await this.call(() =>
+        this.client.createCamera({
+          ...common,
+          camera_url: (dto.mainUrl ?? '').trim(),
+          protocol_type: 'RTSP',
+          ...(dto.subUrl?.trim() ? { sub_url: dto.subUrl.trim() } : {}),
+          auto_scan_sub_url: true,
+        }),
+      );
+    } else {
+      const cred = {
+        ip_address: (dto.ip ?? '').trim(),
+        port: (dto.port ?? '').trim() || '80',
+        username: (dto.username ?? '').trim(),
+        password: dto.password ?? '',
+      };
+      const urls = await this.call(async () => {
+        try {
+          return await this.client.onvifGetUrls(cred);
+        } catch (e) {
+          if (
+            e instanceof HgvisionError &&
+            [400, 404, 502].includes(e.status)
+          ) {
+            throw new BadGatewayException({
+              success: false,
+              message:
+                'Không kết nối được camera qua ONVIF — kiểm tra IP, cổng ONVIF (thường 80), tài khoản/mật khẩu và camera đã bật ONVIF.',
+              error: {
+                code: 'HGVISION_ONVIF_FAILED',
+                details: { upstreamStatus: e.status },
+              },
+            });
+          }
+          throw e;
+        }
+      });
+      const mainUrl = urls?.main_url || urls?.urls?.[0]?.url;
+      if (!mainUrl) {
+        throw new BadGatewayException({
+          code: 'HGVISION_ONVIF_NO_URL',
+          message: 'Camera không trả URL luồng qua ONVIF.',
+        });
+      }
+      if (dto.forceH264 ?? true) {
+        const r = await this.forceH264(cred, urls);
+        h264 = r.status;
+        h264Message = r.message;
+      }
+      await this.call(() =>
+        this.client.createCamera({
+          ...common,
+          protocol_type: 'ONVIF',
+          ip_address: cred.ip_address,
+          port: '554',
+          username: cred.username,
+          password: cred.password,
+          camera_url: mainUrl,
+          ...(urls?.sub_url ? { sub_url: urls.sub_url } : {}),
+          auto_scan_sub_url: true,
+        }),
+      );
+    }
     this.cache.delete('cameras');
     this.cache.delete('health');
     this.cache.delete('groups');
-    return { name };
+    return { name, h264, ...(h264Message ? { h264Message } : {}) };
+  }
+
+  /** Đổi codec các profile (tối đa 2: chính + phụ) sang H.264, giữ nguyên độ phân giải/bitrate/FPS. */
+  private async forceH264(
+    cred: HgvisionOnvifCredentials,
+    urls: HgvisionOnvifUrls,
+  ): Promise<{ status: 'ok' | 'already' | 'failed'; message?: string }> {
+    const tokens = (urls?.urls ?? [])
+      .map((u) => u.profile)
+      .filter((t): t is string => !!t)
+      .slice(0, 2);
+    const profiles: (string | undefined)[] = tokens.length
+      ? tokens
+      : [undefined];
+    let changed = 0;
+    try {
+      for (const token of profiles) {
+        const c = { ...cred, ...(token ? { profile_token: token } : {}) };
+        const cfg = await this.client.onvifGetConfig(c);
+        if (/^h\.?264$/i.test(cfg?.codec ?? '')) continue;
+        if (
+          !cfg?.image_width ||
+          !cfg.image_height ||
+          !cfg.bitrate ||
+          !cfg.fps
+        ) {
+          throw new Error('Không đọc được cấu hình encoder');
+        }
+        await this.client.onvifSetConfig({
+          ...c,
+          codec: 'H264',
+          image_width: cfg.image_width,
+          image_height: cfg.image_height,
+          bitrate: cfg.bitrate,
+          fps: cfg.fps,
+        });
+        changed += 1;
+      }
+      return { status: changed ? 'ok' : 'already' };
+    } catch (e) {
+      this.logger.warn(`Ép H.264 qua ONVIF thất bại: ${(e as Error).message}`);
+      return {
+        status: 'failed',
+        message:
+          'Không đổi được codec qua ONVIF — đổi H.264 trên HGVision (Sửa camera → Quét API) hoặc web camera.',
+      };
+    }
   }
 
   cameraHealth(name: string) {

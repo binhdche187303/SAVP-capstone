@@ -255,7 +255,11 @@ export interface HgvisionCameraCreate {
   camera_url: string;
   sub_url?: string;
   camera_group?: string;
-  protocol_type?: 'RTSP';
+  protocol_type?: 'RTSP' | 'ONVIF';
+  ip_address?: string;
+  port?: string;
+  username?: string;
+  password?: string;
   latitude?: number;
   longitude?: number;
   using_ai?: boolean;
@@ -264,6 +268,30 @@ export interface HgvisionCameraCreate {
   using_record?: boolean;
   is_showing?: boolean;
   auto_scan_sub_url?: boolean;
+}
+
+export interface HgvisionOnvifCredentials {
+  ip_address: string;
+  port: string;
+  username: string;
+  password: string;
+  profile_token?: string;
+}
+
+export interface HgvisionOnvifUrls {
+  main_url?: string;
+  sub_url?: string;
+  urls?: { profile?: string; url?: string }[];
+}
+
+export interface HgvisionOnvifConfig {
+  codec?: string;
+  image_width?: number;
+  image_height?: number;
+  bitrate?: number;
+  fps?: number;
+  profile_token?: string;
+  supported_codecs?: string[];
 }
 
 export class HgvisionClient {
@@ -604,6 +632,32 @@ export class HgvisionClient {
   async createCamera(input: HgvisionCameraCreate): Promise<unknown> {
     this.requireWrite();
     return this.request('POST', '/api/cameras', { json: input });
+  }
+
+  /** POST /api/onvif/get-urls (cameras:read) — URL RTSP chính/phụ từ thiết bị ONVIF. */
+  async onvifGetUrls(c: HgvisionOnvifCredentials): Promise<HgvisionOnvifUrls> {
+    return this.request('POST', '/api/onvif/get-urls', { json: c });
+  }
+
+  /** POST /api/onvif/get-config (cameras:read) — cấu hình encoder của 1 profile. */
+  async onvifGetConfig(
+    c: HgvisionOnvifCredentials,
+  ): Promise<HgvisionOnvifConfig> {
+    return this.request('POST', '/api/onvif/get-config', { json: c });
+  }
+
+  /** POST /api/onvif/set-config (cameras:write) — ghi codec/độ phân giải/bitrate/FPS. */
+  async onvifSetConfig(
+    c: HgvisionOnvifCredentials & {
+      codec?: string;
+      image_width: number;
+      image_height: number;
+      bitrate: number;
+      fps: number;
+    },
+  ): Promise<unknown> {
+    this.requireWrite();
+    return this.request('POST', '/api/onvif/set-config', { json: c });
   }
 
   async createPlate(input: HgvisionPlateInput): Promise<HgvisionPlate> {
