@@ -249,6 +249,23 @@ export class HgvisionError extends Error {
 /** Làm mới token sớm hơn hạn thật để tránh dùng token vừa hết hạn giữa chừng. */
 const TOKEN_REFRESH_MARGIN_MS = 60_000;
 
+/** Body POST /api/cameras (OpenAPI HGVision: CameraCreate). */
+export interface HgvisionCameraCreate {
+  camera_name: string;
+  camera_url: string;
+  sub_url?: string;
+  camera_group?: string;
+  protocol_type?: 'RTSP';
+  latitude?: number;
+  longitude?: number;
+  using_ai?: boolean;
+  using_face_recognition?: boolean;
+  using_lp_recognition?: boolean;
+  using_record?: boolean;
+  is_showing?: boolean;
+  auto_scan_sub_url?: boolean;
+}
+
 export class HgvisionClient {
   private token: string | null = null;
   private tokenExpiresAt = 0;
@@ -581,6 +598,12 @@ export class HgvisionClient {
   async deleteFace(faceIdent: string): Promise<void> {
     this.requireWrite();
     await this.request('DELETE', `/api/identification/faces/${seg(faceIdent)}`);
+  }
+
+  /** POST /api/cameras (scope cameras:write). Body theo CameraCreate của OpenAPI HGVision. */
+  async createCamera(input: HgvisionCameraCreate): Promise<unknown> {
+    this.requireWrite();
+    return this.request('POST', '/api/cameras', { json: input });
   }
 
   async createPlate(input: HgvisionPlateInput): Promise<HgvisionPlate> {

@@ -1,3 +1,4 @@
+import type { CreateHgCameraDto } from './dto/create-hg-camera.dto.js';
 import {
   BadRequestException,
   HttpException,
@@ -230,6 +231,35 @@ export class HgvisionCameraService {
         ),
       )
       .sort((a, b) => (a.index ?? 1e9) - (b.index ?? 1e9));
+  }
+
+  /** Thêm camera RTSP sang HGVision (thay vì thêm tay trên web HGVision). */
+  async createCamera(dto: CreateHgCameraDto): Promise<{ name: string }> {
+    const name = dto.name.trim();
+    await this.call(() =>
+      this.client.createCamera({
+        camera_name: name,
+        camera_url: dto.mainUrl.trim(),
+        protocol_type: 'RTSP',
+        ...(dto.subUrl?.trim() ? { sub_url: dto.subUrl.trim() } : {}),
+        ...(dto.group?.trim() ? { camera_group: dto.group.trim() } : {}),
+        ...(dto.latitude != null && dto.longitude != null
+          ? { latitude: dto.latitude, longitude: dto.longitude }
+          : {}),
+        using_ai: dto.usingAi ?? true,
+        using_face_recognition:
+          (dto.usingAi ?? true) && (dto.usingFace ?? true),
+        using_lp_recognition:
+          (dto.usingAi ?? true) && (dto.usingPlate ?? false),
+        using_record: dto.usingRecord ?? true,
+        is_showing: dto.isShowing ?? true,
+        auto_scan_sub_url: true,
+      }),
+    );
+    this.cache.delete('cameras');
+    this.cache.delete('health');
+    this.cache.delete('groups');
+    return { name };
   }
 
   cameraHealth(name: string) {
@@ -687,8 +717,9 @@ function toHttp(e: unknown): HttpException {
       403: [
         HttpStatus.BAD_GATEWAY,
         'HGVISION_SCOPE_MISSING',
-        'Client HGVision thiếu quyền (scope).',
+        'Client HGVision thiếu quyền (scope) hoặc đã hết số camera theo giấy phép.',
       ],
+      409: [HttpStatus.CONFLICT, 'HGVISION_CONFLICT', e.message],
       404: [
         HttpStatus.NOT_FOUND,
         'HGVISION_NOT_FOUND',
