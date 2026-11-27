@@ -113,23 +113,21 @@ export class DashboardOverviewRepository {
 
   async countActiveRooms(params: AggregateParams): Promise<number> {
     const scope = this.buildScopeWhere(params, 'm');
-    const pIdx = scope.values.length + 1;
     const sql = `
       SELECT COUNT(DISTINCT rb.room_id)::int AS cnt
       FROM room_bookings rb
       INNER JOIN meetings m ON m.id = rb.meeting_id
-      WHERE m.start_time >= ($${pIdx} || ' 00:00:00+07')::timestamptz
-        AND m.start_time <= ($${pIdx + 1} || ' 23:59:59.999+07')::timestamptz
-        AND m.status <> 'draft'
+      INNER JOIN rooms r ON r.id = rb.room_id AND r.deleted_at IS NULL
+      WHERE m.status = 'in_progress'
+        AND m.start_time <= CURRENT_TIMESTAMP
+        AND m.end_time > CURRENT_TIMESTAMP
         AND m.deleted_at IS NULL
-        AND rb.status IN ('approved','active','completed','released')
+        AND rb.status IN ('approved','active')
+        AND rb.reserved_start_time <= CURRENT_TIMESTAMP
+        AND rb.reserved_end_time > CURRENT_TIMESTAMP
         AND ${scope.clause}
     `;
-    const rows = await this.dataSource.query(sql, [
-      ...scope.values,
-      params.from,
-      params.to,
-    ]);
+    const rows = await this.dataSource.query(sql, scope.values);
     return rows?.[0]?.cnt ?? 0;
   }
 

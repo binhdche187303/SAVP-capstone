@@ -349,7 +349,17 @@ describe('IvssRoomAccessLogService (RAL-001 / Màn 2 + ALS-002)', () => {
       const q = captured.find((c) => isEventQuery(c.sql))!;
       expect(q.params[2]).toBeNull();
       // Điều kiện lọc phòng phải là dạng bỏ qua được khi null.
-      expect(q.sql).toContain('$3::uuid IS NULL OR e.room_id = $3::uuid');
+      expect(q.sql).toContain('$3::uuid IS NULL OR COALESCE(e.room_id, dv.room_id) = $3::uuid');
+    });
+
+    it('chỉ lấy lượt nhận diện gắn với phòng (bỏ camera cổng/thang máy không thuộc phòng)', async () => {
+      wire({ events: [evt()] });
+      await service.getRoomAccessLog(null, { date: '2026-07-28' });
+      const q = captured.find((c) => isEventQuery(c.sql))!;
+      expect(q.sql).toContain('COALESCE(e.room_id, dv.room_id) IS NOT NULL');
+      // Số liệu thẻ (đếm) cũng phải dùng cùng điều kiện.
+      const count = captured.find((c) => c.sql.includes('COUNT(*)::text AS total'))!;
+      expect(count.sql).toContain('COALESCE(e.room_id, dv.room_id) IS NOT NULL');
     });
 
     it('trả roomId/roomName của TỪNG event (nhiều phòng lẫn nhau)', async () => {

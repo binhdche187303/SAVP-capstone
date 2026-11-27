@@ -43,6 +43,7 @@ export class ManagerSummaryService {
     const teamPresenceToday = await this.computeTeamPresenceToday(
       managerId,
       todayStart,
+      now,
     );
     const pendingMeetingRequestsCount =
       await this.countPendingMeetingRequests(managerId);
@@ -64,6 +65,7 @@ export class ManagerSummaryService {
   private async computeTeamPresenceToday(
     managerId: string,
     todayStart: Date,
+    now: Date,
   ): Promise<{ presentCount: number; totalCount: number }> {
     const teamMembers = await this.userRepo.find({
       where: { directManagerId: managerId, deletedAt: IsNull() },
@@ -75,10 +77,19 @@ export class ManagerSummaryService {
     }
 
     const teamIds = teamMembers.map((u) => u.id);
+    // Chỉ tính người có lượt cuối hôm nay là vào; ra rồi vào lại vẫn được tính.
+    // id phá hòa khi hai lượt có cùng thời điểm, như thống kê theo phòng ban.
     const rows: Array<{ user_id: string }> = await this.dataSource.query(
-      `SELECT DISTINCT user_id FROM gate_access_logs
-       WHERE user_id = ANY($1) AND direction = 'enter' AND access_time >= $2`,
-      [teamIds, todayStart],
+      `WITH last_log AS (
+         SELECT DISTINCT ON (user_id) user_id, direction
+         FROM gate_access_logs
+         WHERE user_id = ANY($1)
+           AND direction IN ('enter', 'leave')
+           AND access_time >= $2 AND access_time <= $3
+         ORDER BY user_id, access_time DESC, id DESC
+       )
+       SELECT user_id FROM last_log WHERE direction = 'enter'`,
+      [teamIds, todayStart, now],
     );
     return { presentCount: rows.length, totalCount };
   }

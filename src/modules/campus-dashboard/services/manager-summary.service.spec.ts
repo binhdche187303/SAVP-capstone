@@ -40,7 +40,7 @@ describe('ManagerSummaryService (CDB-RS-001)', () => {
     });
   });
 
-  it('teamPresenceToday: đếm đúng presentCount qua DISTINCT user_id', async () => {
+  it('teamPresenceToday: đếm người có lượt cổng cuối cùng là vào, trong phạm vi nhân viên trực tiếp', async () => {
     userRepo.find.mockResolvedValue([{ id: 'u1' }, { id: 'u2' }, { id: 'u3' }]);
     dataSourceMock.query.mockImplementation((sql: string) => {
       if (sql.includes('gate_access_logs')) {
@@ -53,6 +53,13 @@ describe('ManagerSummaryService (CDB-RS-001)', () => {
       presentCount: 2,
       totalCount: 3,
     });
+    const [, params] = dataSourceMock.query.mock.calls.find(
+      ([sql]: [string]) => sql.includes('gate_access_logs'),
+    );
+    expect(params[0]).toEqual(['u1', 'u2', 'u3']);
+    expect(params[1]).toBeInstanceOf(Date);
+    expect(params[2]).toBeInstanceOf(Date);
+    expect(params[1].getTime()).toBeLessThanOrEqual(params[2].getTime());
   });
 
   it('pendingMeetingRequestsCount: đọc đúng từ query 2-nhánh điều kiện', async () => {
