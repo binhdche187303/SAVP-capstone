@@ -50,6 +50,19 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
   const port = configService.get<number>('APP_PORT', 3000);
 
+  // TRUST_PROXY = danh sách IP proxy tin cậy (vd container nginx của FE trong docker-compose).
+  // Chỉ request ĐẾN TỪ các IP này mới được đọc X-Forwarded-For để lấy IP thật của người dùng
+  // (lịch sử đăng nhập, giới hạn đăng nhập sai). Thiết bị/camera gọi thẳng cổng 3000 không nằm
+  // trong danh sách nên không giả mạo được IP (allowed_source_ip vẫn kiểm tra IP thật).
+  // Để trống = như cũ (không tin header nào).
+  const trustProxy = (configService.get<string>('TRUST_PROXY', '') ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (trustProxy.length > 0) {
+    app.set('trust proxy', trustProxy);
+  }
+
   app.enableCors({
     origin: configService
       .get<string>('CORS_ORIGIN', 'http://localhost:5173,http://localhost:3000')

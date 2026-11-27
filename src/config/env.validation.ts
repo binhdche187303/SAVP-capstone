@@ -100,6 +100,8 @@ export const envValidationSchema = Joi.object({
   // ─── F. Rate Limit ───────────────────────────────────────────────────────────
   RATE_LIMIT_ENABLED: Joi.boolean().default(true),
   TRUST_PROXY_HOPS: Joi.number().integer().min(0).max(5).default(1),
+  // Danh sách IP/subnet proxy tin cậy cho Express `trust proxy` (phân tách bằng dấu phẩy).
+  TRUST_PROXY: Joi.string().allow('').default(''),
   AUTH_LOGIN_RATE_LIMIT_MAX_ATTEMPTS: Joi.number().integer().default(5),
   AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS: Joi.number().integer().default(300),
   AUTH_OTP_REQUEST_RATE_LIMIT_MAX_ATTEMPTS: Joi.number().integer().default(3),
