@@ -40,7 +40,9 @@ export const VISITOR_CONFIG_DEFAULTS: VisitorConfig = {
     'Tham quan - khảo sát',
   ],
   photoRetentionDays: 30,
-  publicRateLimit: { register: [5, 600], lookup: [30, 600], hosts: [60, 600] },
+  // register 30 lần / 10 phút / IP: máy tính bảng ở cổng hoặc Wi-Fi chung dùng 1 IP cho nhiều khách
+  // (mức cũ 5 lần, tính cả lần nhập sai, chặn khách thứ 6 trong 10 phút). Chỉnh qua system config.
+  publicRateLimit: { register: [30, 600], lookup: [30, 600], hosts: [60, 600] },
   notifyHostEmail: true,
   publicHostSearchEnabled: true,
 };

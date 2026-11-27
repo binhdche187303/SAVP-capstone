@@ -29,6 +29,7 @@ import {
   UploadedAvatarPhotoFile,
 } from '../services/avatar-photo.service.js';
 import { AvatarPhotoResponseDto } from '../dto/avatar-photo-response.dto.js';
+import { UPLOAD_CEILING } from '../../../common/utils/upload-limits.js';
 
 /**
  * AvatarPhotoController — ACCT-AVATAR-PHOTO-001 (avatar hiển thị, tự do, không duyệt).
@@ -45,8 +46,9 @@ export class AvatarPhotoController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('profile.avatar.update')
-  // KHÔNG set limits.fileSize ở Multer: để service trả đúng AVATAR_PHOTO_FILE_TOO_LARGE.
-  @UseInterceptors(FileInterceptor('file'))
+  // Trần cứng = 2× giới hạn nghiệp vụ: file vượt nhẹ vẫn tới service (AVATAR_PHOTO_FILE_TOO_LARGE),
+  // file khổng lồ bị Multer cắt ngay (không nạp hết vào RAM).
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: UPLOAD_CEILING.avatar } }))
   @ApiBearerAuth()
   @ApiConsumes('multipart/form-data')
   @ApiOperation({

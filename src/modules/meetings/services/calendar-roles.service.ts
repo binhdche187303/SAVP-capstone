@@ -5,6 +5,15 @@ import { UpdateCalendarRolesDto } from '../dto/update-calendar-roles.dto.js';
 export const SCHOOL_APPROVER_DEPT_KEY = 'meeting.school_approver_department_id';
 
 /**
+ * Chỉ cán bộ (EMPLOYEE / MANAGER / TEACHER) mới làm chủ trì, văn thư, lãnh đạo được.
+ * Trước đây 2 danh sách dưới lấy MỌI tài khoản (cả ~25.000 sinh viên) → 6–7MB và lộ email SV.
+ */
+const STAFF_ROLE_FILTER = `EXISTS (SELECT 1 FROM user_roles sr JOIN roles srr ON srr.id = sr.role_id
+                       WHERE sr.user_id = u.id AND sr.is_active
+                         AND (sr.expired_at IS NULL OR sr.expired_at > now())
+                         AND srr.role_code IN ('EMPLOYEE', 'MANAGER', 'TEACHER'))`;
+
+/**
  * Lịch tuần UEL — vai trò lịch gán trên tài khoản:
  * văn thư đơn vị (users.is_unit_clerk), Ban Giám hiệu (users.leadership_title),
  * đơn vị duyệt lịch cấp trường (system_configs).
@@ -28,6 +37,7 @@ export class CalendarRolesService {
               u.is_unit_clerk AS "isUnitClerk", u.leadership_title AS "leadershipTitle"
          FROM users u LEFT JOIN departments d ON d.id = u.department_id
         WHERE u.deleted_at IS NULL AND u.account_status = 'active'
+          AND (${STAFF_ROLE_FILTER} OR u.is_unit_clerk OR u.leadership_title IS NOT NULL)
         ORDER BY u.full_name`,
     );
     return {
@@ -87,6 +97,7 @@ export class CalendarRolesService {
                          AND r.role_code = 'MANAGER') AS "isManager"
          FROM users u LEFT JOIN departments d ON d.id = u.department_id
         WHERE u.deleted_at IS NULL AND u.account_status = 'active'
+          AND ${STAFF_ROLE_FILTER}
         ORDER BY u.full_name`,
     );
     return {

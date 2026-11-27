@@ -81,15 +81,15 @@ export class PasswordResetService {
         user.accountStatus !== 'active' ||
         user.employmentStatus !== 'active'
       ) {
-        // Safe Unified Response to prevent Account Enumeration attacks
-        throw new BadRequestException({
-          success: false,
+        // Chống dò tài khoản: trả Y HỆT phản hồi thành công (không gửi mã). Trước đây trả
+        // 400 "Email không tồn tại…" nên người ngoài phân biệt được email nào có tài khoản.
+        this.logger.warn(`[PasswordReset] Yêu cầu OTP cho email không hợp lệ/bị hạn chế (không gửi mã).`);
+        return {
+          success: true,
           message:
-            'Email không tồn tại hoặc tài khoản đã bị khóa. Vui lòng kiểm tra lại.',
-          error: {
-            code: AUTH_ERROR_CODES.AUTH_ACCOUNT_RESTRICTED,
-          },
-        });
+            'Nếu email đã đăng ký và tài khoản đang hoạt động, mã xác thực đã được gửi tới email. Vui lòng kiểm tra hộp thư.',
+          data: null,
+        };
       }
 
       // 4. Generate a secure 6-digit OTP
@@ -130,7 +130,7 @@ export class PasswordResetService {
       return {
         success: true,
         message:
-          'Mã xác thực đã được gửi tới email của bạn. Vui lòng kiểm tra hộp thư.',
+          'Nếu email đã đăng ký và tài khoản đang hoạt động, mã xác thực đã được gửi tới email. Vui lòng kiểm tra hộp thư.',
         data: null,
       };
     } catch (error) {
@@ -165,12 +165,13 @@ export class PasswordResetService {
         user.accountStatus !== 'active' ||
         user.employmentStatus !== 'active'
       ) {
+        // Cùng thông báo với "sai mã" — không để lộ email nào có tài khoản.
         throw new BadRequestException({
           success: false,
           message:
-            'Email không tồn tại hoặc tài khoản đã bị khóa. Vui lòng kiểm tra lại.',
+            'Mã xác thực không hợp lệ hoặc đã hết hạn. Vui lòng thử lại.',
           error: {
-            code: AUTH_ERROR_CODES.AUTH_ACCOUNT_RESTRICTED,
+            code: AUTH_ERROR_CODES.AUTH_OTP_INVALID_OR_EXPIRED,
           },
         });
       }

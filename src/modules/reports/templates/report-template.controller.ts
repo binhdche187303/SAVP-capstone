@@ -14,6 +14,7 @@ import { REPORT_FORMATS, REPORT_MIME, ReportFileService, type ReportFormat } fro
 import { documentModel } from './report-document.model.js';
 import { sampleReportModel } from './report-template.sample.js';
 import { ReportTemplateService, type UploadedAssetFile } from './report-template.service.js';
+import { UPLOAD_CEILING } from '../../../common/utils/upload-limits.js';
 
 type CurrentUserPayload = { userId: string; email: string };
 
@@ -66,10 +67,10 @@ export class ReportTemplateController {
     return ok(await this.templates.create(body ?? {}, user.userId), 'Đã tạo mẫu báo cáo');
   }
 
-  // KHÔNG đặt limits.fileSize ở Multer: để service trả đúng mã ASSET_TOO_LARGE kèm thông báo tiếng Việt.
+  // Trần cứng 10MB (giới hạn nghiệp vụ 2MB): file vượt nhẹ vẫn tới service để trả ASSET_TOO_LARGE.
   @Post('assets')
   @RequirePermissions(MANAGE)
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: UPLOAD_CEILING.reportAsset } }))
   async uploadAsset(@UploadedFile() file: UploadedAssetFile | undefined, @CurrentUser() user: CurrentUserPayload) {
     return ok(await this.templates.uploadAsset(file, user.userId), 'Đã tải ảnh');
   }

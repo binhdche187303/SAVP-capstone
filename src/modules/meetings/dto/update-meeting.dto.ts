@@ -1,4 +1,4 @@
-import { IsOptional, IsString, IsNotEmpty, MaxLength } from 'class-validator';
+import { IsOptional, IsString, IsNotEmpty, Matches, MaxLength } from 'class-validator';
 
 /**
  * UpdateMeetingDto (BE-03, PATCH /meetings/:meetingId) — pham vi CO Y HEP:
@@ -10,6 +10,7 @@ export class UpdateMeetingDto {
   @IsOptional()
   @IsString({ message: 'Tiêu đề cuộc họp phải là chuỗi ký tự' })
   @IsNotEmpty({ message: 'Tiêu đề cuộc họp không được để trống' })
+  @Matches(/\S/, { message: 'Tiêu đề cuộc họp không được để trống' })
   @MaxLength(255, { message: 'Tiêu đề cuộc họp tối đa 255 ký tự' })
   title?: string;
 

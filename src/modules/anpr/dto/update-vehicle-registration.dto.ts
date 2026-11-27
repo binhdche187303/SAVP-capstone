@@ -14,7 +14,7 @@ import { Expose } from 'class-transformer';
  * - field gửi = null → set null (xóa note). (@IsOptional cho phép null.)
  */
 export class UpdateVehicleRegistrationDto {
-  @ApiPropertyOptional({
+  @ApiPropertyOptional({ name: 'plate_raw', 
     description:
       'Biển số mới dạng thô (đổi biển). Không gửi → giữ biển cũ. Tối đa 20 ký tự',
     maxLength: 20,
@@ -26,7 +26,7 @@ export class UpdateVehicleRegistrationDto {
   @MaxLength(20)
   plateRaw?: string;
 
-  @ApiPropertyOptional({
+  @ApiPropertyOptional({ name: 'vehicle_type', 
     description: 'Loại phương tiện; gửi null để xóa',
     nullable: true,
     maxLength: 50,

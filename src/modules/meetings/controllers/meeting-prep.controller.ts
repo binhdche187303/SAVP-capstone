@@ -25,6 +25,7 @@ import { MeetingPrepService } from '../services/meeting-prep.service.js';
 import { MeetingSeriesService } from '../services/meeting-series.service.js';
 import { MeetingsService } from '../services/meetings.service.js';
 import type { UploadedAgendaAttachmentFile } from '../services/meetings.service.js';
+import { UPLOAD_CEILING } from '../../../common/utils/upload-limits.js';
 
 class SubmitSignoffDto {
   @IsUUID()
@@ -109,7 +110,7 @@ export class MeetingPrepController {
 
   @Post('reports')
   @HttpCode(HttpStatus.CREATED)
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: UPLOAD_CEILING.agendaAttachment } }))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Nộp / nộp lại file báo cáo trước họp' })
   async submitReport(

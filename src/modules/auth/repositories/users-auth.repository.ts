@@ -11,7 +11,7 @@ export class UsersAuthRepository {
   ): Promise<AuthenticatedUserRecord | null> {
     const row = await this.dataSource.query(
       `
-        SELECT id, email, password_hash, full_name, avatar_url, department_id, account_status, account_expires_at
+        SELECT id, email, password_hash, full_name, avatar_url, department_id, account_status, account_expires_at, must_change_password
         FROM users
         WHERE email = $1 AND deleted_at IS NULL
         LIMIT 1
@@ -34,13 +34,14 @@ export class UsersAuthRepository {
         ? new Date(row[0].account_expires_at)
         : null,
       accountStatus: row[0].account_status,
+      mustChangePassword: row[0].must_change_password === true,
     };
   }
 
   async findById(userId: string): Promise<AuthenticatedUserRecord | null> {
     const row = await this.dataSource.query(
       `
-        SELECT id, email, password_hash, full_name, avatar_url, department_id, account_status, account_expires_at
+        SELECT id, email, password_hash, full_name, avatar_url, department_id, account_status, account_expires_at, must_change_password
         FROM users
         WHERE id = $1 AND deleted_at IS NULL
         LIMIT 1
@@ -63,6 +64,7 @@ export class UsersAuthRepository {
         ? new Date(row[0].account_expires_at)
         : null,
       accountStatus: row[0].account_status,
+      mustChangePassword: row[0].must_change_password === true,
     };
   }
 

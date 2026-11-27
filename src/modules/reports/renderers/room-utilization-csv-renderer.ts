@@ -38,8 +38,8 @@ export async function renderRoomUtilizationCsv(
   rows.forEach((row) => {
     sheet.addRow({
       bookingId: row.bookingId,
-      roomCode: row.roomCode,
-      roomName: row.roomName,
+      roomCode: csvSafe(row.roomCode),
+      roomName: csvSafe(row.roomName),
       meetingId: row.meetingId,
       reservedStartTime: row.reservedStartTime.toISOString(),
       reservedEndTime: row.reservedEndTime.toISOString(),
@@ -58,3 +58,14 @@ export async function renderRoomUtilizationCsv(
   const csvBuffer = await workbook.csv.writeBuffer();
   return Buffer.from(csvBuffer);
 }
+
+/**
+ * Chống CSV injection: chữ bắt đầu bằng = + - @ (hoặc tab/CR) bị Excel chạy như công thức.
+ * Thêm ' phía trước; số âm và giá trị không phải chuỗi giữ nguyên.
+ */
+export function csvSafe<T>(value: T): T | string {
+  if (typeof value !== 'string') return value;
+  return FORMULA_START.test(value) && !NUMERIC.test(value) ? `'${value}` : value;
+}
+const FORMULA_START = /^[=+@\t\r-]/;
+const NUMERIC = /^-?\d+(\.\d+)?$/;

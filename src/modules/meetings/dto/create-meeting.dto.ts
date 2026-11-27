@@ -87,6 +87,8 @@ export class MeetingRecurrenceDto {
 export class CreateMeetingDto {
   @IsString({ message: 'Tiêu đề cuộc họp phải là chuỗi ký tự' })
   @IsNotEmpty({ message: 'Tiêu đề cuộc họp không được để trống' })
+  // IsNotEmpty cho qua chuỗi toàn khoảng trắng ("     ") → bắt buộc có ít nhất 1 ký tự thật.
+  @Matches(/\S/, { message: 'Tiêu đề cuộc họp không được để trống' })
   @MaxLength(255, { message: 'Tiêu đề cuộc họp tối đa 255 ký tự' })
   title: string;
 

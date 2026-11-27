@@ -116,6 +116,9 @@ export class AvatarPhotoService {
 
     const now = new Date();
     const mediaFileId = randomUUID();
+    // Ảnh lưu local → ghi đường dẫn TƯƠNG ĐỐI (/uploads/avatars/...) để đổi IP/tên miền
+    // không làm hỏng ảnh cũ. URL ngoài (Cloudinary) giữ nguyên.
+    const storedUrl = toStoredAvatarUrl(upload.secureUrl);
 
     await this.dataSource.transaction(async (manager) => {
       await manager.getRepository(MediaFileEntity).insert({
@@ -125,7 +128,7 @@ export class AvatarPhotoService {
         mimeType: detectedMime,
         storageProvider: this.cloudinaryService.resolveMediaStorageProvider(),
         storageKey: upload.publicId,
-        fileUrl: upload.secureUrl,
+        fileUrl: storedUrl,
         relatedEntityType: 'user_avatar',
         relatedEntityId: userId,
         uploadedBy: userId,
@@ -133,7 +136,7 @@ export class AvatarPhotoService {
       });
 
       await manager.getRepository(UserEntity).update(userId, {
-        avatarUrl: upload.secureUrl,
+        avatarUrl: storedUrl,
       });
 
       await manager.getRepository(AuditLogEntity).insert({
@@ -141,13 +144,19 @@ export class AvatarPhotoService {
         actionType: 'avatar.updated',
         entityType: 'users',
         entityId: userId,
-        newValueJson: { avatarUrl: upload.secureUrl, mediaFileId },
+        newValueJson: { avatarUrl: storedUrl, mediaFileId },
       });
     });
 
     return {
-      avatarUrl: upload.secureUrl,
+      avatarUrl: storedUrl,
       updatedAt: now.toISOString(),
     };
   }
+}
+
+/** `http://host/uploads/avatars/x.png` → `/uploads/avatars/x.png`; URL khác giữ nguyên. */
+export function toStoredAvatarUrl(url: string): string {
+  const m = /^https?:\/\/[^/]+(\/uploads\/avatars\/.+)$/i.exec(url ?? '');
+  return m ? m[1] : url;
 }

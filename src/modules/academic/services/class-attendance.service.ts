@@ -201,22 +201,30 @@ export class ClassAttendanceService {
         body.autoScanIntervalSeconds ?? current.autoScanIntervalSeconds,
     };
 
-    if (!/^\d{2}:\d{2}$/.test(next.classStartTime)) {
-      throw new BadRequestException('classStartTime must be HH:mm');
-    }
-    if (next.lateThresholdMinutes < 0 || next.lateThresholdMinutes > 240) {
-      throw new BadRequestException(
-        'lateThresholdMinutes must be between 0 and 240',
-      );
-    }
+    // Endpoint không có DTO → kiểm tra chặt ở đây. Trước đây nhận "99:99", "25:00", 1.5, "abc"
+    // (regex chỉ kiểm 2 chữ số + so sánh với NaN luôn false) → sai cách tính đi muộn của mọi lớp.
     if (
-      next.autoScanIntervalSeconds < 2 ||
-      next.autoScanIntervalSeconds > 300
+      typeof next.classStartTime !== 'string' ||
+      !/^([01]\d|2[0-3]):[0-5]\d$/.test(next.classStartTime)
     ) {
       throw new BadRequestException(
-        'autoScanIntervalSeconds must be between 2 and 300',
+        'Giờ vào lớp phải theo dạng HH:mm (00:00 – 23:59).',
       );
     }
+    const late = Number(next.lateThresholdMinutes);
+    if (!Number.isInteger(late) || late < 0 || late > 240) {
+      throw new BadRequestException(
+        'Số phút tính đi muộn phải là số nguyên từ 0 đến 240.',
+      );
+    }
+    const scan = Number(next.autoScanIntervalSeconds);
+    if (!Number.isInteger(scan) || scan < 2 || scan > 300) {
+      throw new BadRequestException(
+        'Chu kỳ quét tự động phải là số nguyên từ 2 đến 300 giây.',
+      );
+    }
+    next.lateThresholdMinutes = late;
+    next.autoScanIntervalSeconds = scan;
 
     if (body.absenceWarningPercent !== undefined) {
       const percent = Number(body.absenceWarningPercent);
@@ -281,8 +289,30 @@ export class ClassAttendanceService {
     const dateParam = `$${params.length}`;
     if (source) params.push(source);
     const sourceFilter = source ? `AND cs.source = $${params.length}` : '';
+    // Sĩ số + thống kê lớp hành chính được TÍNH TRƯỚC 1 lần (CTE) rồi ghép theo lớp.
+    // Bản cũ dùng subquery tương quan cho từng lớp + GROUP BY trên 141k dòng ghi danh → chi phí ước
+    // lượng ~75 triệu, Postgres bật JIT (~770ms chỉ để biên dịch) → ~1,5s / lần. Bản mới ~0,2s,
+    // kết quả đã đối chiếu giống hệt từng trường (admin / giảng viên / sinh viên, nhiều ngày).
     const rows = (await this.dataSource.manager.query(
       `
+      WITH enrollment_counts AS (
+             SELECT class_section_id, COUNT(*) AS total
+               FROM class_enrollments
+              WHERE status = 'active'
+              GROUP BY 1
+           ), admin_class_counts AS (
+             SELECT ce.class_section_id, st.administrative_class AS name, COUNT(*)::int AS total
+               FROM class_enrollments ce
+               JOIN students st ON st.id = ce.student_id AND st.deleted_at IS NULL
+              WHERE ce.status = 'active' AND st.administrative_class IS NOT NULL
+              GROUP BY 1, 2
+           ), admin_class_stats AS (
+             SELECT class_section_id,
+                    array_agg(name ORDER BY name) AS names,
+                    json_agg(json_build_object('name', name, 'count', total) ORDER BY total DESC, name) AS stats
+               FROM admin_class_counts
+              GROUP BY 1
+           )
       SELECT cs.id,
              cs.class_code AS code,
              subj.subject_code,
@@ -307,15 +337,9 @@ export class ClassAttendanceService {
                  WHEN split_part(cs.note, ' | ', 1) ILIKE 'Thu 6%' OR split_part(cs.note, ' | ', 1) ILIKE 'Thứ 6%' THEN 5
                  WHEN split_part(cs.note, ' | ', 1) ILIKE 'Thu 7%' OR split_part(cs.note, ' | ', 1) ILIKE 'Thứ 7%' THEN 6
                END END) AS schedule_weekday,
-             COUNT(ce.id)::text AS student_count
-             , ARRAY_REMOVE(ARRAY_AGG(DISTINCT st.administrative_class), NULL) AS administrative_classes
-             , (SELECT json_agg(json_build_object('name', x.name, 'count', x.total) ORDER BY x.total DESC, x.name)
-                  FROM (SELECT st2.administrative_class AS name, COUNT(*)::int AS total
-                          FROM class_enrollments ce2
-                          JOIN students st2 ON st2.id = ce2.student_id AND st2.deleted_at IS NULL
-                         WHERE ce2.class_section_id = cs.id AND ce2.status = 'active'
-                           AND st2.administrative_class IS NOT NULL
-                         GROUP BY 1) x) AS administrative_class_stats
+             COALESCE(ec.total, 0)::text AS student_count
+             , COALESCE(acs.names, ARRAY[]::varchar[]) AS administrative_classes
+             , acs.stats AS administrative_class_stats
         FROM class_sections cs
         JOIN subjects subj ON subj.id = cs.subject_id
         JOIN semesters sem ON sem.id = cs.semester_id
@@ -332,11 +356,10 @@ export class ClassAttendanceService {
            WHERE se.class_section_id = cs.id
              AND se.session_date = ${dateParam}::date AND se.status <> 'cancelled'
         ) lesson ON true
-        LEFT JOIN class_enrollments ce ON ce.class_section_id = cs.id AND ce.status = 'active'
-        LEFT JOIN students st ON st.id = ce.student_id AND st.deleted_at IS NULL
+        LEFT JOIN enrollment_counts ec ON ec.class_section_id = cs.id
+        LEFT JOIN admin_class_stats acs ON acs.class_section_id = cs.id
         ${where.sql}
          ${sourceFilter}
-       GROUP BY cs.id, subj.subject_code, subj.subject_name, sem.id, teacher.full_name, room.room_name, lesson.rooms, lesson.schedule, lesson.weekday
        ORDER BY cs.class_code ASC
       `,
       params,
@@ -973,19 +996,71 @@ export class ClassAttendanceService {
     );
     const classes = await this.listClasses(currentUserId);
     const today = this.todayKey();
-    const rows = await Promise.all(
-      classes.map(async (klass) => {
-        const summary = await this.getSummary(currentUserId, klass.id, today);
-        return {
-          ...klass,
-          ...summary,
-          rate: summary.total
-            ? Math.round((summary.checkedIn / summary.total) * 100)
-            : 0,
-        };
-      }),
+    // Trước đây gọi getSummary() cho TỪNG lớp (~3.858 lớp × 3 truy vấn, chạy đồng loạt) → ~5s và
+    // làm nghẽn pool DB. Nay đếm gộp 1 truy vấn cho mọi lớp — cùng quy tắc với getRows()/summarizeRows().
+    const summaries = await this.getSummariesForClasses(
+      classes.map((klass) => klass.id),
+      today,
     );
-    return rows;
+    return classes.map((klass) => {
+      const summary = summaries.get(klass.id) ?? {
+        total: 0,
+        checkedIn: 0,
+        late: 0,
+        left: 0,
+        missing: 0,
+      };
+      return {
+        ...klass,
+        ...summary,
+        rate: summary.total
+          ? Math.round((summary.checkedIn / summary.total) * 100)
+          : 0,
+      };
+    });
+  }
+
+  /**
+   * Bản gộp của summarizeRows(getRows(lớp, ngày)) cho nhiều lớp trong 1 truy vấn.
+   * Cùng quy tắc: SV = ghi danh active, SV + tài khoản chưa xoá; bản ghi điểm danh khớp
+   * (lớp, SV, ngày) — duy nhất nhờ UQ_class_attendance_section_student_date.
+   */
+  private async getSummariesForClasses(classIds: string[], date: string) {
+    const result = new Map<
+      string,
+      { total: number; checkedIn: number; late: number; left: number; missing: number }
+    >();
+    if (classIds.length === 0) return result;
+    const rows = (await this.dataSource.manager.query(
+      `
+      SELECT ce.class_section_id AS class_id,
+             COUNT(*)::int AS total,
+             COUNT(car.check_in_at)::int AS checked_in,
+             COUNT(*) FILTER (WHERE car.status = 'late')::int AS late,
+             COUNT(car.check_out_at)::int AS left_count
+        FROM class_enrollments ce
+        JOIN students st ON st.id = ce.student_id AND st.deleted_at IS NULL
+        JOIN users u ON u.id = st.user_id AND u.deleted_at IS NULL
+        LEFT JOIN class_attendance_records car
+               ON car.class_section_id = ce.class_section_id
+              AND car.student_id = st.id
+              AND car.attendance_date = $2::date
+       WHERE ce.status = 'active'
+         AND ce.class_section_id = ANY($1::uuid[])
+       GROUP BY ce.class_section_id
+      `,
+      [classIds, date],
+    )) as Array<{ class_id: string; total: number; checked_in: number; late: number; left_count: number }>;
+    for (const row of rows) {
+      result.set(row.class_id, {
+        total: row.total,
+        checkedIn: row.checked_in,
+        late: row.late,
+        left: row.left_count,
+        missing: row.total - row.checked_in,
+      });
+    }
+    return result;
   }
 
   async getTeacherReport(
@@ -2465,7 +2540,12 @@ export class ClassAttendanceService {
   }
 
   private csvEscape(value: unknown) {
-    return `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const raw = String(value ?? '');
+    // Chống CSV injection: ô bắt đầu bằng = + - @ (hoặc tab/CR) bị Excel chạy như công thức
+    // (vd tên "=HYPERLINK(...)"). Thêm ' phía trước để Excel hiểu là chữ; số âm giữ nguyên.
+    const safe =
+      /^[=+\-@\t\r]/.test(raw) && !/^-?\d+(\.\d+)?$/.test(raw) ? `'${raw}` : raw;
+    return `"${safe.replace(/"/g, '""')}"`;
   }
 
   private safeFilename(value: string) {

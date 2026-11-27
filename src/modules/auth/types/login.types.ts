@@ -15,6 +15,8 @@ export interface AuthUserSummary {
   departmentId: string | null;
   roles: string[];
   permissions: string[];
+  /** true → FE phải bắt đổi mật khẩu trước khi dùng (backend chặn MUST_CHANGE_PASSWORD). */
+  mustChangePassword?: boolean;
 }
 
 export interface LoginSuccessData {
@@ -40,6 +42,7 @@ export interface AuthenticatedUserRecord {
   departmentId: string | null;
   accountStatus: string;
   accountExpiresAt: Date | null;
+  mustChangePassword?: boolean;
 }
 
 export interface AuthSessionRecord {

@@ -130,6 +130,7 @@ import { MeetingListItemDto } from '../dto/meeting-list-item.dto.js';
 import { MeetingUpdateService } from '../services/meeting-update.service.js';
 import { UpdateMeetingDto } from '../dto/update-meeting.dto.js';
 import { UpdateMeetingResponseDto } from '../dto/update-meeting-response.dto.js';
+import { UPLOAD_CEILING } from '../../../common/utils/upload-limits.js';
 
 // @Controller() de rong co y: moi route trong class nay tu khai bao day du path
 // (vd 'meetings/:meetingId/agendas'), khong dua vao prefix chung cua controller.
@@ -515,7 +516,7 @@ export class MeetingsController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('meeting.participant.import')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: UPLOAD_CEILING.excelImport } }))
   @ApiBearerAuth()
   @ApiTags('Meetings')
   @ApiConsumes('multipart/form-data')
@@ -1387,7 +1388,7 @@ export class MeetingsController {
   @Post('meetings/:meetingId/agendas/:agendaId/attachments')
   @HttpCode(HttpStatus.CREATED)
   @UseGuards(JwtAuthGuard)
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: UPLOAD_CEILING.agendaAttachment } }))
   @ApiBearerAuth()
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Dinh kem tai lieu cho mot muc agenda' })

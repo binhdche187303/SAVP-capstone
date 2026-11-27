@@ -2,7 +2,7 @@ import { Body, Controller, Get, Put, UseGuards, UsePipes, ValidationPipe } from 
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard.js';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard.js';
-import { RequirePermissions } from '../../auth/decorators/require-permissions.decorator.js';
+import { RequireAnyPermissions, RequirePermissions } from '../../auth/decorators/require-permissions.decorator.js';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator.js';
 import { CalendarRolesService } from '../services/calendar-roles.service.js';
 import { UpdateCalendarRolesDto } from '../dto/update-calendar-roles.dto.js';
@@ -23,6 +23,9 @@ export class CalendarRolesController {
   }
 
   @Get('booking-context')
+  // Chỉ người đặt được lịch (hoặc quản trị vai trò lịch) mới cần dữ liệu form đặt lịch —
+  // trước đây mọi tài khoản (kể cả sinh viên) tải được danh sách cán bộ kèm email.
+  @RequireAnyPermissions('meeting.create', 'meeting.calendar_role.manage')
   @ApiOperation({ summary: 'Nhóm lịch được phép, BGH và người duyệt cho form đặt lịch' })
   async bookingContext(@CurrentUser() actor: { userId: string }) {
     const data = await this.service.getBookingContext(actor.userId);

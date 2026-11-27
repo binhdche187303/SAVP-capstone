@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, MinLength } from 'class-validator';
+import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 /**
  * QuerySearchDto (SRCH-01) — `q` bắt buộc ≥2 ký tự (spec R2, tránh full-scan).
@@ -8,11 +8,14 @@ import { IsOptional, IsString, MinLength } from 'class-validator';
  */
 export class QuerySearchDto {
   @ApiProperty({
-    description: 'Từ khóa tìm kiếm, tối thiểu 2 ký tự',
+    description: 'Từ khóa tìm kiếm, 2–100 ký tự',
     minLength: 2,
+    maxLength: 100,
   })
   @IsString()
   @MinLength(2)
+  // Chuỗi rất dài (5.000 ký tự) làm truy vấn ILIKE chạy ~3s — giới hạn để chống làm chậm server.
+  @MaxLength(100)
   q: string;
 
   @ApiPropertyOptional({
@@ -21,5 +24,6 @@ export class QuerySearchDto {
   })
   @IsOptional()
   @IsString()
+  @MaxLength(200)
   types?: string;
 }

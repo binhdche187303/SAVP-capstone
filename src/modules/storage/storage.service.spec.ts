@@ -1,3 +1,4 @@
+import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { StorageService } from './storage.service.js';
@@ -194,8 +195,9 @@ describe('StorageService', () => {
 
     it('file không tồn tại → ném', () => {
       mockFs.existsSync.mockReturnValue(false);
+      // 404 (NotFoundException) thay vì Error thường → API trả 404 chứ không 500.
       expect(() => service.getFile('face-profiles/missing.jpg')).toThrow(
-        /not found/i,
+        NotFoundException,
       );
     });
   });

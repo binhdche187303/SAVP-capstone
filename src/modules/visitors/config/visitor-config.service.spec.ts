@@ -24,7 +24,7 @@ describe('VisitorConfigService', () => {
     expect(cfg.photoRetentionDays).toBe(30);
     expect(cfg.purposes).toHaveLength(8);
     expect(cfg.publicHostSearchEnabled).toBe(true);
-    expect(cfg.publicRateLimit.register).toEqual([5, 600]);
+    expect(cfg.publicRateLimit.register).toEqual([30, 600]);
   });
 
   it('ghi đè một khóa, các khóa khác vẫn mặc định', async () => {

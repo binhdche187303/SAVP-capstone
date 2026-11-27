@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Injectable,
   Logger,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
@@ -11,6 +12,7 @@ import { DataSource } from 'typeorm';
 import type { Request } from 'express';
 import { ALLOW_PARTNER_ACCOUNT_KEY } from '../../../common/decorators/allow-partner-account.decorator.js';
 import { isPartnerAccountByUserId } from '../../../common/utils/partner-account.util.js';
+import { RequestIdentityResolver } from '../services/request-identity.resolver.js';
 
 @Injectable()
 export class PartnerAccountRestrictionGuard implements CanActivate {
@@ -19,15 +21,21 @@ export class PartnerAccountRestrictionGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly dataSource: DataSource,
+    @Optional() private readonly identity?: RequestIdentityResolver,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
 
-    const user = request['user'] as { userId?: string } | undefined;
-    if (!user?.userId) {
+    // Guard toàn cục chạy TRƯỚC JwtAuthGuard ở controller → tự xác định người gọi.
+    const resolvedUserId =
+      (request['user'] as { userId?: string } | undefined)?.userId ??
+      (await this.identity?.resolveUserId(request)) ??
+      null;
+    if (!resolvedUserId) {
       return true;
     }
+    const user = { userId: resolvedUserId };
 
     let isPartner: boolean;
     try {

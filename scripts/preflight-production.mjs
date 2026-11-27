@@ -133,8 +133,22 @@ if (twoAddressMode) {
 if (!isTrue(get('MAIL_ENABLED'))) {
   warnings.push('MAIL_ENABLED=false — email OTP quên mật khẩu / thông báo sẽ KHÔNG được gửi.');
 }
-if (/localhost|127\.0\.0\.1/.test(get('IVSS_BRIDGE_BASE_URL'))) {
-  warnings.push('IVSS_BRIDGE_BASE_URL trỏ localhost — trong Docker "localhost" là chính container backend, không phải máy chủ. Dùng IP LAN hoặc host.docker.internal.');
+// Mọi địa chỉ dịch vụ ngoài (HGVision, IVSS bridge, LLM, SMTP, UEL…) trỏ localhost: trong Docker
+// "localhost" là chính container backend → không tới được (vd HGVision báo 503 ở trang Ghi hình).
+// Bỏ qua các biến docker-compose tự ghi đè (APP_URL, DB_HOST, REDIS_HOST…).
+const COMPOSE_OVERRIDDEN = new Set([
+  'APP_URL', 'API_PUBLIC_BASE_URL', 'STORAGE_PUBLIC_BASE_URL', 'GUEST_ACCESS_INVITE_BASE_URL',
+  'DB_HOST', 'REDIS_HOST', 'BULL_REDIS_HOST', 'STORAGE_S3_ENDPOINT', 'PUBLIC_WEB_URL', 'PUBLIC_API_URL',
+  'FRONTEND_API_BASE_URL', 'FRONTEND_WS_URL', 'UEL_SSO_FE_CALLBACK_URL',
+]);
+for (const [key, value] of Object.entries(env)) {
+  if (COMPOSE_OVERRIDDEN.has(key) || !/(URL|HOST|ENDPOINT)$/.test(key)) continue;
+  if (!/(^|\/\/|@)(localhost|127\.0\.0\.1)([:/]|$)/.test(value)) continue;
+  if (/CALLBACK_URL$/.test(key)) {
+    errors.push(`${key}=${value} trỏ localhost — đây là địa chỉ TRÌNH DUYỆT người dùng được chuyển về (vd sau đăng nhập SSO UEL); phải là địa chỉ web thật (PUBLIC_WEB_URL/...).`);
+  } else {
+    warnings.push(`${key} trỏ localhost — trong Docker "localhost" là chính container backend, không phải máy chủ. Dùng IP LAN của dịch vụ đó (hoặc host.docker.internal nếu chạy trên chính server).`);
+  }
 }
 if (/test|local|change_me/i.test(get('IVSS_BRIDGE_TOKEN'))) {
   warnings.push('IVSS_BRIDGE_TOKEN có vẻ là token test — đổi sang chuỗi ngẫu nhiên dài.');

@@ -1022,6 +1022,7 @@ export class UsersService {
   ): Promise<void> {
     const ACTION_TYPE = 'ACCOUNT_DELETE';
     const em = this.dataSource.manager;
+    await this.assertCanManageAccount(em, actorId, targetUserId);
     const now = new Date();
 
     // ── Phase A — Validate (READ, ngoài transaction) ──
@@ -1239,6 +1240,7 @@ export class UsersService {
   ): Promise<{ id: string; accountStatus: string }> {
     const ACTION_TYPE = 'ACCOUNT_LOCK';
     const em = this.dataSource.manager;
+    await this.assertCanManageAccount(em, actorId, targetUserId);
     const now = new Date();
 
     // ── Phase A — Validate (READ) ──
@@ -1380,6 +1382,7 @@ export class UsersService {
   ): Promise<{ id: string; accountStatus: string }> {
     const ACTION_TYPE = 'ACCOUNT_UNLOCK';
     const em = this.dataSource.manager;
+    await this.assertCanManageAccount(em, actorId, targetUserId);
 
     // ── Phase A — Validate (READ) ──
 
@@ -1475,6 +1478,7 @@ export class UsersService {
   ): Promise<{ id: string; accountStatus: string }> {
     const ACTION_TYPE = 'ACCOUNT_STATUS_UPDATE';
     const em = this.dataSource.manager;
+    await this.assertCanManageAccount(em, actorId, targetUserId);
     const now = new Date();
     const nextStatus =
       status === 'active' ? AccountStatus.ACTIVE : AccountStatus.INACTIVE;
@@ -1641,6 +1645,7 @@ export class UsersService {
   ): Promise<UserDetailResponseDto> {
     let ACTION_TYPE = 'ACCOUNT_UPDATE';
     const em = this.dataSource.manager;
+    await this.assertCanManageAccount(em, actorId, targetUserId);
 
     // ── Phase A — Validate (ngoài transaction) ──
 
@@ -2724,6 +2729,34 @@ export class UsersService {
         },
       ]),
     );
+  }
+
+  /**
+   * Tài khoản quản trị (SYSTEM_ADMIN / BUSINESS_ADMIN) chỉ SYSTEM_ADMIN được khoá, mở khoá,
+   * đổi trạng thái, sửa hồ sơ hoặc xoá — cùng quy tắc với cấp/gỡ vai trò quản trị.
+   * Trước đây BUSINESS_ADMIN khoá / vô hiệu hoá được SYSTEM_ADMIN duy nhất của hệ thống.
+   * Tự thao tác trên chính mình đi theo luồng riêng (CANNOT_LOCK_SELF…) nên bỏ qua ở đây.
+   */
+  private async assertCanManageAccount(
+    em: EntityManager,
+    actorId: string,
+    targetUserId: string,
+  ): Promise<void> {
+    if (!actorId || actorId === targetUserId) return;
+    const targetAdminRoles = await em.count(UserRoleEntity, {
+      where: ADMIN_ROLE_CODES.map((roleCode) => ({
+        userId: targetUserId,
+        isActive: true,
+        role: { roleCode },
+      })),
+    });
+    if (!targetAdminRoles) return;
+    if (await this.isSystemAdminActor(em, actorId)) return;
+    throw new ForbiddenException({
+      success: false,
+      message: 'Chỉ Quản trị hệ thống được thao tác trên tài khoản quản trị.',
+      error: { code: 'ADMIN_ACCOUNT_MANAGE_FORBIDDEN', details: {} },
+    });
   }
 
   /** Actor có role SYSTEM_ADMIN đang hoạt động. */

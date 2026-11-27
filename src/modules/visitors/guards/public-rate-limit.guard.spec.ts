@@ -16,7 +16,13 @@ const ctx = (headers: Record<string, string> = {}, ip = '1.1.1.1') => {
 
 const make = (bucket: string | undefined, redis: Partial<Record<'incr' | 'expire' | 'ttl', jest.Mock>>, hops = 1) => {
   const reflector = { getAllAndOverride: jest.fn(() => bucket) } as unknown as Reflector;
-  const config = { get: jest.fn(async () => VISITOR_CONFIG_DEFAULTS) };
+  // Test CƠ CHẾ đếm với hạn mức cố định 5 lần (độc lập với mặc định trong code, hiện là 30).
+  const config = {
+    get: jest.fn(async () => ({
+      ...VISITOR_CONFIG_DEFAULTS,
+      publicRateLimit: { ...VISITOR_CONFIG_DEFAULTS.publicRateLimit, register: [5, 600] },
+    })),
+  };
   const appConfig = { get: jest.fn((_key: string, fallback: unknown) => (_key === 'TRUST_PROXY_HOPS' ? hops : fallback)) };
   return new PublicRateLimitGuard(reflector, redis as never, config as never, appConfig as never);
 };

@@ -294,17 +294,40 @@ describe('EventsGateway', () => {
     });
   });
 
-  describe('ivss:subscribe — regression: unaffected by GLA-001 auth changes', () => {
-    it('should still join the room without requiring any identity', () => {
+  describe('ivss:subscribe — kênh realtime họ tên + giờ vào/ra phòng họp', () => {
+    it('từ chối socket ẩn danh (không token)', async () => {
       const socket = buildSocket();
-      const result = gateway.handleIvssSubscribe(
-        { meetingId: '11111111-1111-1111-1111-111111111111' },
-        socket,
-      );
+      socket.data.identity = null;
+      const result = await gateway.handleIvssSubscribe({ meetingId: '11111111-1111-1111-1111-111111111111' }, socket);
+      expect(result.ok).toBe(false);
+      expect(socket.join).not.toHaveBeenCalled();
+    });
+
+    it('từ chối khách (guest token)', async () => {
+      const socket = buildSocket();
+      socket.data.identity = { type: 'guest', externalParticipantId: 'ep-1', meetingId: '11111111-1111-1111-1111-111111111111', jti: 'j' };
+      const result = await gateway.handleIvssSubscribe({ meetingId: '11111111-1111-1111-1111-111111111111' }, socket);
+      expect(result.ok).toBe(false);
+    });
+
+    it('từ chối nhân sự KHÔNG thuộc cuộc họp', async () => {
+      meetingFindOne.mockResolvedValue({ id: '11111111-1111-1111-1111-111111111111', hostId: 'other-host', deletedAt: null });
+      participantFindOne.mockResolvedValue(null);
+      const socket = buildSocket();
+      socket.data.identity = { type: 'employee', userId: 'user-1' };
+      const result = await gateway.handleIvssSubscribe({ meetingId: '11111111-1111-1111-1111-111111111111' }, socket);
+      expect(result.ok).toBe(false);
+      expect(socket.join).not.toHaveBeenCalled();
+    });
+
+    it('cho người tham dự vào kênh ivss:meeting:<id>', async () => {
+      meetingFindOne.mockResolvedValue({ id: '11111111-1111-1111-1111-111111111111', hostId: 'other-host', deletedAt: null });
+      participantFindOne.mockResolvedValue({ meetingId: '11111111-1111-1111-1111-111111111111', userId: 'user-1' });
+      const socket = buildSocket();
+      socket.data.identity = { type: 'employee', userId: 'user-1' };
+      const result = await gateway.handleIvssSubscribe({ meetingId: '11111111-1111-1111-1111-111111111111' }, socket);
       expect(result.ok).toBe(true);
-      expect(socket.join).toHaveBeenCalledWith(
-        'ivss:meeting:11111111-1111-1111-1111-111111111111',
-      );
+      expect(socket.join).toHaveBeenCalledWith('ivss:meeting:11111111-1111-1111-1111-111111111111');
     });
   });
 

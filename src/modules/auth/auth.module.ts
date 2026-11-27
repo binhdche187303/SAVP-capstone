@@ -13,6 +13,7 @@ import { ResetAuditRepository } from './repositories/reset-audit.repository';
 import { UsersChangePasswordRepository } from './repositories/users-change-password.repository';
 import { ChangePasswordAuditRepository } from './repositories/change-password-audit.repository';
 import { AuthConfigService } from './services/auth-config.service';
+import { RequestIdentityResolver } from './services/request-identity.resolver';
 import { LoginService } from './services/login.service';
 import { LogoutService } from './services/logout.service';
 import { RateLimitService } from './services/rate-limit.service';
@@ -49,6 +50,7 @@ import {
   controllers: [AuthController, UelSsoController],
   providers: [
     AuthConfigService,
+    RequestIdentityResolver,
     RateLimitService,
     TokenService,
     LoginService,
@@ -115,6 +117,7 @@ import {
     JwtModule,
     CacheModule,
     AuthConfigService,
+    RequestIdentityResolver,
     RateLimitService,
     TokenService,
     LoginService,

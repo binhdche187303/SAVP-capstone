@@ -48,6 +48,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard.js';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard.js';
 import { RequirePermissions } from '../../auth/decorators/require-permissions.decorator.js';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator.js';
+import { UPLOAD_CEILING } from '../../../common/utils/upload-limits.js';
 
 @Controller('iot-devices')
 export class IotDevicesController {
@@ -174,8 +175,8 @@ export class IotDevicesController {
   @Put('layout/floor-plan')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('iot.device.update')
-  // KHÔNG set limits.fileSize ở Multer: để service trả đúng FLOOR_PLAN_FILE_TOO_LARGE.
-  @UseInterceptors(FileInterceptor('file'))
+  // Trần cứng = 2× giới hạn nghiệp vụ: file vượt nhẹ vẫn tới service (FLOOR_PLAN_FILE_TOO_LARGE).
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: UPLOAD_CEILING.floorPlan } }))
   async saveFloorPlan(
     @CurrentUser() user: { userId: string },
     @UploadedFile() file: UploadedImage | undefined,

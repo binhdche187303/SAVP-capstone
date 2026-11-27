@@ -4,9 +4,11 @@ import {
   ForbiddenException,
   Injectable,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { UsersChangePasswordRepository } from '../repositories/users-change-password.repository';
+import { RequestIdentityResolver } from '../services/request-identity.resolver';
 
 /**
  * Routes that are ALWAYS allowed, even when must_change_password = true.
@@ -15,6 +17,7 @@ import { UsersChangePasswordRepository } from '../repositories/users-change-pass
 const ALLOWED_ROUTE_PREFIXES = [
   '/api/v1/auth/me',
   '/api/v1/auth/change-password',
+  '/api/v1/auth/refresh',
   '/api/v1/auth/logout',
 ] as const;
 
@@ -32,18 +35,24 @@ const ALLOWED_ROUTE_PREFIXES = [
 export class MustChangePasswordGuard implements CanActivate {
   private readonly logger = new Logger(MustChangePasswordGuard.name);
 
-  constructor(private readonly usersRepo: UsersChangePasswordRepository) {}
+  constructor(
+    private readonly usersRepo: UsersChangePasswordRepository,
+    @Optional() private readonly identity?: RequestIdentityResolver,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
 
-    // If JwtAuthGuard hasn't populated user (unauthenticated route), skip.
-    const user = request['user'] as { userId?: string } | undefined;
-    if (!user?.userId) {
+    // Guard toàn cục chạy TRƯỚC JwtAuthGuard ở controller → tự xác định người gọi.
+    // Không có token hợp lệ (route công khai / token sai) → bỏ qua, JwtAuthGuard tự xử lý.
+    const userId =
+      (request['user'] as { userId?: string } | undefined)?.userId ??
+      (await this.identity?.resolveUserId(request)) ??
+      null;
+    if (!userId) {
       return true;
     }
 
-    const { userId } = user;
     const path = request.path;
 
     // Whitelisted routes — always allowed regardless of flag.

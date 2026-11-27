@@ -207,6 +207,20 @@ export function toVisitView(
 }
 
 /** Trang công khai: KHÔNG số giấy tờ, điện thoại, email, ảnh, ghi chú sự kiện (SEC-01). */
+/**
+ * Tra cứu chỉ bằng mã (chưa xác minh SĐT): KHÔNG trả dữ liệu cá nhân — mã tuần tự đoán được,
+ * trả tên khách / người được gặp sẽ cho người ngoài dò "ai gặp ai lúc nào".
+ */
+export function toPublicVisitStatusOnly(view: VisitView): Record<string, unknown> {
+  return {
+    code: view.code,
+    status: view.status,
+    scheduledFrom: view.scheduledFrom,
+    scheduledTo: view.scheduledTo,
+    verified: false,
+  };
+}
+
 export function toPublicVisitView(view: VisitView): Record<string, unknown> {
   return {
     id: view.id,

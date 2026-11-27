@@ -9,7 +9,9 @@ import { Expose } from 'class-transformer';
  * `whitelist:true` loại mọi field thừa (kể cả user_id nếu client lén truyền) — SEC-01.
  */
 export class CreateVehicleRegistrationDto {
+  // name = tên trường THẬT trên API (Expose map plate_raw → plateRaw); Swagger trước đây ghi plateRaw.
   @ApiProperty({
+    name: 'plate_raw',
     description: 'Biển số xe dạng thô (chưa chuẩn hoá), tối đa 20 ký tự',
     maxLength: 20,
   })
@@ -19,7 +21,7 @@ export class CreateVehicleRegistrationDto {
   @MaxLength(20)
   plateRaw: string;
 
-  @ApiPropertyOptional({ description: 'Loại phương tiện', maxLength: 50 })
+  @ApiPropertyOptional({ name: 'vehicle_type', description: 'Loại phương tiện', maxLength: 50 })
   @Expose({ name: 'vehicle_type' })
   @IsOptional()
   @IsString()

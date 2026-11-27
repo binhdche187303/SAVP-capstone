@@ -1,11 +1,12 @@
-import { Body, Controller, ForbiddenException, Get, HttpCode, HttpStatus, NotFoundException, Param, Post, Query, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Headers, HttpCode, HttpStatus, NotFoundException, Param, Post, Query, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { VisitorConfigService } from '../config/visitor-config.service.js';
 import { PublicRegistrationDto } from '../dto/public-registration.dto.js';
 import { RequestVisitorVerificationDto, VerifyVisitorVerificationDto } from '../dto/visitor-verification.dto.js';
 import { PublicRateLimit, PublicRateLimitGuard } from '../guards/public-rate-limit.guard.js';
 import { VisitorsEnabledGuard } from '../guards/visitors-enabled.guard.js';
-import { toPublicVisitView, toVisitView } from '../presenters/visit-view.presenter.js';
+import { toPublicVisitStatusOnly, toPublicVisitView, toVisitView } from '../presenters/visit-view.presenter.js';
+import { normalizeVnPhone } from '../domain/phone.util.js';
 import { VisitorHostService } from '../services/visitor-host.service.js';
 import { VisitService } from '../services/visit.service.js';
 import { VisitorVerificationService } from '../services/visitor-verification.service.js';
@@ -58,14 +59,27 @@ export class PublicVisitorController {
 
   @Get('visitor-registrations/:code')
   @PublicRateLimit('lookup')
-  @ApiOperation({ summary: 'Khách tra cứu trạng thái đăng ký bằng mã lượt (không lộ dữ liệu cá nhân)' })
-  async lookup(@Param('code') code: string) {
+  @ApiOperation({
+    summary: 'Khách tra cứu trạng thái đăng ký bằng mã lượt',
+    description:
+      'Mã lượt đánh số tuần tự nên đoán được → chỉ có mã thì chỉ trả trạng thái + giờ hẹn. ' +
+      'Kèm SĐT đã đăng ký (header X-Visitor-Phone hoặc ?phone=) đúng thì mới trả tên khách, người được gặp, khu vực, lịch sử ra vào.',
+  })
+  async lookup(
+    @Param('code') code: string,
+    @Query('phone') phoneQuery?: string,
+    @Headers('x-visitor-phone') phoneHeader?: string,
+  ) {
+    // Ưu tiên header (không bị ghi vào access log như query string).
+    const phone = phoneHeader || phoneQuery;
     const row = await this.visits.loadRowByCode(code);
     if (!row) {
       throw new NotFoundException({ success: false, message: 'Không tìm thấy lượt đăng ký với mã này', error: { code: 'VISIT_NOT_FOUND', details: {} } });
     }
     const view = toVisitView(row, new Date(), (await this.config.get()).overstayEscalateMinutes);
-    return ok('OK', toPublicVisitView(view));
+    const given = normalizeVnPhone(String(phone ?? ''));
+    const verified = given.length >= 9 && given === normalizeVnPhone(String(view.visitor.phone ?? ''));
+    return ok('OK', verified ? { ...toPublicVisitView(view), verified: true } : toPublicVisitStatusOnly(view));
   }
 
   @Get('visitor-purposes')

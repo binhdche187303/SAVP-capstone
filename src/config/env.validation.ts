@@ -100,9 +100,17 @@ export const envValidationSchema = Joi.object({
   // ─── F. Rate Limit ───────────────────────────────────────────────────────────
   RATE_LIMIT_ENABLED: Joi.boolean().default(true),
   TRUST_PROXY_HOPS: Joi.number().integer().min(0).max(5).default(1),
+  // Bắt buộc nộp sinh trắc trước khi dùng API (false = chỉ nhắc ở giao diện).
+  BIOMETRIC_ENFORCEMENT_ENABLED: Joi.boolean().default(false),
   // Danh sách IP/subnet proxy tin cậy cho Express `trust proxy` (phân tách bằng dấu phẩy).
   TRUST_PROXY: Joi.string().allow('').default(''),
   AUTH_LOGIN_RATE_LIMIT_MAX_ATTEMPTS: Joi.number().integer().default(5),
+  // Khoá tạm theo tài khoản khi sai liên tiếp (không phụ thuộc IP). THRESHOLD=0 → tắt.
+  AUTH_LOCKOUT_THRESHOLD: Joi.number().integer().min(0).default(10),
+  AUTH_LOCKOUT_WINDOW_MINUTES: Joi.number().integer().min(1).default(30),
+  AUTH_LOCKOUT_MINUTES: Joi.number().integer().min(1).default(15),
+  // Thời lượng tối đa 1 cuộc họp (ngày).
+  MEETING_MAX_DURATION_DAYS: Joi.number().integer().min(1).default(31),
   AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS: Joi.number().integer().default(300),
   AUTH_OTP_REQUEST_RATE_LIMIT_MAX_ATTEMPTS: Joi.number().integer().default(3),
   AUTH_OTP_REQUEST_RATE_LIMIT_WINDOW_SECONDS: Joi.number()

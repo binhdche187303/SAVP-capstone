@@ -50,11 +50,28 @@ export class LoginService {
     const normalizedEmail = normalizeLoginEmail(loginDto.email);
 
     try {
-      await this.rateLimitService.checkOrThrow(
+      await this.rateLimitService.assertAllowed(
         requestContext.ipAddress,
         normalizedEmail,
       );
     } catch (error) {
+      if (
+        error instanceof Error &&
+        error.name === AUTH_ERROR_CODES.AUTH_ACCOUNT_TEMP_LOCKED
+      ) {
+        const retry = (error as Error & { retryAfterSeconds?: number }).retryAfterSeconds;
+        const minutes = retry ? Math.max(1, Math.ceil(retry / 60)) : null;
+        throw new HttpException(
+          {
+            code: AUTH_ERROR_CODES.AUTH_ACCOUNT_TEMP_LOCKED,
+            message: minutes
+              ? `Tài khoản tạm khoá do đăng nhập sai nhiều lần. Vui lòng thử lại sau ${minutes} phút.`
+              : 'Tài khoản tạm khoá do đăng nhập sai nhiều lần. Vui lòng thử lại sau.',
+            details: { retryAfterSeconds: retry ?? null },
+          },
+          HttpStatus.LOCKED,
+        );
+      }
       if (
         error instanceof Error &&
         error.name === AUTH_ERROR_CODES.AUTH_TOO_MANY_ATTEMPTS
@@ -73,6 +90,7 @@ export class LoginService {
     const user =
       await this.usersAuthRepository.findByNormalizedEmail(normalizedEmail);
     if (!user) {
+      await this.rateLimitService.recordFailure(requestContext.ipAddress, normalizedEmail);
       throw new UnauthorizedException({
         code: AUTH_ERROR_CODES.AUTH_INVALID_CREDENTIALS,
         message: 'Invalid credentials.',
@@ -83,11 +101,13 @@ export class LoginService {
       !!user.passwordHash &&
       (await bcrypt.compare(loginDto.password, user.passwordHash));
     if (!passwordMatched) {
+      await this.rateLimitService.recordFailure(requestContext.ipAddress, normalizedEmail);
       throw new UnauthorizedException({
         code: AUTH_ERROR_CODES.AUTH_INVALID_CREDENTIALS,
         message: 'Invalid credentials.',
       });
     }
+    await this.rateLimitService.recordSuccess(requestContext.ipAddress, normalizedEmail);
 
     this.assertAccountUsable(user);
     const { result } = await this.issueSession(user, requestContext);
@@ -234,6 +254,7 @@ export class LoginService {
       departmentId: user.departmentId,
       roles: authz.roles,
       permissions: authz.permissions,
+      mustChangePassword: user.mustChangePassword === true,
     };
 
     return {

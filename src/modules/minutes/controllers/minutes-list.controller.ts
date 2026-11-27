@@ -54,6 +54,7 @@ import { MinutesExportService } from '../services/minutes-export.service.js';
 import { CreateMinutesExportDto } from '../dto/create-minutes-export.dto.js';
 import { CreateMinutesExportResponseDto } from '../dto/create-minutes-export-response.dto.js';
 import { CompareMinutesResponseDto } from '../dto/compare-minutes-response.dto.js';
+import { UPLOAD_CEILING } from '../../../common/utils/upload-limits.js';
 
 @Controller('meeting-minutes')
 export class MeetingMinutesListController {
@@ -664,7 +665,7 @@ export class MeetingMinutesListController {
   @HttpCode(HttpStatus.CREATED)
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('meeting.minutes.attachment.create')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: UPLOAD_CEILING.minutesAttachment } }))
   @ApiTags('Minutes')
   @ApiBearerAuth()
   @ApiOperation({

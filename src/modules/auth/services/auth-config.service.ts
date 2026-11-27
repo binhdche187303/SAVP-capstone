@@ -43,4 +43,17 @@ export class AuthConfigService {
       300,
     );
   }
+
+  /** Sai liên tiếp bao nhiêu lần thì khoá tạm tài khoản (0 = tắt). */
+  getLockoutThreshold(): number {
+    return Number(this.configService.get<number>('AUTH_LOCKOUT_THRESHOLD', 10));
+  }
+
+  getLockoutWindowSeconds(): number {
+    return Number(this.configService.get<number>('AUTH_LOCKOUT_WINDOW_MINUTES', 30)) * 60;
+  }
+
+  getLockoutDurationSeconds(): number {
+    return Number(this.configService.get<number>('AUTH_LOCKOUT_MINUTES', 15)) * 60;
+  }
 }

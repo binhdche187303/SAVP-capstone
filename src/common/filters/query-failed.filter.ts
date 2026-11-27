@@ -137,6 +137,24 @@ export class QueryFailedFilter implements ExceptionFilter {
       return;
     }
 
+    // Dữ liệu đầu vào sai kiểu mà DTO chưa chặn (vd ID "abc" vào cột uuid, ngày "2026-13-45"):
+    // 22P02 invalid_text_representation, 22007/22008 sai định dạng / tràn ngày giờ,
+    // 22003 số vượt giới hạn. Đây là lỗi của request (400), không phải sự cố máy chủ (500).
+    if (code === '22P02' || code === '22007' || code === '22008' || code === '22003') {
+      this.logger.warn(
+        `Invalid input rejected by database: ${exception.message} (code: ${code}, requestId: ${requestId})`,
+      );
+      response.status(HttpStatus.BAD_REQUEST).json({
+        success: false,
+        message: 'Dữ liệu gửi lên không hợp lệ (sai định dạng ID, ngày giờ hoặc số).',
+        error: { code: 'INVALID_INPUT', details: {} },
+        requestId,
+        timestamp: new Date().toISOString(),
+        path: request.url,
+      });
+      return;
+    }
+
     // Other DB errors → 500
     this.logger.error(
       `Unhandled database error: ${exception.message} (code: ${code})`,

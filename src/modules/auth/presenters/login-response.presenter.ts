@@ -29,6 +29,7 @@ export class LoginResponsePresenter {
       departmentId: user.departmentId,
       roles: user.roles,
       permissions: user.permissions,
+      mustChangePassword: user.mustChangePassword === true,
     };
   }
 }

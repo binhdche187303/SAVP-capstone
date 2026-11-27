@@ -337,7 +337,7 @@ export class NoShowRateService {
       if (!scope.scopeDepartmentIds?.includes(deptId)) {
         throw new ForbiddenException({
           success: false,
-          message: 'Department is outside your scope',
+          message: 'Đơn vị này nằm ngoài phạm vi của bạn. Trưởng nhóm chỉ xem được đơn vị mình được gán làm trưởng — liên hệ Quản trị nghiệp vụ để gán trưởng đơn vị.',
           error: { code: 'DEPARTMENT_OUT_OF_SCOPE', details: {} },
         });
       }

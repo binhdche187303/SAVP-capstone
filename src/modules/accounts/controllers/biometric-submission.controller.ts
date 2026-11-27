@@ -37,6 +37,7 @@ import { BiometricStatusResponseDto } from '../dto/biometric-status-response.dto
 import { BiometricSubmissionResponseDto } from '../dto/biometric-submission-response.dto.js';
 import { SubmitBiometricDto } from '../dto/submit-biometric.dto.js';
 import { BiometricHttpExceptionFilter } from '../filters/biometric-http-exception.filter.js';
+import { UPLOAD_CEILING } from '../../../common/utils/upload-limits.js';
 
 /**
  * BiometricSubmissionController — ACCT-BIOMETRIC-SUBMIT-001 (self-service sinh trắc học).
@@ -92,9 +93,9 @@ export class BiometricSubmissionController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('profile.biometric.submit')
   @UseFilters(BiometricHttpExceptionFilter)
-  // KHÔNG set limits.fileSize ở Multer: để service trả đúng BIOMETRIC_FILE_TOO_LARGE
+  // Trần cứng = 2× giới hạn nghiệp vụ: file vượt nhẹ vẫn tới service (BIOMETRIC_FILE_TOO_LARGE)
   // theo precedence §11.2 (Multer limit sẽ ném lỗi sai code trước khi tới service).
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: UPLOAD_CEILING.biometric } }))
   @ApiBearerAuth()
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
@@ -143,7 +144,7 @@ export class BiometricSubmissionController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('profile.biometric.submit')
   @UseFilters(BiometricHttpExceptionFilter)
-  @UseInterceptors(FilesInterceptor('files', 5))
+  @UseInterceptors(FilesInterceptor('files', 5, { limits: { fileSize: UPLOAD_CEILING.biometric } }))
   @ApiBearerAuth()
   @ApiConsumes('multipart/form-data')
   @ApiOperation({

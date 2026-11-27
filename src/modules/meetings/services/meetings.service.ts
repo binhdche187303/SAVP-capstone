@@ -1012,6 +1012,17 @@ export class MeetingsService {
       });
     }
 
+    // Trần thời lượng 1 cuộc họp (form cho chọn khoảng ngày nên KHÔNG giới hạn trong 1 ngày):
+    // trước đây đặt được 40 ngày → giữ phòng 40 ngày nếu được duyệt. Chuỗi buổi họp dùng lịch lặp.
+    const maxDays = Number(this.configService.get<number>('MEETING_MAX_DURATION_DAYS', 31)) || 31;
+    if (endTime.getTime() - startTime.getTime() > maxDays * 24 * 60 * 60 * 1000) {
+      throw new BadRequestException({
+        success: false,
+        message: `Một cuộc họp không được kéo dài quá ${maxDays} ngày. Hãy dùng lịch lặp lại cho chuỗi buổi họp.`,
+        error: { code: 'VALIDATION_ERROR', details: { field: 'endTime', maxDays } },
+      });
+    }
+
     const room = await this.dataSource.getRepository(RoomEntity).findOne({
       where: { id: dto.roomId, isActive: true },
     });
@@ -1140,7 +1151,7 @@ export class MeetingsService {
         throw new BadRequestException({
           success: false,
           message:
-            'Không thể mời tài khoản Business Admin / System Admin tham gia cuộc họp',
+            'Không thể mời tài khoản Quản trị hệ thống, Quản trị nghiệp vụ hoặc Bảo vệ tham gia cuộc họp',
           error: {
             code: 'PARTICIPANT_ROLE_NOT_ALLOWED',
             details: { invalidParticipantIds: [...ineligibleRoleUserIds] },
@@ -1155,10 +1166,14 @@ export class MeetingsService {
       endTime,
     );
     if (roomConflict.hasConflict) {
+      // Nói rõ lý do: trùng có thể chỉ do khoảng nghỉ chuẩn bị phòng (room_booking_buffer_minutes),
+      // trước đây người dùng đặt 09:00 ngay sau cuộc 08:00–09:00 chỉ thấy "phòng vừa được đặt".
+      const bufferMinutes = Math.round((await this.getRoomBookingBufferMs()) / 60000);
       throw new ConflictException({
         success: false,
-        message:
-          'Phòng họp này vừa được đặt. Vui lòng chọn một phòng khác hoặc đổi khung giờ.',
+        message: bufferMinutes > 0
+          ? `Phòng họp đã có lịch trùng hoặc quá sát khung giờ này (cần cách nhau ít nhất ${bufferMinutes} phút để chuẩn bị phòng). Vui lòng chọn phòng khác hoặc đổi khung giờ.`
+          : 'Phòng họp này vừa được đặt. Vui lòng chọn một phòng khác hoặc đổi khung giờ.',
         error: {
           code: 'ROOM_CONFLICT',
           details: { conflictingBookingId: roomConflict.conflictingBookingId },
@@ -1198,11 +1213,17 @@ export class MeetingsService {
       });
     }
 
-    const totalParticipants =
-      uniqueParticipantIds.length + (dto.externalParticipants?.length || 0);
+    // Số người dùng để so sức chứa = max(người được mời, số người dự kiến khai báo).
+    // Trước đây bỏ qua expectedAttendeeCount → khai 50 người cho phòng 6 chỗ vẫn không cảnh báo.
+    const totalParticipants = Math.max(
+      uniqueParticipantIds.length + (dto.externalParticipants?.length || 0),
+      dto.expectedAttendeeCount ?? 0,
+    );
     const capacityOverride = dto.capacityOverrideConfirmed === true;
 
-    if (totalParticipants > room.capacity && !capacityOverride) {
+    // capacity = 0 nghĩa là CHƯA RÕ (vd 115 phòng đồng bộ từ UEL không có sức chứa) → không chặn,
+    // nếu không mọi lượt đặt các phòng này đều bị báo "vượt sức chứa".
+    if (room.capacity > 0 && totalParticipants > room.capacity && !capacityOverride) {
       throw new UnprocessableEntityException({
         success: false,
         message: 'Số lượng người tham dự vượt quá sức chứa của phòng',
@@ -3896,7 +3917,7 @@ export class MeetingsService {
       throw new BadRequestException({
         success: false,
         message:
-          'Không thể mời tài khoản Business Admin / System Admin tham gia cuộc họp',
+          'Không thể mời tài khoản Quản trị hệ thống, Quản trị nghiệp vụ hoặc Bảo vệ tham gia cuộc họp',
         error: { code: 'PARTICIPANT_ROLE_NOT_ALLOWED', details: {} },
       });
     }

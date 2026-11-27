@@ -190,12 +190,33 @@ export class EventsGateway
    * realtime presence chỉ bật prod sau khi có auth — gate IVSS_REALTIME_ENABLED OFF mặc định).
    */
   @SubscribeMessage('ivss:subscribe')
-  handleIvssSubscribe(
+  async handleIvssSubscribe(
     @MessageBody() body: { meetingId?: string },
     @ConnectedSocket() client: Socket,
-  ): { ok: boolean; room?: string } {
+  ): Promise<{ ok: boolean; room?: string }> {
     const meetingId = body?.meetingId;
     if (typeof meetingId !== 'string' || !UUID_RE.test(meetingId)) {
+      return { ok: false };
+    }
+    // Kênh này đẩy realtime họ tên + giờ vào/ra phòng họp. Trước đây KHÔNG kiểm tra danh tính:
+    // socket ẩn danh (không token) cũng nghe được. Nay cùng quy tắc với meeting:subscribe cho
+    // tài khoản nội bộ: phải là chủ trì / người tham dự cuộc họp.
+    const identity = (client.data as { identity?: SocketIdentity | null })
+      .identity;
+    if (!identity || identity.type !== 'employee') {
+      this.logger.warn(
+        `[WS] ivss:subscribe rejected — no valid employee identity (socket=${client.id}, meetingId=${meetingId})`,
+      );
+      return { ok: false };
+    }
+    const isParticipant = await this.isEmployeeMeetingParticipant(
+      identity.userId,
+      meetingId,
+    );
+    if (!isParticipant) {
+      this.logger.warn(
+        `[WS] ivss:subscribe rejected — user ${identity.userId} is not host/participant of meeting ${meetingId}`,
+      );
       return { ok: false };
     }
     const room = IVSS_MEETING_ROOM(meetingId);

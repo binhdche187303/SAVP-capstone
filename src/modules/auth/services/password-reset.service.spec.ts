@@ -92,7 +92,7 @@ describe('PasswordResetService', () => {
       const result = await service.requestOtp(dto);
 
       expect(result.success).toBe(true);
-      expect(result.message).toContain('Mã xác thực đã được gửi');
+      expect(result.message).toContain('mã xác thực đã được gửi');
       expect(cacheService.setOtpSession).toHaveBeenCalled();
       expect(emailService.sendOtp).toHaveBeenCalled();
     });
@@ -114,17 +114,16 @@ describe('PasswordResetService', () => {
       expect(cacheService.blockEmail).toHaveBeenCalledWith(email, 3600000);
     });
 
-    it('should return unified E1 error (400 Bad Request) if user is not found', async () => {
+    it('email không tồn tại → trả Y HỆT phản hồi thành công nhưng KHÔNG tạo/gửi mã (chống dò tài khoản)', async () => {
       cacheService.isBlocked.mockResolvedValue(false);
       cacheService.incrementLimitCounter.mockResolvedValue(1);
       usersRepository.findByEmailForReset.mockResolvedValue(null);
 
-      await expect(service.requestOtp(dto)).rejects.toThrow(
-        BadRequestException,
-      );
-      await expect(service.requestOtp(dto)).rejects.toThrow(
-        'Email không tồn tại hoặc tài khoản đã bị khóa. Vui lòng kiểm tra lại.',
-      );
+      const result = await service.requestOtp(dto);
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('mã xác thực đã được gửi');
+      expect(cacheService.setOtpSession).not.toHaveBeenCalled();
+      expect(emailService.sendOtp).not.toHaveBeenCalled();
     });
 
     it('should return unified E1 error if user is restricted (locked/resigned/soft deleted)', async () => {
@@ -157,10 +156,11 @@ describe('PasswordResetService', () => {
           ...restrictedUser,
         });
 
-        await expect(service.requestOtp(dto)).rejects.toThrow(
-          BadRequestException,
-        );
+        const result = await service.requestOtp(dto);
+        expect(result.success).toBe(true);
       }
+      expect(cacheService.setOtpSession).not.toHaveBeenCalled();
+      expect(emailService.sendOtp).not.toHaveBeenCalled();
     });
   });
 

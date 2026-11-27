@@ -78,6 +78,7 @@ import { ManageUsersQueryDto } from '../dto/manage-users-query.dto.js';
 import { ManageUserItemDto } from '../dto/manage-user-item.dto.js';
 import { ExportUsersQueryDto } from '../dto/export-users-query.dto.js';
 import { UserExportService } from '../../reports/services/user-export.service.js';
+import { UPLOAD_CEILING } from '../../../common/utils/upload-limits.js';
 
 @ApiTags('Accounts')
 @Controller('users')
@@ -94,7 +95,7 @@ export class UsersController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('accounts.user.create')
   @ApiBearerAuth()
-  @UseInterceptors(FileInterceptor('avatarFile'))
+  @UseInterceptors(FileInterceptor('avatarFile', { limits: { fileSize: UPLOAD_CEILING.avatar } }))
   @ApiConsumes('multipart/form-data')
   @UsePipes(
     new ValidationPipe({
@@ -176,7 +177,7 @@ export class UsersController {
       { name: 'file', maxCount: 1 },
       { name: 'photos', maxCount: MAX_IMPORT_ROWS },
       { name: 'photosZip', maxCount: 1 },
-    ]),
+    ], { limits: { fileSize: UPLOAD_CEILING.accountImport } }),
   )
   @UsePipes(
     new ValidationPipe({
@@ -294,7 +295,7 @@ export class UsersController {
       { name: 'file', maxCount: 1 },
       { name: 'photos', maxCount: MAX_PARTNER_IMPORT_ROWS },
       { name: 'photosZip', maxCount: 1 },
-    ]),
+    ], { limits: { fileSize: UPLOAD_CEILING.accountImport } }),
   )
   @UsePipes(
     new ValidationPipe({

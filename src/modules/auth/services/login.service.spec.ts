@@ -25,6 +25,9 @@ describe('LoginService', () => {
   } as unknown as AuthAuditRepository;
   const rateLimitService = {
     checkOrThrow: jest.fn(),
+    assertAllowed: jest.fn(),
+    recordFailure: jest.fn(),
+    recordSuccess: jest.fn(),
   } as unknown as RateLimitService;
   const tokenService = {
     generateAccessToken: jest.fn(),
@@ -51,7 +54,7 @@ describe('LoginService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    (rateLimitService.checkOrThrow as jest.Mock).mockImplementation(
+    (rateLimitService.assertAllowed as jest.Mock).mockImplementation(
       () => undefined,
     );
     (
@@ -102,7 +105,7 @@ describe('LoginService', () => {
   });
 
   it('throws AUTH_TOO_MANY_ATTEMPTS when rate limit exceeded', async () => {
-    (rateLimitService.checkOrThrow as jest.Mock).mockImplementation(() => {
+    (rateLimitService.assertAllowed as jest.Mock).mockImplementation(() => {
       const error = new Error('AUTH_TOO_MANY_ATTEMPTS');
       error.name = 'AUTH_TOO_MANY_ATTEMPTS';
       throw error;
@@ -273,7 +276,7 @@ describe('LoginService', () => {
   describe('PTA account expiry in LoginService', () => {
     beforeEach(() => {
       jest.clearAllMocks();
-      (rateLimitService.checkOrThrow as jest.Mock).mockImplementation(
+      (rateLimitService.assertAllowed as jest.Mock).mockImplementation(
         () => undefined,
       );
       (

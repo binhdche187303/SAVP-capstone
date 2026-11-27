@@ -1,4 +1,4 @@
-﻿import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+﻿import { Injectable, Logger, OnModuleInit, NotFoundException } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
@@ -229,7 +229,12 @@ export class StorageService implements OnModuleInit {
       throw new Error('Invalid storage key (path traversal).');
     }
     if (!fs.existsSync(resolved)) {
-      throw new Error('File not found.');
+      // 404 thay vì 500: file đã bị xoá / chưa đồng bộ không phải sự cố máy chủ.
+      throw new NotFoundException({
+        success: false,
+        message: 'Không tìm thấy tệp.',
+        error: { code: 'FILE_NOT_FOUND', details: {} },
+      });
     }
     return fs.readFileSync(resolved);
   }

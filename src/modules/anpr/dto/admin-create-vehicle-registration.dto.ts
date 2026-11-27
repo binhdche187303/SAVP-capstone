@@ -10,7 +10,7 @@ import { CreateVehicleRegistrationDto } from './create-vehicle-registration.dto.
  * (PermissionsGuard + @RequirePermissions('anpr.vehicle.admin_register')) — SEC-01.
  */
 export class AdminCreateVehicleRegistrationDto extends CreateVehicleRegistrationDto {
-  @ApiProperty({ description: 'ID user được đăng ký hộ biển số này' })
+  @ApiProperty({ name: 'user_id', description: 'ID user được đăng ký hộ biển số này' })
   @Expose({ name: 'user_id' })
   @IsUUID()
   userId: string;

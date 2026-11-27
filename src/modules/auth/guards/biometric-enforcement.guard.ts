@@ -4,12 +4,15 @@ import {
   ForbiddenException,
   Injectable,
   Logger,
+  Optional,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
 import { AuthzReadRepository } from '../repositories/authz-read.repository';
 import { BiometricStatusRawRepository } from '../repositories/biometric-status-raw.repository';
 import { resolveBiometricReviewStatus } from '../../../common/utils/biometric-status-resolver.util';
 import { isBiometricExemptRole } from '../../../common/utils/biometric-exempt-roles.util';
+import { RequestIdentityResolver } from '../services/request-identity.resolver';
 
 /**
  * Routes that are ALWAYS allowed, even when biometricReviewStatus is
@@ -46,16 +49,36 @@ export class BiometricEnforcementGuard implements CanActivate {
   constructor(
     private readonly authzReadRepository: AuthzReadRepository,
     private readonly biometricStatusRawRepository: BiometricStatusRawRepository,
+    @Optional() private readonly identity?: RequestIdentityResolver,
+    @Optional() private readonly config?: ConfigService,
   ) {}
+
+  /**
+   * Công tắc BIOMETRIC_ENFORCEMENT_ENABLED (mặc định false). Bật = chặn MỌI API (trừ
+   * whitelist) với tài khoản chưa nộp / bị từ chối sinh trắc. Tắt = chỉ nhắc ở giao diện.
+   * Thiếu ConfigService (unit test khởi tạo tay) → coi như bật để giữ hành vi cũ của test.
+   */
+  private isEnforcementEnabled(): boolean {
+    if (!this.config) return true;
+    return this.config.get<boolean>('BIOMETRIC_ENFORCEMENT_ENABLED', false) === true;
+  }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
 
     // If JwtAuthGuard hasn't populated user (unauthenticated route), skip.
-    const user = request['user'] as { userId?: string } | undefined;
-    if (!user?.userId) {
+    if (!this.isEnforcementEnabled()) {
       return true;
     }
+    // Guard toàn cục chạy TRƯỚC JwtAuthGuard ở controller → tự xác định người gọi.
+    const resolvedUserId =
+      (request['user'] as { userId?: string } | undefined)?.userId ??
+      (await this.identity?.resolveUserId(request)) ??
+      null;
+    if (!resolvedUserId) {
+      return true;
+    }
+    const user = { userId: resolvedUserId };
 
     const path = request.path;
 

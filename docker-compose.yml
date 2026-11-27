@@ -81,13 +81,18 @@ services:
       API_PUBLIC_BASE_URL: ${PUBLIC_API_URL:-${PUBLIC_WEB_URL:-http://localhost:3000}}
       STORAGE_PUBLIC_BASE_URL: ${PUBLIC_API_URL:-${PUBLIC_WEB_URL:-http://localhost:3000}}/uploads
       GUEST_ACCESS_INVITE_BASE_URL: ${PUBLIC_WEB_URL:-http://localhost:3001}/guest/join
+      # Sau khi đăng nhập SSO UEL, trình duyệt được chuyển về trang này của web.
+      UEL_SSO_FE_CALLBACK_URL: ${PUBLIC_WEB_URL:-http://localhost:3001}/sso/callback
       # CORS = danh sách website được phép gọi API từ trình duyệt.
       CORS_ORIGIN: ${PUBLIC_WEB_URL:-http://localhost:3001},${PUBLIC_API_URL:-http://localhost:3000}
       WS_CORS_ORIGIN: ${PUBLIC_WEB_URL:-http://localhost:3001},${PUBLIC_API_URL:-http://localhost:3000}
-      # Chỉ tin header IP (X-Forwarded-For) từ: nginx của FE (172.30.50.10) và cổng mạng Docker
-      # (172.30.50.1 — nơi Caddy/Cloudflare Tunnel chạy trên chính server đi vào). Nhờ vậy lịch sử
-      # đăng nhập ghi đúng IP người dùng, còn camera gọi thẳng cổng 3000 vẫn bị kiểm tra IP thật.
-      TRUST_PROXY: ${TRUST_PROXY:-172.30.50.10,172.30.50.1}
+      # Chỉ tin header IP (X-Forwarded-For) do nginx của FE (172.30.50.10) gửi → lịch sử đăng nhập
+      # ghi đúng IP người dùng; camera gọi thẳng cổng 3000 vẫn bị kiểm tra IP thật.
+      # KHÔNG mặc định tin cổng mạng Docker 172.30.50.1: trên Docker Desktop / IPv6 mọi kết nối
+      # từ ngoài đều đi qua địa chỉ này → người dùng tự khai IP giả được. Chỉ thêm ",172.30.50.1"
+      # khi có Caddy / Cloudflare Tunnel chạy trên chính server VÀ cổng 3001 đã bị tường lửa chặn
+      # từ bên ngoài (người dùng bắt buộc đi qua proxy đó).
+      TRUST_PROXY: ${TRUST_PROXY:-172.30.50.10}
       IVSS_BRIDGE_BASE_URL: ${IVSS_BRIDGE_BASE_URL:-}
     volumes:
       - backend-storage:/app/storage
