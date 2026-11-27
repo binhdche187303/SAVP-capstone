@@ -40,9 +40,18 @@ async function digestGet(
   return { status: res.status, body: await res.text() };
 }
 
+/** Cấu hình luồng chính chuẩn cho camera AI (trình duyệt + nhận diện). */
+export const MAIN_STREAM_PROFILE = {
+  width: 2560,
+  height: 1440,
+  fps: 20,
+  bitrateKbps: 4096,
+};
+
 /**
- * Ép cả luồng chính + phụ của camera Dahua sang H.264 qua CGI (gửi riêng từng luồng —
- * gộp 1 request thì firmware chỉ nhận luồng chính). Tắt SmartEncode trước vì H.265+ khoá codec.
+ * Chuẩn hoá encoder camera Dahua qua CGI: luồng chính 2560x1440 / 20fps / H.264 / CBR 4096kbps,
+ * luồng phụ H.264. Gửi riêng từng tham số — gộp 1 request thì firmware chỉ nhận phần đầu.
+ * Tắt SmartEncode trước vì H.265+ khoá codec.
  */
 export async function dahuaForceH264(
   ip: string,
@@ -50,18 +59,36 @@ export async function dahuaForceH264(
   pass: string,
 ): Promise<{ ok: boolean; message?: string }> {
   const base = `http://${ip}/cgi-bin/configManager.cgi?action=setConfig&`;
+  const m = 'Encode[0].MainFormat[0].Video.';
+  const p = MAIN_STREAM_PROFILE;
   const steps: Array<[string, string, boolean]> = [
     ['SmartEncode', 'SmartEncode[0].Enable=false', false],
-    ['luồng chính', 'Encode[0].MainFormat[0].Video.Compression=H.264', true],
-    ['luồng phụ', 'Encode[0].ExtraFormat[0].Video.Compression=H.264', true],
+    ['H.264 luồng chính', `${m}Compression=H.264`, true],
+    [
+      'H.264 luồng phụ',
+      'Encode[0].ExtraFormat[0].Video.Compression=H.264',
+      true,
+    ],
+    [
+      `độ phân giải ${p.width}x${p.height}`,
+      `${m}Width=${p.width}&${m}Height=${p.height}`,
+      true,
+    ],
+    [`${p.fps}fps`, `${m}FPS=${p.fps}`, true],
+    ['CBR', `${m}BitRateControl=CBR`, false],
+    [`bitrate ${p.bitrateKbps}kbps`, `${m}BitRate=${p.bitrateKbps}`, true],
   ];
   const failed: string[] = [];
   try {
     for (const [label, q, required] of steps) {
       const r = await digestGet(base + q, user, pass);
-      if (required && (r.status !== 200 || !/OK/i.test(r.body))) {
-        failed.push(r.status === 401 ? `${label} (sai mật khẩu)` : label);
-      }
+      if (r.status === 401)
+        return {
+          ok: false,
+          message: 'Không chỉnh được cấu hình camera: sai mật khẩu',
+        };
+      if (required && (r.status !== 200 || !/OK/i.test(r.body)))
+        failed.push(label);
     }
   } catch (e) {
     return {
@@ -70,6 +97,6 @@ export async function dahuaForceH264(
     };
   }
   return failed.length
-    ? { ok: false, message: `Không đổi được H.264: ${failed.join(', ')}` }
+    ? { ok: false, message: `Không chỉnh được: ${failed.join(', ')}` }
     : { ok: true };
 }
