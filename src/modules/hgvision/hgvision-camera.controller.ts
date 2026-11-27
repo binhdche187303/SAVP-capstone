@@ -208,6 +208,20 @@ export class HgvisionCameraController {
     };
   }
 
+  @Get('recording/retention')
+  @RequirePermissions(HGVISION_SYSTEM_READ)
+  @ApiOperation({
+    summary:
+      'Video cũ nhất còn lưu của từng camera (suy ra số ngày lưu thực tế)',
+  })
+  async recordingRetention() {
+    return {
+      success: true,
+      message: 'Recording retention',
+      data: await this.cameras.recordingRetention(),
+    };
+  }
+
   @Get('live/:name/index.m3u8')
   @RequirePermissions(HGVISION_CAMERA_READ)
   @ApiOperation({ summary: 'Playlist live HLS của camera (qua proxy BE)' })

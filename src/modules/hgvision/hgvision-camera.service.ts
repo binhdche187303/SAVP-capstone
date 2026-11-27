@@ -27,6 +27,9 @@ import { HGVISION_CLIENT } from './hgvision.constants.js';
 const API_PREFIX = '/api/v1';
 const LIST_TTL_MS = 5_000;
 const STATIC_TTL_MS = 60_000;
+const RETENTION_TTL_MS = 10 * 60_000;
+/** Nhìn lại tối đa 90 ngày để tìm video cũ nhất. */
+const RETENTION_LOOKBACK_MS = 90 * 24 * 3600_000;
 /** Khoảng tìm xem lại tối đa (giống nút "1 ngày" trên HGVision). */
 export const PLAYBACK_MAX_WINDOW_MS = 24 * 3600_000;
 /** Tải MP4 tối đa 1 giờ: HGVision ghép file khi tải, khoảng dài rất nặng. */
@@ -411,6 +414,55 @@ export class HgvisionCameraService {
     return this.cached('resources', LIST_TTL_MS, () =>
       this.client.getResources(),
     );
+  }
+
+  /**
+   * Video cũ nhất còn lưu của từng camera (HGVision không có API số ngày lưu —
+   * suy ra từ dải ghi playback trong RETENTION_LOOKBACK_MS). Cache 10 phút vì nặng.
+   */
+  recordingRetention(): Promise<
+    Array<{ name: string; oldestMs: number | null; latestMs: number | null }>
+  > {
+    return this.cached('retention', RETENTION_TTL_MS, async () => {
+      const cams = await this.client.listCameras();
+      const now = Date.now();
+      const q = (name: string) =>
+        playbackQuery(name, now - RETENTION_LOOKBACK_MS, now);
+      const one = async (name: string) => {
+        try {
+          const res = await this.client.fetchPublicMedia(
+            `/api/playback/recordings?${q(name)}`,
+          );
+          const data = JSON.parse(res.body.toString('utf8')) as unknown;
+          const ranges = Array.isArray(data)
+            ? (data as Array<{ start_ms?: number; end_ms?: number }>)
+            : [];
+          const starts = ranges
+            .map((r) => Number(r.start_ms))
+            .filter(Number.isFinite);
+          const ends = ranges
+            .map((r) => Number(r.end_ms))
+            .filter(Number.isFinite);
+          return {
+            name,
+            oldestMs: starts.length ? Math.min(...starts) : null,
+            latestMs: ends.length ? Math.max(...ends) : null,
+          };
+        } catch {
+          return { name, oldestMs: null, latestMs: null };
+        }
+      };
+      const out: Array<{
+        name: string;
+        oldestMs: number | null;
+        latestMs: number | null;
+      }> = [];
+      const names = cams.map((c) => c.camera_name);
+      for (let i = 0; i < names.length; i += 4) {
+        out.push(...(await Promise.all(names.slice(i, i + 4).map(one))));
+      }
+      return out;
+    });
   }
 
   /** Path playlist live trên HGVision (tương đối HGVISION_BASE_URL) + trạng thái camera. */
