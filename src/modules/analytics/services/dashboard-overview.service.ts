@@ -49,19 +49,6 @@ export class DashboardOverviewService {
     await this.validateMaxRange(from, to);
     this.validateDepartmentOwnership(scope, query.departmentId);
 
-    // Redis cache — key theo scope + filter (from/to/dept/room)
-    const cacheKey = this.buildCacheKey(scope, from, to, query);
-    try {
-      const cached =
-        await this.redisService.getJson<DashboardOverviewResponseDto>(cacheKey);
-      if (cached) {
-        this.logger.debug(`Cache HIT ${cacheKey}`);
-        return cached;
-      }
-    } catch {
-      // Redis lỗi thì fallback DB, không throw
-    }
-
     const params = {
       from,
       to,
@@ -69,6 +56,21 @@ export class DashboardOverviewService {
       departmentId: query.departmentId,
       roomId: query.roomId,
     };
+    // Phòng đang họp là số liệu hiện tại, không dùng số lịch sử từ cache/kỳ thống kê.
+    const activeRooms = await this.repo.countActiveRooms(params);
+
+    // Redis cache — key theo scope + filter (from/to/dept/room)
+    const cacheKey = this.buildCacheKey(scope, from, to, query);
+    try {
+      const cached =
+        await this.redisService.getJson<DashboardOverviewResponseDto>(cacheKey);
+      if (cached) {
+        this.logger.debug(`Cache HIT ${cacheKey}`);
+        return { ...cached, activeRooms };
+      }
+    } catch {
+      // Redis lỗi thì fallback DB, không throw
+    }
 
     const logAction = async (meetCount: number) => {
       try {
@@ -99,13 +101,13 @@ export class DashboardOverviewService {
     const meetingCount = await this.repo.countMeetings(params);
     if (meetingCount === 0) {
       const emptyRes = this.buildEmptyResponse(from, to);
+      emptyRes.activeRooms = activeRooms;
       logAction(0);
       return emptyRes;
     }
 
     // Aggregate all KPIs
     const [
-      activeRooms,
       utilization,
       noShow,
       attendance,
@@ -113,7 +115,6 @@ export class DashboardOverviewService {
       recordingCount,
       trend,
     ] = await Promise.all([
-      this.repo.countActiveRooms(params),
       this.repo.getUtilizationAggregate(params),
       this.repo.getNoShowAggregate(params),
       this.repo.getAttendanceAggregate(params),

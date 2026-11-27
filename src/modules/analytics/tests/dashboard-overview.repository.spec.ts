@@ -70,6 +70,19 @@ describe('DashboardOverviewRepository', () => {
     });
   });
 
+  describe('countActiveRooms', () => {
+    it('giữ phạm vi phòng ban và phòng khi đếm phòng đang họp', async () => {
+      mockQuery.mockResolvedValue([{ cnt: 1 }]);
+      const result = await repo.countActiveRooms({
+        ...baseParams,
+        scopeDepartmentIds: ['dept-1'],
+        roomId: 'room-1',
+      });
+      expect(result).toBe(1);
+      expect(mockQuery.mock.calls[0][1]).toEqual([['dept-1'], 'room-1']);
+    });
+  });
+
   describe('getUtilizationAggregate', () => {
     it('returns actual and reserved minutes', async () => {
       mockQuery.mockResolvedValue([

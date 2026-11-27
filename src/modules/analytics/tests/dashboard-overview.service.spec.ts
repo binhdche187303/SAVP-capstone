@@ -14,10 +14,15 @@ describe('DashboardOverviewService', () => {
   let mockRepo: jest.Mocked<DashboardOverviewRepository>;
   let mockConfigService: jest.Mocked<DashboardOverviewConfigService>;
   let mockAuditLogsService: jest.Mocked<AuditLogsService>;
+  let mockRedisService: { getJson: jest.Mock; setJsonWithTtl: jest.Mock };
 
   const mockUserId = '00000000-0000-0000-0000-000000000001';
 
   beforeEach(async () => {
+    mockRedisService = {
+      getJson: jest.fn().mockResolvedValue(null),
+      setJsonWithTtl: jest.fn().mockResolvedValue(undefined),
+    };
     mockAuthzRepo = {
       getEffectiveRolesAndPermissions: jest.fn(),
     } as unknown as jest.Mocked<AuthzReadRepository>;
@@ -44,7 +49,7 @@ describe('DashboardOverviewService', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        { provide: RedisService, useValue: { get: jest.fn().mockResolvedValue(null), set: jest.fn().mockResolvedValue(undefined), getClient: jest.fn().mockReturnValue(null) } },
+        { provide: RedisService, useValue: mockRedisService },
         DashboardOverviewService,
         { provide: AuthzReadRepository, useValue: mockAuthzRepo },
         { provide: DashboardOverviewRepository, useValue: mockRepo },
@@ -217,13 +222,14 @@ describe('DashboardOverviewService', () => {
   });
 
   describe('getOverview', () => {
-    it('empty state -> all 0, trend=[], no aggregate calls', async () => {
+    it('kỳ không có lịch vẫn trả số phòng đang họp hiện tại', async () => {
       mockAuthzRepo.getEffectiveRolesAndPermissions.mockResolvedValue({
         roles: ['SYSTEM_ADMIN'],
         permissions: ['analytics.overview.read'],
       });
       mockConfigService.getMaxRangeDays.mockResolvedValue(366);
       mockRepo.countMeetings.mockResolvedValue(0);
+      mockRepo.countActiveRooms.mockResolvedValue(2);
 
       const result = await service.getOverview(
         { userId: mockUserId },
@@ -232,7 +238,25 @@ describe('DashboardOverviewService', () => {
 
       expect(result.meetingCount).toBe(0);
       expect(result.trend).toEqual([]);
-      expect(mockRepo.countActiveRooms).not.toHaveBeenCalled();
+      expect(result.activeRooms).toBe(2);
+      expect(mockRepo.getUtilizationAggregate).not.toHaveBeenCalled();
+    });
+
+    it('cache lịch sử không làm giữ lại số phòng đã kết thúc họp', async () => {
+      mockAuthzRepo.getEffectiveRolesAndPermissions.mockResolvedValue({
+        roles: ['SYSTEM_ADMIN'],
+        permissions: ['analytics.overview.read'],
+      });
+      mockConfigService.getMaxRangeDays.mockResolvedValue(366);
+      mockRedisService.getJson.mockResolvedValue({ meetingCount: 10, activeRooms: 5 });
+      mockRepo.countActiveRooms.mockResolvedValue(0);
+      const result = await service.getOverview(
+        { userId: mockUserId },
+        { from: '2026-06-01', to: '2026-06-30' },
+      );
+      expect(result.meetingCount).toBe(10);
+      expect(result.activeRooms).toBe(0);
+      expect(mockRepo.countMeetings).not.toHaveBeenCalled();
     });
 
     it('full response with data -> all aggregates called', async () => {
