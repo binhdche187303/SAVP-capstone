@@ -61,7 +61,8 @@ export class ReportScheduleRunService {
 
   async list(q: { scheduleId?: FilterSelection<string>; status?: FilterSelection<string>; from?: string; to?: string; page?: number | string; limit?: number | string }) {
     const params: unknown[] = [];
-    const where: string[] = [];
+    // Lịch sử chỉ gồm lượt đã kết thúc; lọc trước COUNT/LIMIT để phân trang đúng.
+    const where: string[] = ["status IN ('success', 'failed')"];
     if (q.scheduleId) { params.push(filterValues(q.scheduleId)); where.push(`schedule_id::text = ANY($${params.length}::text[])`); }
     if (q.status) {
       if (filterValues(q.status).some(value => !['queued', 'running', 'success', 'failed'].includes(value))) throw reportBadRequest('Trạng thái không hợp lệ', 'VALIDATION_ERROR');

@@ -7,6 +7,7 @@
 export class DashboardOverviewResponseDto {
   period: { from: string; to: string };
   meetingCount: number;
+  /** Số phòng đang có cuộc họp in_progress tại thời điểm truy vấn. */
   activeRooms: number;
   utilizationRate: number;
   noShowRate: number;

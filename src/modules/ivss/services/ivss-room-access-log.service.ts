@@ -153,7 +153,7 @@ export class IvssRoomAccessLogService {
         WHERE e.event_type = ANY($1::text[])
           AND e.event_time >= ($2::date::timestamp AT TIME ZONE '${BUSINESS_TIMEZONE}')
           AND e.event_time <  (($2::date + interval '1 day')::timestamp AT TIME ZONE '${BUSINESS_TIMEZONE}')
-          AND ($3::uuid IS NULL OR e.room_id = $3::uuid)
+          AND ($3::uuid IS NULL OR COALESCE(e.room_id, dv.room_id) = $3::uuid)
           AND ($4::text IS NULL OR u.full_name ILIKE '%' || $4::text || '%')
           AND ($5::uuid IS NULL OR e.meeting_id = $5::uuid)`;
     // [FE-2026-08-09] LEFT JOIN departments cho department_name — dùng chung điều kiện
@@ -163,14 +163,17 @@ export class IvssRoomAccessLogService {
          LEFT JOIN users u
                 ON u.id = NULLIF(e.payload_json->>'userId', '')::uuid
          LEFT JOIN departments d ON d.id = u.department_id
-         LEFT JOIN rooms r ON r.id = e.room_id
          LEFT JOIN iot_devices dv ON dv.id = e.device_id
+         LEFT JOIN rooms r ON r.id = COALESCE(e.room_id, dv.room_id)
          LEFT JOIN zones zn ON zn.id = COALESCE(e.zone_id, dv.zone_id) AND zn.deleted_at IS NULL`;
     const filterParams: unknown[] = [FACE_EVENT_TYPES, day, roomId, search, meetingId];
     if (options.roomIds?.length) {
       filterParams.push(options.roomIds);
-      whereSql += ` AND e.room_id = ANY($${filterParams.length}::uuid[])`;
+      whereSql += ` AND COALESCE(e.room_id, dv.room_id) = ANY($${filterParams.length}::uuid[])`;
     }
+    // Đây là nhật ký ra/vào PHÒNG: "Tất cả phòng" chỉ lấy lượt nhận diện gắn với một phòng (phòng của
+    // event, hoặc phòng của camera ghi nhận). Camera cổng/thang máy/hành lang không thuộc phòng nào → bỏ.
+    whereSql += ` AND COALESCE(e.room_id, dv.room_id) IS NOT NULL`;
 
     // Đếm trên TOÀN BỘ kết quả lọc (không chỉ trang hiện tại) — matched/unmatched phải
     // phản ánh cả ngày, nếu đếm trong trang thì số liệu vô nghĩa khi phân trang.
@@ -198,7 +201,7 @@ export class IvssRoomAccessLogService {
               u.avatar_url                  AS avatar_url,
               u.email                       AS email,
               d.department_name             AS department_name,
-              e.room_id                     AS room_id,
+              COALESCE(e.room_id, dv.room_id) AS room_id,
               r.room_name                   AS room_name,
               e.payload_json->>'direction'  AS direction,
               e.payload_json->>'matchState' AS match_state,
