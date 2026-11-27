@@ -1,5 +1,10 @@
 # Local Development Guide
 
+## 📝 CHANGELOG
+| Ngày | Tóm tắt | Vị trí |
+| :--- | :--- | :--- |
+| 2026-11-27 | Thêm mục 11 "Sao lưu & khôi phục" (service `backup` trong docker-compose, `scripts/restore.sh`, trách nhiệm phía trường) | Mục 11 (cuối file) |
+
 Hướng dẫn chạy và kiểm tra backend Capstone trên môi trường local.
 
 ---
@@ -292,3 +297,41 @@ npm run build 2>&1
 ```
 
 Xem chi tiết lỗi và sửa theo hướng dẫn TypeScript compiler.
+
+---
+
+## 11. Sao lưu & khôi phục
+
+### 11.1. Sao lưu tự động (service `backup`)
+`docker compose up -d` chạy kèm container `capstone-backup`. Hằng ngày lúc `BACKUP_HOUR` giờ (mặc định 2h, giờ VN), nó làm:
+- `pg_dump -Fc` DB SAVP → `db.dump`
+- nén volume uploads / storage / minio (nếu có dữ liệu) → `files.tgz`
+- giữ `BACKUP_KEEP_DAILY` bản ngày (mặc định 7) + `BACKUP_KEEP_WEEKLY` bản Chủ nhật (mặc định 4), bản cũ hơn tự xoá.
+
+Cấu hình trong `.env`:
+```env
+BACKUP_DIR=/mnt/backup/savp   # NÊN là ổ thứ 2 / NAS, KHÔNG để chung ổ với DB
+BACKUP_HOUR=2
+BACKUP_KEEP_DAILY=7
+BACKUP_KEEP_WEEKLY=4
+```
+Sao lưu ngay: `docker compose exec backup sh /scripts/backup.sh` — xem log: `docker compose logs backup`.
+
+**Máy cài Postgres native (không Docker):** chạy cùng script bằng cron trên host (cần `pg_dump`):
+```cron
+0 2 * * * DB_HOST=127.0.0.1 DB_PASSWORD=*** BACKUP_ROOT=/mnt/backup/savp BACKUP_SRC=/opt/savp sh /opt/savp/scripts/backup/backup.sh >> /var/log/savp-backup.log 2>&1
+```
+(`BACKUP_SRC` = thư mục chứa `uploads/`, `storage/`.)
+
+### 11.2. Khôi phục
+```sh
+./scripts/restore.sh                          # liệt kê bản sao lưu
+./scripts/restore.sh daily/2026-11-27_0200    # khôi phục (hỏi xác nhận "yes")
+```
+Script dừng backend → `pg_restore --clean` → giải nén file → bật lại backend. Chuyển sang máy chủ mới: chép thư mục bản sao lưu sang `BACKUP_DIR` máy mới, `docker compose up -d`, rồi chạy restore.
+
+### 11.3. Phía trường cần đảm bảo (ngoài phạm vi SAVP)
+- **UPS** cho máy chủ + switch để tắt máy an toàn khi mất điện (tránh hỏng DB).
+- **Ổ thứ 2 / NAS** cho `BACKUP_DIR`; định kỳ chép thêm 1 bản ra ngoài máy chủ.
+- **HGVision** (video, khuôn mặt, biển số) có DB/ổ lưu riêng — sao lưu do nhà cung cấp HGVision phụ trách; SAVP không sao lưu video.
+- Thử khôi phục định kỳ (vd. mỗi quý) để chắc bản sao lưu dùng được.

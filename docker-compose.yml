@@ -130,6 +130,32 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # ─── Sao lưu tự động (pg_dump + uploads, hằng ngày) — xem docs/local-development.md "Sao lưu & khôi phục"
+  backup:
+    image: postgres:16-alpine
+    container_name: capstone-backup
+    environment:
+      TZ: ${TZ:-Asia/Ho_Chi_Minh}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-123456}
+      DB_DATABASE: ${DB_DATABASE:-capstone_db}
+      BACKUP_HOUR: ${BACKUP_HOUR:-2}
+      BACKUP_KEEP_DAILY: ${BACKUP_KEEP_DAILY:-7}
+      BACKUP_KEEP_WEEKLY: ${BACKUP_KEEP_WEEKLY:-4}
+    volumes:
+      - ./scripts/backup:/scripts:ro
+      - ${BACKUP_DIR:-./backups}:/backups
+      - backend-uploads:/data/uploads
+      - backend-storage:/data/storage
+      - minio-data:/data/minio
+    command: ["sh", "-c", "apk add -q --no-cache tzdata >/dev/null 2>&1; exec sh /scripts/loop.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   redis-data:
   minio-data:

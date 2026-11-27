@@ -97,3 +97,4 @@ clean_demo_seed.sql
 
 # HGVision mock server (dev only) - generated state & media
 scripts/hgvision/.capture/
+backups/
