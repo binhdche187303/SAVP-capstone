@@ -27,6 +27,7 @@ describe('HgvisionCameraImportService', () => {
       createCamera: jest.fn().mockResolvedValue({ name: 'x', h264: 'ok' }),
     };
     const svc = new HgvisionCameraImportService(ds as never, cameras as never);
+    svc.forceH264 = jest.fn().mockResolvedValue({ ok: true });
     return { svc, ds, cameras };
   };
 
@@ -92,5 +93,27 @@ describe('HgvisionCameraImportService', () => {
         group: 'Khối A1 – Tầng trệt',
       }),
     );
+  });
+
+  it('ép H.264 cả camera đã có trên HGVision, báo cảnh báo khi đổi codec lỗi', async () => {
+    const { svc } = make();
+    (svc.forceH264 as jest.Mock).mockResolvedValue({
+      ok: false,
+      message: 'Không đổi được H.264: luồng phụ',
+    });
+    const r = await svc.import({
+      rows: [row('G-2', '10.43.31.223')],
+      dryRun: false,
+      pushToHg: true,
+    });
+    expect(svc.forceH264).toHaveBeenCalledWith(
+      '10.43.31.223',
+      expect.any(String),
+      expect.any(String),
+    );
+    expect(r.rows[0]).toMatchObject({
+      hg: 'exists',
+      message: 'Không đổi được H.264: luồng phụ',
+    });
   });
 });

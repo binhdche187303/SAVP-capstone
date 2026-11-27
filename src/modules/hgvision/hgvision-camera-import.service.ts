@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { HgvisionCameraService } from './hgvision-camera.service.js';
+import { dahuaForceH264 } from './dahua-codec.util.js';
 import {
   ImportHgCameraRowDto,
   ImportHgCamerasDto,
@@ -134,6 +135,8 @@ export interface ImportRowResult {
 @Injectable()
 export class HgvisionCameraImportService {
   private readonly logger = new Logger(HgvisionCameraImportService.name);
+  /** Tách ra field để test mock được. */
+  forceH264 = dahuaForceH264;
 
   constructor(
     private readonly dataSource: DataSource,
@@ -264,13 +267,22 @@ export class HgvisionCameraImportService {
     }
 
     if (!pushToHg) return { ...base, action, hg: 'skipped' };
-    if (hgNames?.has(key)) return { ...base, action, hg: 'exists' };
     if (!r.username?.trim() || !r.password)
       return {
         ...base,
         action,
-        hg: 'failed',
+        hg: hgNames?.has(key) ? 'exists' : 'failed',
         message: 'Thiếu tài khoản camera để thêm sang HGVision',
+      };
+    // Trình duyệt chỉ phát H.264 — ép cả luồng chính + phụ trước khi HGVision đọc cấu hình.
+    const codec = await this.forceH264(ip, r.username.trim(), r.password);
+    const warn = codec.ok ? undefined : codec.message;
+    if (hgNames?.has(key))
+      return {
+        ...base,
+        action,
+        hg: 'exists',
+        ...(warn ? { message: warn } : {}),
       };
     try {
       await this.cameras.createCamera({
@@ -285,13 +297,18 @@ export class HgvisionCameraImportService {
         usingAi: true,
       });
       hgNames?.add(key);
-      return { ...base, action, hg: 'created' };
+      return {
+        ...base,
+        action,
+        hg: 'created',
+        ...(warn ? { message: warn } : {}),
+      };
     } catch (e) {
       return {
         ...base,
         action,
         hg: 'failed',
-        message: `HGVision: ${(e as Error).message}`,
+        message: `HGVision: ${(e as Error).message}${warn ? ` · ${warn}` : ''}`,
       };
     }
   }
