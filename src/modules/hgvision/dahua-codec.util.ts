@@ -75,7 +75,7 @@ export async function dahuaForceH264(
       true,
     ],
     [`${p.fps}fps`, `${m}FPS=${p.fps}`, true],
-    ['CBR', `${m}BitRateControl=CBR`, false],
+    ['chế độ CBR', `${m}BitRateControl=CBR`, true],
     [`bitrate ${p.bitrateKbps}kbps`, `${m}BitRate=${p.bitrateKbps}`, true],
   ];
   const failed: string[] = [];
