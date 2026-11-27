@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull, Not, type FindOptionsWhere } from 'typeorm';
@@ -11,6 +12,7 @@ import type { CreatePersonControlListDto } from '../dto/create-person-control-li
 import type { UpdatePersonControlListDto } from '../dto/update-person-control-list.dto.js';
 import type { QueryPersonControlListDto } from '../dto/query-person-control-list.dto.js';
 import type { PaginationMeta } from '../types/pagination-meta.type.js';
+import { PersonControlSyncHook } from './person-control-sync.hook.js';
 
 const userConflict = (): ConflictException =>
   new ConflictException({
@@ -35,6 +37,7 @@ export class PersonControlListService {
   constructor(
     @InjectRepository(PersonControlListEntity)
     private readonly repo: Repository<PersonControlListEntity>,
+    @Optional() private readonly syncHook?: PersonControlSyncHook,
   ) {}
 
   async create(
@@ -68,6 +71,7 @@ export class PersonControlListService {
     if (dto.sourceEventIds?.length) {
       await this.markStrangerAlerts(saved, dto.sourceEventIds, actorUserId);
     }
+    this.syncHook?.notify(saved.id);
     return saved;
   }
 
@@ -218,7 +222,9 @@ export class PersonControlListService {
     if (dto.active !== undefined) entity.active = dto.active;
 
     try {
-      return await this.repo.save(entity);
+      const saved = await this.repo.save(entity);
+      this.syncHook?.notify(saved.id);
+      return saved;
     } catch (e) {
       if (this.isUniqueViolation(e)) {
         throw nextUserId ? userConflict() : faceProfileConflict();
@@ -230,6 +236,8 @@ export class PersonControlListService {
   async remove(id: string): Promise<void> {
     await this.findOne(id);
     await this.repo.softDelete(id);
+    // Gỡ cờ danh sách đen / xoá khuôn mặt người ngoài bên HGVision.
+    this.syncHook?.notify(id);
   }
 
   /** §2.6: kiểm CẢ HAI điều kiện dedup nếu request có cả 2 trường (KHÔNG else-if). */

@@ -15,6 +15,7 @@ import { PersonControlListService } from './services/person-control-list.service
 import { PersonControlListController } from './controllers/person-control-list.controller.js';
 import { PersonControlPhotoController } from './controllers/person-control-photo.controller.js';
 import { PersonWatchlistCheckService } from './services/person-watchlist-check.service.js';
+import { PersonControlSyncHook } from './services/person-control-sync.hook.js';
 import { SecurityAlertConfigService } from './services/security-alert-config.service.js';
 import { SecurityAlertConfigController } from './controllers/security-alert-config.controller.js';
 import { SecurityAlertAutoResolveService } from './services/security-alert-auto-resolve.service.js';
@@ -89,6 +90,7 @@ import { WebsocketModule } from '../websocket/websocket.module.js';
     SecurityAlertConfigService,
     SecurityAlertAutoResolveService,
     SecurityAlertNotifierService,
+    PersonControlSyncHook,
   ],
   exports: [
     TypeOrmModule,
@@ -97,6 +99,7 @@ import { WebsocketModule } from '../websocket/websocket.module.js';
     PersonWatchlistCheckService,
     SecurityAlertAutoResolveService,
     SecurityAlertNotifierService,
+    PersonControlSyncHook,
   ],
 })
 export class AlertsModule {}

@@ -47,6 +47,24 @@ export class StudentEntity {
   })
   administrativeClass: string | null;
 
+  /** Bậc đào tạo của lớp hành chính (UEL bac_dao_tao), vd "Đại học". */
+  @Column({
+    name: 'education_level',
+    type: 'varchar',
+    length: 50,
+    nullable: true,
+  })
+  educationLevel: string | null;
+
+  /** Loại hình đào tạo của lớp hành chính (UEL loai_hinh_dao_tao), vd "Chính quy". */
+  @Column({
+    name: 'training_type',
+    type: 'varchar',
+    length: 100,
+    nullable: true,
+  })
+  trainingType: string | null;
+
   @Column({ name: 'department_id', type: 'uuid', nullable: true })
   departmentId: string | null;
 

@@ -50,6 +50,25 @@ export class PersonControlListResponseDto {
   @ApiPropertyOptional({ nullable: true, description: 'ID user tạo mục này' })
   created_by: string | null;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Trạng thái đẩy danh sách đen sang HGVision: pending | synced | failed',
+  })
+  hgvision_sync_status: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Lý do chưa đẩy được sang HGVision',
+  })
+  hgvision_sync_error: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Lần đẩy HGVision thành công gần nhất',
+  })
+  hgvision_synced_at: Date | null;
+
   @ApiProperty({ description: 'Thời điểm tạo' })
   created_at: Date;
 
@@ -71,6 +90,9 @@ export function toPersonControlListResponse(
     priority: entity.priority,
     active: entity.active,
     created_by: entity.createdBy,
+    hgvision_sync_status: entity.hgvisionSyncStatus ?? null,
+    hgvision_sync_error: entity.hgvisionSyncError ?? null,
+    hgvision_synced_at: entity.hgvisionSyncedAt ?? null,
     created_at: entity.createdAt,
     updated_at: entity.updatedAt,
   };

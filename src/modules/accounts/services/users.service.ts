@@ -2212,6 +2212,9 @@ export class UsersService {
         st.administrative_class,
         st.cohort,
         st.major,
+        st.education_level,
+        st.training_type,
+        faculty.department_name AS faculty_name,
         COALESCE(
           json_agg(
             DISTINCT jsonb_build_object(
@@ -2224,6 +2227,8 @@ export class UsersService {
           '[]'::json
         ) AS class_sections
       FROM students st
+      LEFT JOIN departments faculty
+        ON faculty.id = st.department_id
       LEFT JOIN class_enrollments ce
         ON ce.student_id = st.id
        AND ce.status = 'active'
@@ -2238,7 +2243,8 @@ export class UsersService {
        AND lecturer.deleted_at IS NULL
       WHERE st.user_id = $1
         AND st.deleted_at IS NULL
-      GROUP BY st.id, st.student_code, st.administrative_class, st.cohort, st.major
+      GROUP BY st.id, st.student_code, st.administrative_class, st.cohort, st.major,
+               st.education_level, st.training_type, faculty.department_name
       LIMIT 1
       `,
       [userId],
@@ -2247,6 +2253,9 @@ export class UsersService {
       administrative_class: string | null;
       cohort: string | null;
       major: string | null;
+      education_level: string | null;
+      training_type: string | null;
+      faculty_name: string | null;
       class_sections:
         | Array<{
             id: string;
@@ -2274,6 +2283,9 @@ export class UsersService {
       administrativeClass: row.administrative_class,
       cohort: row.cohort,
       major: row.major,
+      educationLevel: row.education_level,
+      trainingType: row.training_type,
+      facultyName: row.faculty_name,
       classSections,
     };
   }

@@ -440,4 +440,22 @@ describe('VehicleHistoryService (VHI-001 / UC7)', () => {
       expect(c.sql).not.toContain('u1'); // userId qua param, không nối chuỗi
     }
   });
+
+  describe('listCameraNames (bộ lọc Camera dùng tên HGVision)', () => {
+    it('lấy tên từ hgvision.camera_channel_map, chỉ camera có lượt xe 30 ngày', async () => {
+      wire([
+        { camera_name: 'Cong 1 huong ra' },
+        { camera_name: 'Cong 1 huong vao' },
+      ]);
+      await expect(service.listCameraNames()).resolves.toEqual([
+        'Cong 1 huong ra',
+        'Cong 1 huong vao',
+      ]);
+      const c = captured[0];
+      expect(c.sql).toContain("'hgvision.camera_channel_map'");
+      expect(c.sql).toContain("INTERVAL '30 days'");
+      expect(c.sql).toContain("<> 'pedestrian'");
+      expect(c.params).toEqual(['ivss_vehicle_event', 'camera_vehicle_event']);
+    });
+  });
 });

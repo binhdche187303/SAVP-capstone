@@ -1,4 +1,6 @@
 import { Module, Global } from '@nestjs/common';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { AutoAuditInterceptor } from './interceptors/auto-audit.interceptor.js';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 import { AuditLogEntity } from './entities/audit-log.entity.js';
@@ -74,6 +76,8 @@ import { AuthModule } from '../auth/auth.module.js';
     ChannelMapConfigController,
   ],
   providers: [
+    // Ghi nhật ký tự động mọi thao tác thay đổi dữ liệu (không sót module nào).
+    { provide: APP_INTERCEPTOR, useClass: AutoAuditInterceptor },
     BackgroundJobsService,
     AuditLogsService,
     AuditLogQueryService,

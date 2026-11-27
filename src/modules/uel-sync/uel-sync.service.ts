@@ -803,6 +803,8 @@ export class UelSyncService implements OnModuleInit {
             email: sv.email,
             adminClass: clean(sv.ma_lop) ?? maLop,
             deptId,
+            educationLevel: clean(lop.bac_dao_tao),
+            trainingType: clean(lop.loai_hinh_dao_tao),
           });
           r.upserted++;
         });
@@ -826,6 +828,8 @@ export class UelSyncService implements OnModuleInit {
     email: string | null;
     adminClass: string | null;
     deptId: string | null;
+    educationLevel?: string | null;
+    trainingType?: string | null;
   }): Promise<string | null> {
     const { id: userId, aliasOf } = await this.upsertUser({
       code: sv.code,
@@ -849,14 +853,24 @@ export class UelSyncService implements OnModuleInit {
       }
     }
     const rows = await this.db.query<IdRow[]>(
-      `INSERT INTO students (user_id, student_code, administrative_class, department_id, source, last_synced_at)
-       VALUES ($1, $2, $3, $4, 'uel_api', now())
+      `INSERT INTO students (user_id, student_code, administrative_class, department_id,
+                             education_level, training_type, source, last_synced_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 'uel_api', now())
        ON CONFLICT (student_code) WHERE deleted_at IS NULL DO UPDATE
          SET administrative_class = EXCLUDED.administrative_class,
              department_id = COALESCE(EXCLUDED.department_id, students.department_id),
+             education_level = COALESCE(EXCLUDED.education_level, students.education_level),
+             training_type = COALESCE(EXCLUDED.training_type, students.training_type),
              source = 'uel_api', last_synced_at = now(), updated_at = now()
        RETURNING id`,
-      [userId, sv.code, sv.adminClass, sv.deptId],
+      [
+        userId,
+        sv.code,
+        sv.adminClass,
+        sv.deptId,
+        sv.educationLevel ?? null,
+        sv.trainingType ?? null,
+      ],
     );
     return rows[0]?.id ?? null;
   }

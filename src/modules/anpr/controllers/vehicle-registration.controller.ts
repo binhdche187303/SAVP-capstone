@@ -84,6 +84,19 @@ export class VehicleRegistrationController {
     };
   }
 
+  // Tên camera cho bộ lọc lịch sử (cùng nguồn tên HGVision với cột Camera).
+  @Get('admin/vehicle-history/cameras')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequireAnyPermissions('anpr.vehicle.history_view', 'gate.access.read')
+  @ApiOperation({
+    summary:
+      'Danh sách tên camera HGVision có lượt xe (dùng cho bộ lọc Camera)',
+  })
+  async historyCameras() {
+    const items = await this.vehicleHistoryService.listCameraNames();
+    return { success: true, message: 'Cameras retrieved', data: items };
+  }
+
   // ADMIN: TẤT CẢ lượt ra/vào (matched + unmatched) — admin-gated.
   @Get('admin/vehicle-history')
   @UseGuards(JwtAuthGuard, PermissionsGuard)

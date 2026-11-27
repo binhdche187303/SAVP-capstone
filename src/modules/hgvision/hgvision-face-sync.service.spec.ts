@@ -12,6 +12,7 @@ describe('HgvisionFaceSyncService', () => {
   let service: HgvisionFaceSyncService;
   let mapping: any;
   let user: any;
+  let watchlisted = false;
 
   const route = (sql: string) => {
     if (sql.includes('FROM iot_devices')) return [{ id: 'dev-1' }];
@@ -20,6 +21,7 @@ describe('HgvisionFaceSyncService', () => {
     if (sql.includes('SELECT full_name')) return user ? [user] : [];
     if (sql.includes("metadata_json->>'profileId' AS profile_id"))
       return mapping ? [mapping] : [];
+    if (sql.includes('FROM person_control_list')) return watchlisted ? [1] : [];
     if (sql.includes('SELECT id FROM device_user_mappings'))
       return mapping ? [{ id: mapping.id }] : [];
     return [];
@@ -27,6 +29,7 @@ describe('HgvisionFaceSyncService', () => {
 
   beforeEach(() => {
     mapping = null;
+    watchlisted = false;
     user = {
       full_name: 'Nguyễn A',
       account_status: 'active',
@@ -190,5 +193,13 @@ describe('HgvisionFaceSyncService', () => {
       .mockResolvedValueOnce(undefined);
     await expect(service.reconcile()).resolves.toEqual({ checked: 2 });
     expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it('[2026-11-27] user trong danh sách giám sát → đăng ký lại vẫn giữ cờ danh sách đen', async () => {
+    watchlisted = true;
+    await service.syncUser('u1');
+    expect(client.registerFace).toHaveBeenCalledWith(
+      expect.objectContaining({ faceIdent: 'K245', isBlacklist: true }),
+    );
   });
 });

@@ -29,9 +29,25 @@ import type { AlertSeverity } from '../dto/record-alert.input.js';
  */
 /** Nơi nhận diện đối tượng (thiết bị face + phòng gắn thiết bị). */
 export interface PersonWatchlistLocation {
-  deviceId: string;
-  roomId: string | null;
+  deviceId?: string | null;
+  roomId?: string | null;
+  /** Camera HGVision (không có FaceGate): kênh + tên camera để biết khu vực và xem lại video. */
+  channelId?: number | null;
+  cameraName?: string | null;
+  /** Thời điểm camera ghi nhận (ISO) — để nút xem lại tua đúng đoạn. */
+  eventTime?: string | null;
 }
+
+const LIST_LABEL: Record<string, string> = {
+  watchlist: 'Theo dõi',
+  blocklist: 'Danh sách đen',
+};
+const PRIORITY_LABEL: Record<string, string> = {
+  low: 'Thấp',
+  medium: 'Trung bình',
+  high: 'Cao',
+  critical: 'Nghiêm trọng',
+};
 
 @Injectable()
 export class PersonWatchlistCheckService {
@@ -63,7 +79,46 @@ export class PersonWatchlistCheckService {
         where: { userId, active: true, deletedAt: IsNull() },
       });
       if (!match) return;
+      await this.alertFor(match, location);
+    } catch (e) {
+      // NotThrow — lỗi cảnh báo KHÔNG được phá luồng nhận diện chính (R7 crux).
+      this.logger.error(
+        `checkPersonWatchlist failed (userId=${userId}): ${
+          e instanceof Error ? e.message : 'unknown'
+        }`,
+      );
+    }
+  }
 
+  /**
+   * Người ngoài (không tài khoản) đã đẩy lên HGVision với định danh `WL-<entryId>` —
+   * camera nhận ra → cảnh báo theo chính hồ sơ giám sát. NotThrow.
+   */
+  async checkPersonControlEntry(
+    entryId: string,
+    location?: PersonWatchlistLocation,
+  ): Promise<void> {
+    try {
+      const match = await this.repo.findOne({
+        where: { id: entryId, active: true, deletedAt: IsNull() },
+      });
+      if (!match) return;
+      await this.alertFor(match, location);
+    } catch (e) {
+      this.logger.error(
+        `checkPersonControlEntry failed (entry=${entryId}): ${
+          e instanceof Error ? e.message : 'unknown'
+        }`,
+      );
+    }
+  }
+
+  private async alertFor(
+    match: PersonControlListEntity,
+    location?: PersonWatchlistLocation,
+  ): Promise<void> {
+    const subjectId = match.userId ?? match.id;
+    {
       // Vị trí nhận diện (thiết bị/phòng/khu vực) — để biết đối tượng đang ở đâu.
       // zoneId theo khu vực của thiết bị (null = toàn hệ thống).
       const { deviceCode, roomName, zoneId } =
@@ -76,7 +131,7 @@ export class PersonWatchlistCheckService {
           PersonWatchlistCheckService.DEFAULT_THROTTLE_SECONDS,
         ) * 1000;
       const now = Date.now();
-      const key = `${userId}:${zoneId ?? 'global'}`;
+      const key = `${subjectId}:${zoneId ?? 'global'}`;
       const last = this.lastAlertAt.get(key);
       if (last !== undefined && now - last < throttleMs) {
         this.logger.log(
@@ -96,14 +151,16 @@ export class PersonWatchlistCheckService {
 
       const where = roomName
         ? ` tại phòng ${roomName}`
-        : deviceCode
-          ? ` tại thiết bị ${deviceCode}`
-          : '';
+        : location?.cameraName
+          ? ` tại camera ${location.cameraName}`
+          : deviceCode
+            ? ` tại thiết bị ${deviceCode}`
+            : '';
 
       const { isNew } = await this.alertsService.recordAlert({
         alertType: 'person_watchlist_match',
         zoneId,
-        dedupeKey: userId,
+        dedupeKey: subjectId,
         severity: match.priority as AlertSeverity,
         ruleId: rule?.id ?? null,
         payloadJson: {
@@ -111,11 +168,14 @@ export class PersonWatchlistCheckService {
           displayName: match.displayName,
           listType: match.listType,
           reason: match.reason,
-          userId,
+          userId: match.userId,
           deviceId: location?.deviceId ?? null,
           deviceCode,
           roomId: location?.roomId ?? null,
           roomName,
+          channelId: location?.channelId ?? null,
+          cameraName: location?.cameraName ?? null,
+          eventTime: location?.eventTime ?? null,
         },
       });
 
@@ -133,26 +193,34 @@ export class PersonWatchlistCheckService {
       const recipients = await this.resolveRecipients();
       if (recipients.length === 0) {
         this.logger.warn(
-          `person watchlist match (userId=${userId}) — không resolve được recipient, skip notification.`,
+          `person watchlist match (${subjectId}) — không resolve được recipient, skip notification.`,
         );
         return;
       }
 
+      const isBlock = match.listType === 'blocklist';
+      const listLabel = LIST_LABEL[match.listType] ?? match.listType;
+      const priorityLabel = PRIORITY_LABEL[match.priority] ?? match.priority;
       await this.notificationsService.createNotification({
         notificationType: NotificationType.PERSON_WATCHLIST_MATCH,
         channel: NotificationChannel.IN_APP,
-        subject: 'Cảnh báo: người trong danh sách theo dõi',
+        subject: isBlock
+          ? 'Phát hiện người trong DANH SÁCH ĐEN'
+          : 'Phát hiện người trong danh sách theo dõi',
         content:
-          `${match.displayName} (${match.listType}) vừa được nhận diện${where}.` +
+          `${match.displayName} (${listLabel}, mức ${priorityLabel}) vừa được nhận diện${where}.` +
           (match.reason ? ` Lý do: ${match.reason}.` : ''),
+        // Danh sách đen luôn ưu tiên cao, bất kể mức độ hồ sơ.
         priority:
-          match.priority === 'critical' || match.priority === 'high'
+          isBlock || match.priority === 'critical' || match.priority === 'high'
             ? NotificationPriority.HIGH
             : NotificationPriority.NORMAL,
         recipientScope: 'user_list',
         recipientUserIds: recipients,
         payloadJson: {
-          userId,
+          userId: match.userId,
+          personControlListEntryId: match.id,
+          cameraName: location?.cameraName ?? null,
           displayName: match.displayName,
           listType: match.listType,
           priority: match.priority,
@@ -160,13 +228,6 @@ export class PersonWatchlistCheckService {
           roomName,
         },
       });
-    } catch (e) {
-      // NotThrow — lỗi cảnh báo KHÔNG được phá luồng nhận diện chính (R7 crux).
-      this.logger.error(
-        `checkPersonWatchlist failed (userId=${userId}): ${
-          e instanceof Error ? e.message : 'unknown'
-        }`,
-      );
     }
   }
 
@@ -175,8 +236,13 @@ export class PersonWatchlistCheckService {
     roomName: string | null;
     zoneId: string | null;
   }> {
-    if (!location?.deviceId)
-      return { deviceCode: null, roomName: null, zoneId: null };
+    if (!location?.deviceId) {
+      const zoneId =
+        location?.channelId != null
+          ? await this.zoneOfChannel(location.channelId)
+          : null;
+      return { deviceCode: null, roomName: null, zoneId };
+    }
     const rows: Array<{
       device_code: string | null;
       room_name: string | null;
@@ -194,6 +260,21 @@ export class PersonWatchlistCheckService {
       roomName: rows[0]?.room_name ?? null,
       zoneId: rows[0]?.zone_id ?? null,
     };
+  }
+
+  /** Khu vực của camera theo `ivss.channel_presence_zone_map` {channelId: zoneId}. */
+  private async zoneOfChannel(channelId: number): Promise<string | null> {
+    try {
+      const rows: Array<{ config_json: Record<string, unknown> | null }> =
+        await this.dataSource.manager.query(
+          `SELECT config_json FROM system_configs
+            WHERE config_key = 'ivss.channel_presence_zone_map' AND is_active = true LIMIT 1`,
+        );
+      const v = rows[0]?.config_json?.[String(channelId)];
+      return typeof v === 'string' && /^[0-9a-f-]{36}$/i.test(v) ? v : null;
+    } catch {
+      return null;
+    }
   }
 
   private pruneThrottle(now: number, throttleMs: number): void {

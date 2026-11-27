@@ -162,6 +162,32 @@ export class VehicleHistoryService {
     return this.paginate(where, params, query, true);
   }
 
+  /**
+   * Tên camera cho bộ lọc "Camera" ở trang Kiểm soát ra vào cổng. Lấy CÙNG nguồn với cột
+   * camera_name của lịch sử (hgvision.camera_channel_map) để tên + số đếm luôn khớp —
+   * tên thiết bị trong bảng devices có dấu, tên HGVision không dấu → so khớp lệch.
+   * Chỉ trả camera có lượt xe trong 30 ngày gần nhất (map chứa cả camera khuôn mặt).
+   */
+  async listCameraNames(): Promise<string[]> {
+    const rows: Array<{ camera_name: string }> =
+      await this.dataSource.manager.query(
+        `SELECT DISTINCT camera.camera_name
+           FROM system_configs sc
+           CROSS JOIN LATERAL jsonb_each_text(COALESCE(sc.config_json, '{}'::jsonb)) camera(camera_name, mapped_channel)
+          WHERE sc.config_key = 'hgvision.camera_channel_map'
+            AND sc.is_active = true
+            AND camera.mapped_channel IN (
+              SELECT DISTINCT iot_device_events.payload_json->>'channelId'
+                FROM iot_device_events
+               WHERE iot_device_events.event_type IN (${VEHICLE_EVENT_TYPE_SQL})
+                 AND ${NOT_PEDESTRIAN_SQL}
+                 AND iot_device_events.event_time >= NOW() - INTERVAL '30 days')
+          ORDER BY camera.camera_name`,
+        [...VEHICLE_EVENT_TYPES],
+      );
+    return rows.map((r) => r.camera_name);
+  }
+
   /** Filter động (mutate params): from/to/direction/plateNumber(normalized). Bind index tiếp nối. */
   private applyFilters(
     query: ListVehicleHistoryQueryDto,

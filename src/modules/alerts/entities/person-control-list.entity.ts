@@ -75,6 +75,35 @@ export class PersonControlListEntity {
   @Column({ name: 'created_by', type: 'uuid', nullable: true })
   createdBy: string | null;
 
+  /** Định danh khuôn mặt trên HGVision (mã NV/SV, hoặc `WL-<id>` cho người ngoài). */
+  @Column({
+    name: 'hgvision_face_ident',
+    type: 'varchar',
+    length: 100,
+    nullable: true,
+  })
+  hgvisionFaceIdent: string | null;
+
+  /** NULL | pending | synced | failed — trạng thái đẩy danh sách đen sang HGVision. */
+  @Column({
+    name: 'hgvision_sync_status',
+    type: 'varchar',
+    length: 16,
+    nullable: true,
+  })
+  hgvisionSyncStatus: string | null;
+
+  @Column({ name: 'hgvision_synced_at', type: 'timestamptz', nullable: true })
+  hgvisionSyncedAt: Date | null;
+
+  @Column({
+    name: 'hgvision_sync_error',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  hgvisionSyncError: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
