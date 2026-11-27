@@ -28,7 +28,10 @@
     "migration:run:tsx": "tsx scripts/run-migrations.ts",
     "cleanup:ivss-group1": "tsx scripts/cleanup-ivss-group1-mappings.ts",
     "hgvision:capture": "node scripts/hgvision/capture-real.mjs",
-    "demo:cleanup": "tsx scripts/cleanup-demo-data.ts"
+    "demo:cleanup": "tsx scripts/cleanup-demo-data.ts",
+    "demo:camera": "tsx scripts/demo-camera-mock/demo-camera-mock.ts",
+    "demo:images": "tsx scripts/demo-camera-mock/generate-images.ts",
+    "demo:seed": "tsx scripts/demo-seed/demo-seed.ts"
   },
   "dependencies": {
     "@nestjs/bullmq": "^11.0.4",

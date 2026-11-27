@@ -1,0 +1,4 @@
+# Ảnh demo (mặt người, biển số) — KHÔNG commit lên repo
+images/**
+!images/**/
+!images/**/.gitkeep
