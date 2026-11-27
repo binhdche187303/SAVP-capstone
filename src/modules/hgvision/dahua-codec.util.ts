@@ -48,6 +48,9 @@ export const MAIN_STREAM_PROFILE = {
   bitrateKbps: 4096,
 };
 
+/** Luồng phụ 16:9 để lưới xem nhiều camera không bị viền đen (704x576 mặc định gần vuông). */
+export const SUB_STREAM_PROFILE = { width: 1280, height: 720 };
+
 /**
  * Chuẩn hoá encoder camera Dahua qua CGI: luồng chính 2560x1440 / 20fps / H.264 / CBR 4096kbps,
  * luồng phụ H.264. Gửi riêng từng tham số — gộp 1 request thì firmware chỉ nhận phần đầu.
@@ -67,6 +70,11 @@ export async function dahuaForceH264(
     [
       'H.264 luồng phụ',
       'Encode[0].ExtraFormat[0].Video.Compression=H.264',
+      true,
+    ],
+    [
+      `luồng phụ ${SUB_STREAM_PROFILE.width}x${SUB_STREAM_PROFILE.height}`,
+      `Encode[0].ExtraFormat[0].Video.Width=${SUB_STREAM_PROFILE.width}&Encode[0].ExtraFormat[0].Video.Height=${SUB_STREAM_PROFILE.height}`,
       true,
     ],
     [
