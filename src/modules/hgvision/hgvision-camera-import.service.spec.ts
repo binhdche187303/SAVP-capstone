@@ -19,6 +19,10 @@ describe('HgvisionCameraImportService', () => {
         if (sql.includes('FROM zones')) return Promise.resolve([]);
         if (sql.includes('INSERT INTO zones'))
           return Promise.resolve([{ id: 'z1' }]);
+        if (sql.includes('INSERT INTO iot_devices'))
+          return Promise.resolve([{ id: 'dev-new' }]);
+        if (sql.includes('INSERT INTO camera_groups'))
+          return Promise.resolve([{ id: 'grp-1' }]);
         return Promise.resolve([]);
       }),
     };
@@ -115,5 +119,17 @@ describe('HgvisionCameraImportService', () => {
       hg: 'exists',
       message: 'Không đổi được H.264: luồng phụ',
     });
+  });
+
+  it('tự tạo nhóm camera theo khu vực và gán camera vào nhóm', async () => {
+    const { svc, ds } = make();
+    await svc.import({ rows: [row('T1-1', '10.43.31.231')], dryRun: false });
+    const sqls = ds.query.mock.calls as Array<[string, unknown[]]>;
+    const grp = sqls.find(([q]) => q.includes('INSERT INTO camera_groups'));
+    expect(grp?.[1]).toEqual(['A1_L1', 'Khối A1 – Lầu 1', 'z1']);
+    const mem = sqls.find(([q]) =>
+      q.includes('INSERT INTO camera_group_members'),
+    );
+    expect(mem?.[1]).toEqual(['grp-1', 'dev-new']);
   });
 });

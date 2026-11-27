@@ -239,7 +239,9 @@ export class HgvisionCameraImportService {
         cabinet: r.cabinet?.trim() || null,
         drawing_no: r.drawingNo?.trim() || null,
       };
+      let deviceId: string;
       if (existing[0]) {
+        deviceId = existing[0].id;
         await this.dataSource.query(
           `UPDATE iot_devices
               SET device_code = $2, ip_address = $3, zone_id = $4,
@@ -249,9 +251,9 @@ export class HgvisionCameraImportService {
           [existing[0].id, code, ip, zoneId, JSON.stringify(meta)],
         );
       } else {
-        await this.dataSource.query(
+        const ins: Array<{ id: string }> = await this.dataSource.query(
           `INSERT INTO iot_devices (device_code, device_name, device_type, zone_id, ip_address, status, metadata_json)
-           VALUES ($1, $2, $3, $4, $5, 'offline', $6::jsonb)`,
+           VALUES ($1, $2, $3, $4, $5, 'offline', $6::jsonb) RETURNING id`,
           [
             code,
             `${code} ${zone.name}`,
@@ -261,7 +263,9 @@ export class HgvisionCameraImportService {
             JSON.stringify(meta),
           ],
         );
+        deviceId = ins[0].id;
       }
+      await this.ensureGroupMember(zone, zoneId, deviceId);
     } catch (e) {
       return fail(`Lỗi lưu thiết bị: ${(e as Error).message}`);
     }
@@ -311,6 +315,41 @@ export class HgvisionCameraImportService {
         message: `HGVision: ${(e as Error).message}${warn ? ` · ${warn}` : ''}`,
       };
     }
+  }
+
+  /**
+   * Nhóm camera SAVP theo khu vực (group_code = zone_code). Mỗi camera chỉ thuộc 1 nhóm khu vực —
+   * gỡ khỏi nhóm khu vực khác; nhóm tự tạo tay (không gắn zone) giữ nguyên.
+   */
+  private async ensureGroupMember(
+    z: ImportZoneDef,
+    zoneId: string,
+    deviceId: string,
+  ): Promise<void> {
+    const found: Array<{ id: string }> = await this.dataSource.query(
+      `SELECT id FROM camera_groups WHERE lower(group_code) = lower($1) LIMIT 1`,
+      [z.code],
+    );
+    let groupId = found[0]?.id;
+    if (!groupId) {
+      const ins: Array<{ id: string }> = await this.dataSource.query(
+        `INSERT INTO camera_groups (group_code, group_name, zone_id, purpose, description)
+         VALUES ($1, $2, $3, 'Giám sát khu vực', 'Tự tạo khi import camera Excel') RETURNING id`,
+        [z.code, z.name, zoneId],
+      );
+      groupId = ins[0].id;
+    }
+    await this.dataSource.query(
+      `DELETE FROM camera_group_members
+        WHERE device_id = $1 AND group_id <> $2
+          AND group_id IN (SELECT id FROM camera_groups WHERE zone_id IS NOT NULL)`,
+      [deviceId, groupId],
+    );
+    await this.dataSource.query(
+      `INSERT INTO camera_group_members (group_id, device_id) VALUES ($1, $2)
+       ON CONFLICT DO NOTHING`,
+      [groupId, deviceId],
+    );
   }
 
   private async ensureZone(z: ImportZoneDef): Promise<string> {
