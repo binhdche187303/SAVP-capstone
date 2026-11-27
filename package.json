@@ -31,7 +31,8 @@
     "demo:cleanup": "tsx scripts/cleanup-demo-data.ts",
     "demo:camera": "tsx scripts/demo-camera-mock/demo-camera-mock.ts",
     "demo:images": "tsx scripts/demo-camera-mock/generate-images.ts",
-    "demo:seed": "tsx scripts/demo-seed/demo-seed.ts"
+    "demo:seed": "tsx scripts/demo-seed/demo-seed.ts",
+    "preflight": "node scripts/preflight-production.mjs"
   },
   "dependencies": {
     "@nestjs/bullmq": "^11.0.4",

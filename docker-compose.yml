@@ -12,11 +12,22 @@ services:
       context: ../SAVP-capstone-FE-
       dockerfile: Dockerfile
       args:
-        REACT_APP_API_BASE_URL: ${FRONTEND_API_BASE_URL:-http://localhost:3000/api/v1}
-        REACT_APP_WS_URL: ${FRONTEND_WS_URL:-http://localhost:3000}
+        # CHẾ ĐỘ CÙNG ĐỊA CHỈ (mặc định): web gọi API qua đường dẫn tương đối "/api/v1",
+        # nginx của FE chuyển /api, /ws, /uploads sang backend. Người dùng chỉ cần 1 địa chỉ
+        # (http://<IP>:3001 hoặc tên miền), đổi IP → tên miền KHÔNG phải build lại.
+        # Muốn quay về kiểu cũ (2 địa chỉ) thì đặt URL đầy đủ, vd https://api.abc.vn/api/v1.
+        REACT_APP_API_BASE_URL: ${FRONTEND_API_BASE_URL:-/api/v1}
+        REACT_APP_WS_URL: ${FRONTEND_WS_URL:-}
     container_name: capstone-frontend
+    environment:
+      # nginx chuyển request API tới đây (tên service backend trong mạng Docker).
+      BACKEND_UPSTREAM: backend:${APP_PORT:-3000}
     ports:
       - "${FRONTEND_PORT:-3001}:80"
+    networks:
+      edge:
+        # IP cố định để backend biết request nào đến từ nginx (xem TRUST_PROXY bên dưới).
+        ipv4_address: 172.30.50.10
     depends_on:
       backend:
         condition: service_healthy
@@ -30,6 +41,9 @@ services:
     container_name: capstone-backend
     ports:
       - "${APP_PORT:-3000}:${APP_PORT:-3000}"
+    networks:
+      - default   # nói chuyện với postgres / redis / minio
+      - edge      # nhận request từ nginx của FE
     env_file:
       - .env
     command: ["sh", "-c", "if [ \"$${DB_MIGRATIONS_RUN:-false}\" = \"true\" ]; then npx typeorm migration:run -d dist/database/data-source.js; fi; exec node dist/main.js"]
@@ -38,23 +52,42 @@ services:
       # qua Docker network (không phải localhost của host).
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_SYNCHRONIZE: ${DOCKER_DB_SYNCHRONIZE:-true}
-      DB_MIGRATIONS_RUN: ${DOCKER_DB_MIGRATIONS_RUN:-false}
-      MOCK_RECORDING_ENABLED: ${MOCK_RECORDING_ENABLED:-true}
+      # Giờ Việt Nam cho backend — container mặc định chạy giờ UTC (lệch 7 tiếng), làm sai các mốc
+      # "đầu ngày / hôm nay" (chấm công, lịch, báo cáo theo ngày, nhắc lịch).
+      TZ: ${TZ:-Asia/Ho_Chi_Minh}
+      # Chế độ chạy: production tắt module /dev (API giả lập để test) và các đường tắt OTP test.
+      NODE_ENV: ${DOCKER_NODE_ENV:-production}
+      # KHÔNG cho TypeORM tự sửa cấu trúc bảng theo code (có thể mất dữ liệu) — chỉ đổi qua migration.
+      DB_SYNCHRONIZE: ${DOCKER_DB_SYNCHRONIZE:-false}
+      # Mỗi lần khởi động tự áp các migration còn thiếu (cái nào đã áp thì bỏ qua).
+      DB_MIGRATIONS_RUN: ${DOCKER_DB_MIGRATIONS_RUN:-true}
+      MOCK_RECORDING_ENABLED: ${MOCK_RECORDING_ENABLED:-false}
+      # Trang tài liệu API /api/v1/docs — tắt ở production để không lộ toàn bộ danh sách API.
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
       TRANSCRIPTION_PROVIDER: ${DOCKER_TRANSCRIPTION_PROVIDER:-mock}
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       BULL_REDIS_HOST: redis
       BULL_REDIS_PORT: 6379
+      BULL_REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       # MinIO: backend dùng service name, console vẫn expose ra host
       STORAGE_S3_ENDPOINT: minio
       STORAGE_S3_PORT: 9000
-      APP_URL: http://localhost:${APP_PORT:-3000}
-      API_PUBLIC_BASE_URL: http://localhost:${APP_PORT:-3000}
-      STORAGE_PUBLIC_BASE_URL: http://localhost:${APP_PORT:-3000}/uploads
-      GUEST_ACCESS_INVITE_BASE_URL: http://localhost:${FRONTEND_PORT:-3001}/guest/join
-      CORS_ORIGIN: http://localhost:${FRONTEND_PORT:-3001},http://localhost:${APP_PORT:-3000},http://localhost:5173
-      WS_CORS_ORIGIN: http://localhost:${FRONTEND_PORT:-3001},http://localhost:${APP_PORT:-3000},http://localhost:5173
+      # Địa chỉ công khai — đặt PUBLIC_WEB_URL trong .env (vd http://192.168.1.50:3001 hoặc
+      # https://savp.uel.edu.vn). Chế độ cùng địa chỉ thì API dùng luôn địa chỉ này; chỉ khi chạy
+      # 2 địa chỉ riêng mới cần PUBLIC_API_URL.
+      APP_URL: ${PUBLIC_API_URL:-${PUBLIC_WEB_URL:-http://localhost:3000}}
+      API_PUBLIC_BASE_URL: ${PUBLIC_API_URL:-${PUBLIC_WEB_URL:-http://localhost:3000}}
+      STORAGE_PUBLIC_BASE_URL: ${PUBLIC_API_URL:-${PUBLIC_WEB_URL:-http://localhost:3000}}/uploads
+      GUEST_ACCESS_INVITE_BASE_URL: ${PUBLIC_WEB_URL:-http://localhost:3001}/guest/join
+      # CORS = danh sách website được phép gọi API từ trình duyệt.
+      CORS_ORIGIN: ${PUBLIC_WEB_URL:-http://localhost:3001},${PUBLIC_API_URL:-http://localhost:3000}
+      WS_CORS_ORIGIN: ${PUBLIC_WEB_URL:-http://localhost:3001},${PUBLIC_API_URL:-http://localhost:3000}
+      # Chỉ tin header IP (X-Forwarded-For) từ: nginx của FE (172.30.50.10) và cổng mạng Docker
+      # (172.30.50.1 — nơi Caddy/Cloudflare Tunnel chạy trên chính server đi vào). Nhờ vậy lịch sử
+      # đăng nhập ghi đúng IP người dùng, còn camera gọi thẳng cổng 3000 vẫn bị kiểm tra IP thật.
+      TRUST_PROXY: ${TRUST_PROXY:-172.30.50.10,172.30.50.1}
       IVSS_BRIDGE_BASE_URL: ${IVSS_BRIDGE_BASE_URL:-}
     volumes:
       - backend-storage:/app/storage
@@ -76,13 +109,17 @@ services:
   redis:
     image: redis:7-alpine
     container_name: capstone-redis
+    # 127.0.0.1 = chỉ chính máy chủ kết nối được, Internet bên ngoài không vào thẳng được.
     ports:
-      - "6380:6379"
+      - "127.0.0.1:6380:6379"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     volumes:
       - redis-data:/data
-    command: ["redis-server", "--appendonly", "yes"]
+    # Có REDIS_PASSWORD trong .env thì Redis bắt buộc mật khẩu; để trống thì như cũ.
+    command: ["sh", "-c", "exec redis-server --appendonly yes $${REDIS_PASSWORD:+--requirepass \"$$REDIS_PASSWORD\"}"]
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning $${REDIS_PASSWORD:+-a \"$$REDIS_PASSWORD\"} ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -95,11 +132,11 @@ services:
     image: quay.io/minio/minio:RELEASE.2024-03-30T09-41-56Z
     container_name: capstone-minio
     ports:
-      - "9000:9000"   # API
-      - "9002:9002"   # Console
+      - "127.0.0.1:9000:9000"   # API
+      - "127.0.0.1:9002:9002"   # Console
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
     volumes:
       - minio-data:/data
     command: server /data --console-address ":9002"
@@ -116,7 +153,7 @@ services:
     image: postgres:16-alpine
     container_name: capstone-postgres
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     environment:
       POSTGRES_USER: ${DB_USERNAME:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-123456}
@@ -162,3 +199,13 @@ volumes:
   pg-data:
   backend-storage:
   backend-uploads:
+
+networks:
+  # Mạng riêng nginx ↔ backend với dải IP cố định (để gán IP cố định cho nginx).
+  # Mạng "default" (postgres/redis…) giữ nguyên như cũ. Nếu dải 172.30.50.0/24 trùng mạng có sẵn
+  # trên server thì đổi cả ở đây, ipv4_address của frontend và TRUST_PROXY của backend.
+  edge:
+    ipam:
+      config:
+        - subnet: 172.30.50.0/24
+          gateway: 172.30.50.1
