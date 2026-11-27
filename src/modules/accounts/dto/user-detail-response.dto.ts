@@ -22,6 +22,12 @@ export class StudentProfileInfoDto {
   administrativeClass: string | null;
   cohort: string | null;
   major: string | null;
+  /** Bậc đào tạo (UEL bac_dao_tao) */
+  educationLevel: string | null;
+  /** Loại hình đào tạo (UEL loai_hinh_dao_tao) */
+  trainingType: string | null;
+  /** Khoa quản lý lớp hành chính (UEL thuoc_khoa → students.department_id) */
+  facultyName: string | null;
   classSections: StudentClassInfoDto[];
 }
 

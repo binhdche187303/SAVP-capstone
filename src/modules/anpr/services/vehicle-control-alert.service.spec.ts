@@ -450,14 +450,31 @@ describe('VehicleControlAlertService (VCC-001 / UC9)', () => {
       const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(5_000_000);
       await service.evaluate('30A00001', ctx);
       await service.evaluate('30A00002', ctx);
-      expect(sqlCalls('FROM system_configs')).toBe(1);
+      // 2 cấu hình (zone map + camera map), mỗi cái 1 lần trong cửa sổ cache.
+      expect(sqlCalls('FROM system_configs')).toBe(2);
       expect(sqlCalls('FROM users')).toBe(1);
       expect(alertsMock.recordAlert.mock.calls[1]?.[0].zoneId).toBe(ZONE_UUID);
 
       nowSpy.mockReturnValue(5_000_000 + 31_000);
       await service.evaluate('30A00003', ctx);
-      expect(sqlCalls('FROM system_configs')).toBe(2);
+      expect(sqlCalls('FROM system_configs')).toBe(4);
       expect(sqlCalls('FROM users')).toBe(2);
+    });
+
+    it('ghi cameraName (hgvision.camera_channel_map theo kênh) vào payload cảnh báo', async () => {
+      controlListMock.checkControlList.mockResolvedValue(blocklistMatch);
+      dsMock.manager.query.mockImplementation((sql: string) => {
+        if (sql.includes('hgvision.camera_channel_map'))
+          return Promise.resolve([
+            { config_json: { 'Cong chinh': String(ctx.channelId) } },
+          ]);
+        if (sql.includes('FROM users')) return Promise.resolve(adminRows);
+        return Promise.resolve([]);
+      });
+      await service.evaluate('30A00009', ctx);
+      expect(alertsMock.recordAlert.mock.calls[0]?.[0].payloadJson).toMatchObject({
+        cameraName: 'Cong chinh',
+      });
     });
 
     it('recipients rỗng KHÔNG bị cache — lần sau có recipient vẫn gửi notification', async () => {

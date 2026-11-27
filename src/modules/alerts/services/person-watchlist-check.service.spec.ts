@@ -291,4 +291,61 @@ describe('PersonWatchlistCheckService (PWL-001 / UC-125)', () => {
       expect(notif.content).toContain('vừa được nhận diện.');
     });
   });
+
+  it('[2026-11-27] camera HGVision → payload có cameraName/eventTime, khu vực theo kênh', async () => {
+    repo.findOne.mockResolvedValue(match());
+    dsMock.manager.query.mockImplementation((sql: string) =>
+      Promise.resolve(
+        sql.includes('channel_presence_zone_map')
+          ? [{ config_json: { '3': '11111111-1111-1111-1111-111111111111' } }]
+          : adminRows,
+      ),
+    );
+    await service.checkPersonWatchlist('user-1', {
+      channelId: 3,
+      cameraName: 'Cong chinh',
+      eventTime: '2026-11-27T01:00:00.000Z',
+    });
+    expect(alertsMock.recordAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        zoneId: '11111111-1111-1111-1111-111111111111',
+        payloadJson: expect.objectContaining({
+          cameraName: 'Cong chinh',
+          eventTime: '2026-11-27T01:00:00.000Z',
+        }),
+      }),
+    );
+    expect(notifMock.createNotification.mock.calls[0][0].content).toContain(
+      'tại camera Cong chinh',
+    );
+  });
+
+  it('[2026-11-27] checkPersonControlEntry (người ngoài) → cảnh báo, dedupe theo id hồ sơ', async () => {
+    repo.findOne.mockResolvedValue(match({ id: 'pcl9', userId: null }));
+    await service.checkPersonControlEntry('pcl9', { channelId: 1 });
+    expect(repo.findOne.mock.calls[0][0].where.id).toBe('pcl9');
+    expect(alertsMock.recordAlert).toHaveBeenCalledWith(
+      expect.objectContaining({ dedupeKey: 'pcl9' }),
+    );
+  });
+
+  it('[2026-11-27] danh sách đen → tiêu đề riêng, nhãn tiếng Việt, luôn ưu tiên cao', async () => {
+    repo.findOne.mockResolvedValue(
+      match({ listType: 'blocklist', priority: 'low' }),
+    );
+    await service.checkPersonWatchlist('user-1');
+    const n = notifMock.createNotification.mock.calls[0][0];
+    expect(n.subject).toBe('Phát hiện người trong DANH SÁCH ĐEN');
+    expect(n.content).toContain('(Danh sách đen, mức Thấp)');
+    expect(n.priority).toBe('high');
+  });
+
+  it('[2026-11-27] theo dõi mức trung bình → tiêu đề theo dõi, ưu tiên bình thường', async () => {
+    repo.findOne.mockResolvedValue(match());
+    await service.checkPersonWatchlist('user-1');
+    const n = notifMock.createNotification.mock.calls[0][0];
+    expect(n.subject).toBe('Phát hiện người trong danh sách theo dõi');
+    expect(n.content).toContain('(Theo dõi, mức Trung bình)');
+    expect(n.priority).not.toBe('high');
+  });
 });

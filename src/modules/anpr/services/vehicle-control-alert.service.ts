@@ -74,6 +74,8 @@ export class VehicleControlAlertService {
   private static readonly DEFAULT_THROTTLE_SECONDS = 300;
   private readonly lastAlertAt = new Map<string, number>();
   private zoneMapCache?: { at: number; value: Record<string, string> };
+  /** kênh → tên camera HGVision (đảo của hgvision.camera_channel_map). */
+  private cameraMapCache?: { at: number; value: Record<string, string> };
   private recipientsCache?: { at: number; value: string[] };
 
   constructor(
@@ -195,6 +197,10 @@ export class VehicleControlAlertService {
         );
       }
 
+      // Tên camera (HGVision) theo kênh — để màn cảnh báo hiện "Camera" và xem lại video.
+      const cameraName = await this.resolveCameraName(context.channelId);
+      if (cameraName) payload = { ...payload, cameraName };
+
       // --- Step 5: recordAlert ---
       // Đợt 3: dedupeKey = biển số → 2 xe KHÁC biển cùng zone là 2 alert riêng (trước đây
       // gộp chung 1 alert theo (alertType, zoneId) → mất biển của xe thứ 2).
@@ -293,6 +299,38 @@ export class VehicleControlAlertService {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Tên camera theo kênh: system_configs['hgvision.camera_channel_map'] {tên camera: kênh}
+   * (cùng nguồn với lịch sử ANPR). Không map / lỗi → null (cảnh báo vẫn bắn như cũ).
+   */
+  private async resolveCameraName(channelId: number): Promise<string | null> {
+    const ch = String(channelId);
+    if (
+      !this.cameraMapCache ||
+      Date.now() - this.cameraMapCache.at >= CONFIG_CACHE_MS
+    ) {
+      try {
+        const rows: Array<{ config_json: Record<string, unknown> | null }> =
+          await this.dataSource.manager.query(
+            `SELECT config_json FROM system_configs
+             WHERE config_key = 'hgvision.camera_channel_map' AND is_active = true LIMIT 1`,
+          );
+        const value: Record<string, string> = {};
+        const raw = rows?.[0]?.config_json;
+        if (raw && typeof raw === 'object') {
+          for (const [name, mapped] of Object.entries(raw)) {
+            const key = String(mapped);
+            if (name.trim() && !(key in value)) value[key] = name.trim();
+          }
+        }
+        this.cameraMapCache = { at: Date.now(), value };
+      } catch {
+        return null;
+      }
+    }
+    return this.cameraMapCache.value[ch] ?? null;
   }
 
   /** STT 20 (perf): map vượt trần → xóa plate đã quá cửa sổ throttle (không đổi hành vi throttle). */

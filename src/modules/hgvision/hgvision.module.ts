@@ -1,3 +1,5 @@
+import { AlertsModule } from '../alerts/alerts.module.js';
+import { HgvisionPersonBlacklistSyncService } from './hgvision-person-blacklist-sync.service.js';
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IvssModule } from '../ivss/ivss.module.js';
@@ -29,6 +31,7 @@ import { NotificationsModule } from '../notifications/notifications.module.js';
     AuthModule,
     NotificationsModule,
     AccountsModule,
+    AlertsModule,
   ],
   controllers: [HgvisionCameraController],
   providers: [
@@ -53,6 +56,7 @@ import { NotificationsModule } from '../notifications/notifications.module.js';
     HgvisionPlateSyncService,
     HgvisionPlateReconcileService,
     HgvisionFaceSyncService,
+    HgvisionPersonBlacklistSyncService,
   ],
   exports: [HGVISION_CLIENT, HgvisionCameraService],
 })

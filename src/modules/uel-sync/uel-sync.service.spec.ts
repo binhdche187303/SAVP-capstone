@@ -545,6 +545,42 @@ describe('lưu tiến độ lượt chạy', () => {
   });
 });
 
+describe('SV: bậc / loại hình đào tạo theo lớp hành chính', () => {
+  it('ghi bac_dao_tao + loai_hinh_dao_tao của lớp vào students', async () => {
+    const { svc, calls } = makeServiceWith(
+      (a) =>
+        a === 'sinhvien/ds_lopsv'
+          ? [
+              {
+                ma_lop: 'K24418',
+                thuoc_khoa: null,
+                bac_dao_tao: 'Đại học',
+                loai_hinh_dao_tao: ' Chính quy ',
+              },
+            ]
+          : a === 'sinhvien/ds_sv_lopsv'
+            ? [
+                {
+                  ma_sinh_vien: 'K244181912',
+                  ho_ten: 'Tất Kim Ngân',
+                  email: 'ngantkk24418@st.uel.edu.vn',
+                  ma_lop: 'K24418',
+                },
+              ]
+            : [],
+      { 'INSERT INTO users': [{ id: 'u-new' }] },
+    );
+    await svc.start({ steps: ['students'] });
+    expect(calls('INSERT INTO students')[0][1]!.slice(1)).toEqual([
+      'K244181912',
+      'K24418',
+      null,
+      'Đại học',
+      'Chính quy',
+    ]);
+  });
+});
+
 describe('gộp mã trùng email (cùng 1 người có 2 mã)', () => {
   const owner = (name: string, code = 'N23704064') => ({
     'WHERE lower(email) = lower($1)': [
@@ -727,6 +763,8 @@ describe('đăng ký: SV chưa có trong hệ thống', () => {
       'u-new',
       'K214080604',
       'K21408CA',
+      null,
+      null,
       null,
     ]);
     expect(calls('INSERT INTO class_enrollments')[0][1]![1]).toBe('st-new');

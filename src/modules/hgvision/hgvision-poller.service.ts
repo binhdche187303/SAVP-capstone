@@ -1,4 +1,5 @@
 import {
+  Optional,
   Inject,
   Injectable,
   Logger,
@@ -15,6 +16,9 @@ import type { VehicleEventHandlerPort } from '../../common/ports/vehicle-event-h
 import { HgvisionClient } from './hgvision.client.js';
 import type { HgvisionHistoryObject } from './hgvision.client.js';
 import { HGVISION_CLIENT } from './hgvision.constants.js';
+import { PersonWatchlistCheckService } from '../alerts/services/person-watchlist-check.service.js';
+import { FACE_MAPPING_SOURCE } from './hgvision-face-sync.service.js';
+import { STRANGER_IDENT_PREFIX } from './hgvision-person-blacklist-sync.service.js';
 import {
   parseCameraChannelMap,
   toIvssFaceEvent,
@@ -58,6 +62,7 @@ export class HgvisionPollerService implements OnModuleInit, OnModuleDestroy {
     private readonly vehicleHandler: VehicleEventHandlerPort,
     private readonly dataSource: DataSource,
     private readonly config: ConfigService,
+    @Optional() private readonly watchlist?: PersonWatchlistCheckService,
   ) {}
 
   onModuleInit(): void {
@@ -127,6 +132,8 @@ export class HgvisionPollerService implements OnModuleInit, OnModuleDestroy {
             faceEvt.imageBase64 = await this.loadFaceImage(obj);
           }
           await this.dispatch(obj, () => this.handler.onFaceEvent(faceEvt));
+          // Không có FaceGate: camera nhận ra người trong danh sách giám sát → cảnh báo.
+          void this.checkWatchlist(obj, faceEvt.channelId);
         }
         const vehicleEvt = toVehicleEvent(obj, cameraMap);
         if (vehicleEvt) {
@@ -212,6 +219,48 @@ export class HgvisionPollerService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Biển đang active trong vehicle_control_list (blocklist/watchlist). Lỗi DB → coi như không. */
+  /**
+   * `WL-<id>` = người ngoài SAVP đã đẩy lên → tra thẳng hồ sơ; còn lại = mã NV/SV →
+   * user qua mapping khuôn mặt HGVision. NotThrow (service cảnh báo tự nuốt lỗi).
+   */
+  private async checkWatchlist(
+    obj: HgvisionHistoryObject,
+    channelId: number,
+  ): Promise<void> {
+    const ident = obj.face_ident_text?.trim();
+    if (!ident || !this.watchlist) return;
+    try {
+      const ts = obj.first_timestamp ?? obj.last_timestamp;
+      const location = {
+        channelId,
+        cameraName: obj.camera_id ?? null,
+        eventTime: ts ? new Date(ts * 1000).toISOString() : null,
+      };
+      if (ident.startsWith(STRANGER_IDENT_PREFIX)) {
+        await this.watchlist.checkPersonControlEntry(
+          ident.slice(STRANGER_IDENT_PREFIX.length),
+          location,
+        );
+        return;
+      }
+      const rows: Array<{ user_id: string }> =
+        await this.dataSource.manager.query(
+          `SELECT user_id FROM device_user_mappings
+          WHERE device_person_id = $1 AND deleted_at IS NULL
+            AND metadata_json->>'source' = $2 AND user_id IS NOT NULL
+          LIMIT 1`,
+          [ident, FACE_MAPPING_SOURCE],
+        );
+      if (rows[0]) {
+        await this.watchlist.checkPersonWatchlist(rows[0].user_id, location);
+      }
+    } catch (e) {
+      this.logger.warn(
+        `Kiểm tra danh sách giám sát (${ident}) lỗi: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+
   private async isControlListed(plateNumber: string): Promise<boolean> {
     try {
       const rows: unknown[] = await this.dataSource.manager.query(

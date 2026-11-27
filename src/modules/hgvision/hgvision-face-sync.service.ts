@@ -215,7 +215,8 @@ export class HgvisionFaceSyncService
       await this.client.registerFace({
         faceIdent: ident,
         faceInfor: user?.full_name ?? undefined,
-        isBlacklist: false,
+        // Đăng ký lại không được xoá cờ danh sách đen do danh sách người giám sát đặt.
+        isBlacklist: await this.isWatchlisted(userId),
         visibleTo: 'admin_only',
         // Ảnh đã qua cổng chất lượng ở máy người dùng + kiểm tra server.
         skipQualityCheck: true,
@@ -309,6 +310,16 @@ export class HgvisionFaceSyncService
   }
 
   // ── Mapping ────────────────────────────────────────────────────────────────
+
+  /** User đang có hồ sơ giám sát active (chưa xoá) → khuôn mặt HGVision mang cờ danh sách đen. */
+  private async isWatchlisted(userId: string): Promise<boolean> {
+    const rows: unknown[] = await this.dataSource.manager.query(
+      `SELECT 1 FROM person_control_list
+        WHERE user_id = $1 AND active = true AND deleted_at IS NULL LIMIT 1`,
+      [userId],
+    );
+    return rows.length > 0;
+  }
 
   private async findMapping(
     deviceId: string,

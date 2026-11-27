@@ -20,6 +20,10 @@ describe('HgvisionPollerService', () => {
   let onVehicleEvent: jest.Mock;
   let provider: string;
   let service: HgvisionPollerService;
+  let watchlist: {
+    checkPersonWatchlist: jest.Mock;
+    checkPersonControlEntry: jest.Mock;
+  };
 
   beforeEach(() => {
     jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
@@ -29,6 +33,10 @@ describe('HgvisionPollerService', () => {
     onFaceEvent = jest.fn().mockResolvedValue(undefined);
     onVehicleEvent = jest.fn().mockResolvedValue(undefined);
     provider = 'hgvision';
+    watchlist = {
+      checkPersonWatchlist: jest.fn().mockResolvedValue(undefined),
+      checkPersonControlEntry: jest.fn().mockResolvedValue(undefined),
+    };
     const config = {
       get: jest.fn((key: string, def?: unknown) =>
         key === 'CAMERA_PROVIDER' ? provider : def,
@@ -40,7 +48,9 @@ describe('HgvisionPollerService', () => {
           Promise.resolve(
             sql.includes('vehicle_control_list')
               ? controlListRows
-              : [{ config_json: { 'Phong C401': 3 } }],
+              : sql.includes('device_user_mappings')
+                ? [{ user_id: 'u-emp' }]
+                : [{ config_json: { 'Phong C401': 3 } }],
           ),
         ),
       },
@@ -51,6 +61,7 @@ describe('HgvisionPollerService', () => {
       { onVehicleEvent },
       dataSource,
       config,
+      watchlist as any,
     );
   });
 
@@ -219,5 +230,39 @@ describe('HgvisionPollerService', () => {
         remotePlateImagePath: 'LP_IMAGE/1/v2.jpg',
       }),
     );
+  });
+
+  it('[2026-11-27] camera nhận ra mã NV/SV → kiểm tra danh sách giám sát theo user + tên camera', async () => {
+    searchHistory.mockResolvedValue({
+      total: 1,
+      page: 1,
+      page_size: 100,
+      data: [face('a')],
+    });
+    service.onModuleInit();
+    await service.tick();
+    await new Promise((r) => setImmediate(r));
+    expect(watchlist.checkPersonWatchlist).toHaveBeenCalledWith(
+      'u-emp',
+      expect.objectContaining({ channelId: 3, cameraName: 'Phong C401' }),
+    );
+  });
+
+  it('[2026-11-27] định danh WL-<id> (người ngoài) → kiểm tra theo hồ sơ giám sát', async () => {
+    const f = { ...face('w'), face_ident_text: 'WL-pcl9' };
+    searchHistory.mockResolvedValue({
+      total: 1,
+      page: 1,
+      page_size: 100,
+      data: [f],
+    });
+    service.onModuleInit();
+    await service.tick();
+    await new Promise((r) => setImmediate(r));
+    expect(watchlist.checkPersonControlEntry).toHaveBeenCalledWith(
+      'pcl9',
+      expect.objectContaining({ channelId: 3 }),
+    );
+    expect(watchlist.checkPersonWatchlist).not.toHaveBeenCalled();
   });
 });
