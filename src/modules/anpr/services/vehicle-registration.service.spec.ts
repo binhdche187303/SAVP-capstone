@@ -16,8 +16,19 @@ describe('VehicleRegistrationService (VPR-001 / UC1)', () => {
   let repo: any;
   let hook: ControlListSyncHook;
   let qb: any; // UC-101: mock QueryBuilder cho listAll (dựng mock — không đụng test cũ)
+  let summaryQb: any; // bản clone dùng đếm thẻ thống kê (meta.summary)
 
   beforeEach(async () => {
+    summaryQb = {
+      select: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
+      getRawOne: jest.fn().mockResolvedValue({
+        total: '0',
+        active: '0',
+        disabled: '0',
+        owners: '0',
+      }),
+    };
     qb = {
       leftJoinAndSelect: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
@@ -25,6 +36,7 @@ describe('VehicleRegistrationService (VPR-001 / UC1)', () => {
       orderBy: jest.fn().mockReturnThis(),
       skip: jest.fn().mockReturnThis(),
       take: jest.fn().mockReturnThis(),
+      clone: jest.fn(() => summaryQb),
       getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
     };
     repo = {
@@ -437,7 +449,53 @@ describe('VehicleRegistrationService (VPR-001 / UC1)', () => {
     it('meta đúng: total=25 limit=20 → totalPages=2', async () => {
       qb.getManyAndCount.mockResolvedValue([[{ id: 'v1' }], 25]);
       const r = await service.listAll(q({ page: 1, limit: 20 }));
-      expect(r.meta).toEqual({ page: 1, limit: 20, total: 25, totalPages: 2 });
+      expect(r.meta).toEqual({
+        page: 1,
+        limit: 20,
+        total: 25,
+        totalPages: 2,
+        summary: { total: 0, active: 0, disabled: 0, owners: 0 },
+      });
+    });
+
+    it('meta.summary đếm trên toàn bộ kết quả lọc (không theo trang), đổi chuỗi → số', async () => {
+      summaryQb.getRawOne.mockResolvedValue({
+        total: '30',
+        active: '24',
+        disabled: '6',
+        owners: '18',
+      });
+      qb.getManyAndCount.mockResolvedValue([[{ id: 'v1' }], 30]);
+      const r = await service.listAll(q({ page: 2, limit: 10 }));
+      expect(r.meta.summary).toEqual({
+        total: 30,
+        active: 24,
+        disabled: 6,
+        owners: 18,
+      });
+      expect(summaryQb.select).toHaveBeenCalledWith('COUNT(*)', 'total');
+      expect(summaryQb.addSelect).toHaveBeenCalledWith(
+        'COUNT(DISTINCT vr.userId)',
+        'owners',
+      );
+    });
+
+    it('meta.summary KHÔNG bị lọc theo trạng thái (clone trước khi thêm điều kiện status)', async () => {
+      const order: string[] = [];
+      qb.clone.mockImplementation(() => {
+        order.push('clone');
+        return summaryQb;
+      });
+      qb.andWhere.mockImplementation((sql: string) => {
+        order.push(String(sql));
+        return qb;
+      });
+      await service.listAll(q({ status: 'active', search: 'Đỗ' }));
+      const cloneAt = order.indexOf('clone');
+      const statusAt = order.findIndex((s) => s.includes('vr.status'));
+      const searchAt = order.findIndex((s) => s.includes('unaccent'));
+      expect(searchAt).toBeLessThan(cloneAt); // bộ lọc tìm kiếm áp cho cả thống kê
+      expect(statusAt).toBeGreaterThan(cloneAt); // lọc trạng thái chỉ áp cho danh sách
     });
   });
 
