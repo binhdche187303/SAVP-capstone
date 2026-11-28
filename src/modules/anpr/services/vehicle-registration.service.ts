@@ -30,6 +30,18 @@ export interface PaginationMeta {
   totalPages: number;
 }
 
+/**
+ * Số liệu cho 4 thẻ thống kê màn Đăng ký phương tiện — đếm trên TOÀN BỘ kết quả lọc
+ * (không chỉ trang hiện tại). Bỏ qua lọc `status` để 2 thẻ Đang hoạt động / Vô hiệu luôn
+ * hiện đủ số của cả 2 trạng thái (bấm thẻ = lọc theo trạng thái đó).
+ */
+export interface VehicleRegistrationSummary {
+  total: number;
+  active: number;
+  disabled: number;
+  owners: number;
+}
+
 // OQ-4: biển hợp lệ sau normalize — chỉ [A-Z0-9], dài 6–10.
 const PLATE_FORMAT_RE = /^[0-9A-Z]+$/;
 const PLATE_MIN = 6;
@@ -268,9 +280,10 @@ export class VehicleRegistrationService {
    * `owner` ILIKE trên full_name OR email (KHÔNG normalize — tên người, không phải biển).
    * Mọi giá trị qua bound param (SEC-03). deletedAt IS NULL tường minh (DATA-01).
    */
-  async listAll(
-    query: AdminListVehicleRegistrationsQueryDto,
-  ): Promise<{ items: VehicleRegistrationEntity[]; meta: PaginationMeta }> {
+  async listAll(query: AdminListVehicleRegistrationsQueryDto): Promise<{
+    items: VehicleRegistrationEntity[];
+    meta: PaginationMeta & { summary: VehicleRegistrationSummary };
+  }> {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
 
@@ -279,11 +292,6 @@ export class VehicleRegistrationService {
       .leftJoinAndSelect('vr.user', 'u')
       .where('vr.deletedAt IS NULL');
 
-    if (query.status) {
-      qb.andWhere('vr.status IN (:...status)', {
-        status: filterValues(query.status),
-      });
-    }
     if (query.vehicleType) {
       qb.andWhere('vr.vehicleType IN (:...vt)', {
         vt: filterValues(query.vehicleType),
@@ -313,6 +321,27 @@ export class VehicleRegistrationService {
       );
     }
 
+    // Thống kê lấy TRƯỚC khi thêm lọc trạng thái (xem VehicleRegistrationSummary).
+    const summaryRaw = await qb
+      .clone()
+      .select('COUNT(*)', 'total')
+      .addSelect(`COUNT(*) FILTER (WHERE vr.status = 'active')`, 'active')
+      .addSelect(`COUNT(*) FILTER (WHERE vr.status = 'disabled')`, 'disabled')
+      .addSelect('COUNT(DISTINCT vr.userId)', 'owners')
+      .getRawOne<Record<keyof VehicleRegistrationSummary, string | number>>();
+    const summary: VehicleRegistrationSummary = {
+      total: Number(summaryRaw?.total ?? 0),
+      active: Number(summaryRaw?.active ?? 0),
+      disabled: Number(summaryRaw?.disabled ?? 0),
+      owners: Number(summaryRaw?.owners ?? 0),
+    };
+
+    if (query.status) {
+      qb.andWhere('vr.status IN (:...status)', {
+        status: filterValues(query.status),
+      });
+    }
+
     const [items, total] = await qb
       .orderBy('vr.createdAt', 'DESC')
       .skip((page - 1) * limit)
@@ -321,7 +350,13 @@ export class VehicleRegistrationService {
 
     return {
       items,
-      meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        summary,
+      },
     };
   }
 

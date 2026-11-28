@@ -16,12 +16,13 @@ const baseEntity = (): VehicleRegistrationEntity =>
   }) as VehicleRegistrationEntity;
 
 describe('toAdminVehicleRegistrationResponse (UC-101)', () => {
-  it('vr.user set → owner {user_id, full_name, email}; KHÔNG field nhạy cảm', () => {
+  it('vr.user set → owner {user_id, full_name, email, avatar_url}; KHÔNG field nhạy cảm', () => {
     const entity = baseEntity();
     entity.user = {
       id: 'u1',
       fullName: 'Nguyen Van A',
       email: 'a@example.com',
+      avatarUrl: '/uploads/avatars/a.jpg',
       // các field nhạy cảm — PHẢI không xuất hiện trong output
       phoneNumber: '0900000000',
       username: 'nva',
@@ -35,6 +36,7 @@ describe('toAdminVehicleRegistrationResponse (UC-101)', () => {
       user_id: 'u1',
       full_name: 'Nguyen Van A',
       email: 'a@example.com',
+      avatar_url: '/uploads/avatars/a.jpg',
     });
     // 0 field nhạy cảm rò qua khối owner
     const owner = out.owner as Record<string, unknown>;
@@ -44,6 +46,16 @@ describe('toAdminVehicleRegistrationResponse (UC-101)', () => {
     expect(owner).not.toHaveProperty('passwordHash');
     expect(owner).not.toHaveProperty('phone');
     expect(owner).not.toHaveProperty('department');
+  });
+
+  it('chủ xe chưa có ảnh → avatar_url: null', () => {
+    const entity = baseEntity();
+    entity.user = {
+      id: 'u2',
+      fullName: 'B',
+      email: 'b@example.com',
+    } as VehicleRegistrationEntity['user'];
+    expect(toAdminVehicleRegistrationResponse(entity).owner?.avatar_url).toBeNull();
   });
 
   it('vr.user null → owner: null (không nổ)', () => {
