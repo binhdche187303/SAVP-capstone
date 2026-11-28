@@ -10,7 +10,7 @@ import {
  * = toàn bộ field của route user (VehicleRegistrationResponseDto) CỘNG khối `owner`
  * VÀ `account_expires_at` (top-level, xem ghi chú bên dưới).
  *
- * Owner CHỈ `user_id` + `full_name` + `email` — KHÔNG lộ phone/department/username/
+ * Owner CHỈ `user_id` + `full_name` + `email` + `avatar_url` — KHÔNG lộ phone/department/username/
  * employee_code/trạng thái tài khoản của UserEntity (SEC-01). Chỉ dùng cho endpoint admin
  * đã qua @RequirePermissions.
  *
@@ -23,6 +23,8 @@ export interface AdminVehicleOwner {
   user_id: string;
   full_name: string;
   email: string;
+  /** Ảnh đại diện để hiện cạnh tên chủ xe (FE trước đây phải tải trước 1.000 user để tra ảnh). */
+  avatar_url: string | null;
 }
 
 export interface AdminVehicleRegistrationResponseDto extends VehicleRegistrationResponseDto {
@@ -41,6 +43,7 @@ export function toAdminVehicleRegistrationResponse(
           user_id: entity.user.id,
           full_name: entity.user.fullName,
           email: entity.user.email,
+          avatar_url: entity.user.avatarUrl ?? null,
         }
       : null,
     account_expires_at: entity.user?.accountExpiresAt?.toISOString() ?? null,
